@@ -10,6 +10,7 @@ import LoginPage from './pages/LoginPage.jsx'
 import UserDashboardPage from './pages/UserDashboardPage.jsx'
 import AccountPage from './pages/AccountPage.jsx'
 import AdminUsersPage from './pages/AdminUsersPage.jsx'
+import NotificationsPage from './pages/NotificationsPage.jsx'
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
           <Route path="/repairs" element={<RepairsPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
         </Route>
       </Routes>
     </>
