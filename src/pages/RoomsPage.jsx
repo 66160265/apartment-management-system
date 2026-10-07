@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { rooms as initialRooms, roomStatuses } from '../data/rooms'
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
+import { roomStatuses } from '../data/rooms'
 
 const emptyForm = { number: '', floor: '', status: 'vacant', rent: '', note: '' }
 
@@ -67,7 +68,24 @@ function RoomModal({ title, initial, onSave, onCancel }) {
 }
 
 function RoomsPage() {
-    const [rooms, setRooms] = useState(initialRooms)
+    const [rooms, setRooms] = useState([])
+    const [loading, setLoading] = useState(true)
+    const [loadError, setLoadError] = useState('')
+
+    const load = async () => {
+        const { data, error } = await supabase.from('rooms').select('*')
+        if (error) {
+            setLoadError(`โหลดข้อมูลไม่สำเร็จ: ${error.message}`)
+        } else {
+            setRooms(data.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true })))
+            setLoadError('')
+        }
+        setLoading(false)
+    }
+
+    useEffect(() => {
+        load()
+    }, [])
     // null = ปิด, 'new' = เพิ่มห้อง, ออบเจ็กต์ห้อง = แก้ไขห้องนั้น
     const [modal, setModal] = useState(null)
 
@@ -81,14 +99,16 @@ function RoomsPage() {
 
     const floors = [...new Set(rooms.map((r) => r.floor))].sort((a, b) => a - b)
 
-    const handleSave = (data) => {
+    const handleSave = async (data) => {
         const editing = modal !== 'new' ? modal.number : null
         if (rooms.some((r) => r.number === data.number && r.number !== editing)) {
             return 'เลขห้องนี้มีอยู่แล้ว'
         }
-        setRooms(editing
-            ? rooms.map((r) => (r.number === editing ? data : r))
-            : [...rooms, data].sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true })))
+        const { error } = editing
+            ? await supabase.from('rooms').update(data).eq('number', editing)
+            : await supabase.from('rooms').insert(data)
+        if (error) return `บันทึกไม่สำเร็จ: ${error.message}`
+        await load()
         setModal(null)
     }
 
@@ -125,6 +145,11 @@ function RoomsPage() {
             </div>
 
             <div className="px-6 pb-6">
+                {(loading || loadError) && (
+                    <p className={`mt-5 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
+                        {loading ? 'กำลังโหลด...' : loadError}
+                    </p>
+                )}
                 {floors.map((floor) => (
                     <section key={floor} className="mt-5">
                         <h2 className="mb-3 font-medium text-primary-dark">ชั้น {floor}</h2>

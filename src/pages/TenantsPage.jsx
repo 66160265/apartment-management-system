@@ -1,11 +1,20 @@
-import { useState } from 'react'
-import { tenants as initialTenants } from '../data/tenants'
-import { rooms } from '../data/rooms'
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
+import { createTenantAccount } from '../lib/tenantAccount'
+
+const byRoom = (a, b) => a.room.localeCompare(b.room, undefined, { numeric: true })
+
+const fromRow = (r) => ({
+    room: r.room,
+    name: r.name,
+    phone: r.phone,
+    username: r.username,
+    startDate: r.start_date,
+    endDate: r.end_date,
+})
 
 const emptyForm = {
     name: '',
-    username: '',
-    password: '',
     phone: '',
     room: '',
     startDate: '',
@@ -20,37 +29,36 @@ const formatDate = (iso) =>
         ? new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
         : '-'
 
-function TenantModal({ title, initial, isEdit, onSave, onCancel }) {
+function TenantModal({ title, initial, isEdit, roomNumbers, onSave, onCancel }) {
     const [form, setForm] = useState(initial)
     const [error, setError] = useState('')
+    const [saving, setSaving] = useState(false)
 
     const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
 
-    // ห้องที่เลือกได้: ห้องทั้งหมดในระบบ + ห้องเดิมของผู้เช่า (กรณีแก้ไข)
-    const roomOptions = [...new Set([...rooms.map((r) => r.number), initial.room].filter(Boolean))]
-
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault()
         if (!form.name.trim() || !form.phone.trim() || !form.room || !form.startDate || !form.endDate) {
             setError('กรุณากรอกข้อมูลให้ครบ')
             return
         }
-        if (!isEdit && (!form.username.trim() || !form.password)) {
-            setError('กรุณากรอกชื่อผู้ใช้ login และรหัสผ่าน')
+        if (!isEdit && form.phone.replace(/\D/g, '').length < 4) {
+            setError('เบอร์โทรต้องมีตัวเลขอย่างน้อย 4 หลัก (ใช้สร้างรหัสผ่านเริ่มต้น)')
             return
         }
         if (form.endDate < form.startDate) {
             setError('วันสิ้นสุดสัญญาต้องไม่ก่อนวันเริ่มสัญญา')
             return
         }
-        const err = onSave({
+        setSaving(true)
+        const err = await onSave({
             name: form.name.trim(),
-            username: form.username.trim(),
             phone: form.phone.trim(),
             room: form.room,
             startDate: form.startDate,
             endDate: form.endDate,
         })
+        setSaving(false)
         if (err) setError(err)
     }
 
@@ -62,32 +70,18 @@ function TenantModal({ title, initial, isEdit, onSave, onCancel }) {
                     ชื่อ-นามสกุล
                     <input className={inputClass} value={form.name} onChange={set('name')} />
                 </label>
-                <div className="flex gap-4">
-                    <label className="flex-1 min-w-0 text-sm text-muted">
-                        ชื่อผู้ใช้ login
-                        <input className={inputClass} value={form.username} onChange={set('username')} />
-                    </label>
-                    <label className="flex-1 min-w-0 text-sm text-muted">
-                        รหัสผ่าน
-                        <input
-                            type="password"
-                            className={inputClass}
-                            value={form.password}
-                            onChange={set('password')}
-                            placeholder={isEdit ? 'ไม่เปลี่ยนรหัสผ่าน' : ''}
-                            autoComplete="new-password"
-                        />
-                    </label>
-                </div>
+                {isEdit && initial.username && (
+                    <p className="text-sm text-muted">ชื่อผู้ใช้ login: <span className="text-primary-dark font-medium">{initial.username}</span></p>
+                )}
                 <label className="text-sm text-muted">
                     เบอร์โทร
                     <input className={inputClass} value={form.phone} onChange={set('phone')} />
                 </label>
                 <label className="text-sm text-muted">
                     ห้องพัก
-                    <select className={inputClass} value={form.room} onChange={set('room')}>
+                    <select className={inputClass} value={form.room} onChange={set('room')} disabled={isEdit}>
                         <option value="" />
-                        {roomOptions.map((n) => (
+                        {roomNumbers.map((n) => (
                             <option key={n} value={n}>{n}</option>
                         ))}
                     </select>
@@ -105,7 +99,7 @@ function TenantModal({ title, initial, isEdit, onSave, onCancel }) {
                 {error && <p className="text-sm text-red-600">{error}</p>}
                 <div className="flex justify-end gap-2">
                     <button type="button" onClick={onCancel} className="border border-line text-muted hover:bg-sand px-4 py-1.5 rounded-lg">ยกเลิก</button>
-                    <button type="submit" className="bg-primary hover:bg-primary-dark text-white px-4 py-1.5 rounded-lg">บันทึก</button>
+                    <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark disabled:opacity-60 text-white px-4 py-1.5 rounded-lg">{saving ? 'กำลังบันทึก...' : 'บันทึก'}</button>
                 </div>
             </form>
         </div>
@@ -113,7 +107,11 @@ function TenantModal({ title, initial, isEdit, onSave, onCancel }) {
 }
 
 function TenantsPage() {
-    const [tenants, setTenants] = useState(initialTenants)
+    const [tenants, setTenants] = useState([])
+    // ห้องที่ยังไม่มีผู้เช่าและไม่ได้ปิดปรับปรุง (ใช้เลือกตอนเพิ่มผู้เช่า)
+    const [freeRooms, setFreeRooms] = useState([])
+    const [loading, setLoading] = useState(true)
+    const [loadError, setLoadError] = useState('')
     const [search, setSearch] = useState('')
     // null = ปิด, 'new' = เพิ่มผู้เช่า, ออบเจ็กต์ผู้เช่า = ดู/แก้ไขรายละเอียด
     const [modal, setModal] = useState(null)
@@ -123,14 +121,44 @@ function TenantsPage() {
         (t) => !keyword || t.name.toLowerCase().includes(keyword) || t.room.includes(keyword)
     )
 
-    const handleSave = (data) => {
-        const editing = modal !== 'new' ? modal.room : null
-        if (tenants.some((t) => t.room === data.room && t.room !== editing)) {
-            return 'ห้องนี้มีผู้เช่าอยู่แล้ว'
+    const load = async () => {
+        const [tenantsRes, roomsRes] = await Promise.all([
+            supabase.from('tenants').select('*'),
+            supabase.from('rooms').select('number, status'),
+        ])
+        const err = tenantsRes.error || roomsRes.error
+        if (err) {
+            setLoadError(`โหลดข้อมูลไม่สำเร็จ: ${err.message}`)
+        } else {
+            const list = tenantsRes.data.map(fromRow).sort(byRoom)
+            setTenants(list)
+            setFreeRooms(
+                roomsRes.data
+                    .filter((r) => r.status !== 'maintenance' && !list.some((t) => t.room === r.number))
+                    .map((r) => r.number)
+                    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+            )
+            setLoadError('')
         }
-        setTenants(editing
-            ? tenants.map((t) => (t.room === editing ? { ...t, ...data } : t))
-            : [...tenants, data].sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true })))
+        setLoading(false)
+    }
+
+    useEffect(() => {
+        load()
+    }, [])
+
+    const handleSave = async (data) => {
+        if (modal === 'new') {
+            const err = await createTenantAccount(data)
+            if (err) return err
+        } else {
+            const { error } = await supabase
+                .from('tenants')
+                .update({ name: data.name, phone: data.phone, start_date: data.startDate, end_date: data.endDate })
+                .eq('room', modal.room)
+            if (error) return `บันทึกไม่สำเร็จ: ${error.message}`
+        }
+        await load()
         setModal(null)
     }
 
@@ -184,9 +212,11 @@ function TenantsPage() {
                                 </td>
                             </tr>
                         ))}
-                        {visible.length === 0 && (
+                        {(loading || loadError || visible.length === 0) && (
                             <tr>
-                                <td colSpan="6" className="py-6 text-center text-muted">ไม่พบผู้เช่า</td>
+                                <td colSpan="6" className={`py-6 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
+                                    {loading ? 'กำลังโหลด...' : loadError || 'ไม่พบผู้เช่า'}
+                                </td>
                             </tr>
                         )}
                     </tbody>
@@ -199,6 +229,7 @@ function TenantsPage() {
                     title={modal === 'new' ? 'เพิ่มผู้เช่า' : `รายละเอียดผู้เช่า ห้อง ${modal.room}`}
                     initial={modal === 'new' ? emptyForm : { ...emptyForm, ...modal }}
                     isEdit={modal !== 'new'}
+                    roomNumbers={modal === 'new' ? freeRooms : [modal.room]}
                     onSave={handleSave}
                     onCancel={() => setModal(null)}
                 />

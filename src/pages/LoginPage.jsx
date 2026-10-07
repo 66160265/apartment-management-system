@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
+import { usernameToEmail } from "../lib/tenantAccount";
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -22,7 +23,7 @@ function LoginPage() {
       // 1. Login ด้วย Supabase Auth
       const { data, error: loginError } =
         await supabase.auth.signInWithPassword({
-          email: email.trim(),
+          email: email.includes("@") ? email.trim() : usernameToEmail(email),
           password,
         });
 
@@ -221,14 +222,14 @@ function LoginPage() {
                 color: "#3368A0",
               }}
             >
-              อีเมล
+              อีเมล / ชื่อผู้ใช้
             </label>
 
             <input
               id="email"
-              type="email"
+              type="text"
               required
-              autoComplete="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);
