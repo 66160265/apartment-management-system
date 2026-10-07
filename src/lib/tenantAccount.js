@@ -19,3 +19,6 @@ export async function createTenantAccount(tenant) {
     }
     return data?.error || null
 }
+
+// รหัสผ่านเริ่มต้น: TP + เลขห้อง + เลขท้าย 4 ตัวของเบอร์โทร (ต้องตรงกับ Edge Function create-tenant)
+export const makeDefaultPassword = (room, phone) => `TP${room}${phone.replace(/\D/g, '').slice(-4)}`

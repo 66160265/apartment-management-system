@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import AvatarMenu from '../components/AvatarMenu'
 import { supabase } from '../lib/supabaseClient'
 import { createTenantAccount } from '../lib/tenantAccount'
 
@@ -170,9 +171,7 @@ function TenantsPage() {
                     <button onClick={() => setModal('new')} className="bg-primary hover:bg-primary-dark transition-colors text-white px-4 py-2 rounded-xl shadow-card">
                         + เพิ่มผู้เช่า
                     </button>
-                    <div className="w-10 h-10 rounded-full bg-mist text-primary-dark font-medium flex items-center justify-center">
-                        AD
-                    </div>
+                    <AvatarMenu />
                 </div>
             </div>
             <div className="px-6">

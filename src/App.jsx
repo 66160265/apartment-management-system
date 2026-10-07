@@ -8,6 +8,8 @@ import RoomsPage from './pages/RoomsPage.jsx'
 import TenantsPage from './pages/TenantsPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import UserDashboardPage from './pages/UserDashboardPage.jsx'
+import AccountPage from './pages/AccountPage.jsx'
+import AdminUsersPage from './pages/AdminUsersPage.jsx'
 
 function App() {
   return (
@@ -23,6 +25,8 @@ function App() {
           <Route path="/tenants" element={<TenantsPage />} />
           <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/repairs" element={<RepairsPage />} />
+          <Route path="/account" element={<AccountPage />} />
+          <Route path="/admin/users" element={<AdminUsersPage />} />
         </Route>
       </Routes>
     </>
