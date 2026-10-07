@@ -4,5 +4,6 @@ export const menuItems = [
     { label: 'ผู้เช่า', path: '/tenants', icon: '👥'},
     { label: 'ใบแจ้งหนี้', path: '/invoices', icon: '🧾'},
     { label: 'แจ้งซ่อม', path: '/repairs', icon: '🔧'},
-    { label: 'บัญชีผู้ใช้', path: '/admin/users', icon: '🔑', adminOnly: true }
+    { label: 'บัญชีผู้ใช้', path: '/admin/users', icon: '🔑', adminOnly: true },
+    { label: 'แจ้งเตือน', path: '/notifications', icon: '🔔'}
 ]
