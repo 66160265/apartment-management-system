@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import AvatarMenu from '../components/AvatarMenu'
 import { initialRepairs, statuses } from '../data/repairs'
 
 // กำหนดสีของแต่ละสถานะตามรูปแบบตาราง
@@ -112,9 +113,7 @@ function RepairsPage() {
                             <span>แจ้งซ่อม</span>
                         </button>
                     )}
-                    <div className="w-10 h-10 rounded-full bg-[#d8b4fe] text-[#581c87] font-semibold flex items-center justify-center text-sm shadow-xs">
-                        AD
-                    </div>
+                    <AvatarMenu />
                 </div>
             </div>
 

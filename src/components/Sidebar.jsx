@@ -1,30 +1,12 @@
-import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { menuItems } from "../data/menu";
-import { supabase } from "../lib/supabaseClient";
+import { useCurrentUser } from "../lib/useCurrentUser";
 
 const USER_DASHBOARD = "/user/dashboard";
 
 function Sidebar() {
-  const [role, setRole] = useState(null);
-
-  // ดึง role ของผู้ใช้ที่ล็อกอินอยู่ เพื่อให้เมนู Dashboard ไปหน้าที่ถูกต้อง
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-      if (active && profile) setRole(profile.role);
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
+  // ใช้ role จากข้อมูลผู้ใช้ที่แชร์กัน เพื่อให้เมนู Dashboard ไปหน้าที่ถูกต้อง
+  const role = useCurrentUser()?.role;
 
   const resolvePath = (item) =>
     item.label === "Dashboard" && role === "user" ? USER_DASHBOARD : item.path;
@@ -36,7 +18,7 @@ function Sidebar() {
         ระบบจัดการหอพัก
       </h2>
       <nav className="flex flex-col gap-1.5">
-        {menuItems.map((item) => (
+        {menuItems.filter((item) => !item.adminOnly || role === "admin").map((item) => (
           <NavLink
             key={item.label}
             to={resolvePath(item)}
