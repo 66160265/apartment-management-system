@@ -1,8 +1,8 @@
-function RepairsPage(){
+function RepairsPage() {
     return (
-        <>
-            <h1>Repairs</h1>
-        </>
+        <div className="p-6">
+            <h1 className="text-2xl font-semibold text-primary-dark">แจ้งซ่อม</h1>
+        </div>
     )
 }
 

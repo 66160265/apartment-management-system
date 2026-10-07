@@ -1,8 +1,8 @@
 function InvoicesPage() {
     return (
-        <>
-            <h1>Invoices</h1>
-        </>
+        <div className="p-6">
+            <h1 className="text-2xl font-semibold text-primary-dark">ใบแจ้งหนี้</h1>
+        </div>
     )
 }
 
