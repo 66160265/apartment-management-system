@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+
+import AvatarMenu from '../components/AvatarMenu'
+import NotificationBell from '../components/NotificationBell'
 import { initialNotifications, formatNotificationTime } from '../data/notifications'
 
 // แมปสีของจุดแจ้งเตือนตามภาพต้นแบบ
@@ -12,45 +15,133 @@ const dotColorClasses = {
 
 function NotificationsPage() {
     const navigate = useNavigate()
-    const [notifications, setNotifications] = useState(initialNotifications)
-    const [selectedItem, setSelectedItem] = useState(null)
+    const [searchParams, setSearchParams] = useSearchParams()
+
+    const [notifications, setNotifications] = useState(() => {
+        try {
+            const readList = JSON.parse(
+                localStorage.getItem('apartment_read_notifications') || '[]'
+            )
+
+            return initialNotifications.map((n) =>
+                readList.includes(n.id)
+                    ? { ...n, dotColor: 'gray' }
+                    : n
+            )
+        } catch {
+            return initialNotifications
+        }
+    })
+
+    // หา notification ที่ถูกเลือกจาก id ใน URL
+    const rawId = searchParams.get('id')
+
+    const selectedItem = rawId
+        ? notifications.find(
+              (n) => String(n.id) === String(rawId)
+          )
+        : null
+
+    // ฟังก์ชันบันทึกว่าอ่านแจ้งเตือนนี้แล้ว
+    const markIdAsRead = useCallback((id) => {
+        try {
+            const stored = JSON.parse(
+                localStorage.getItem('apartment_read_notifications') || '[]'
+            )
+
+            if (!stored.includes(id)) {
+                const next = [...stored, id]
+
+                localStorage.setItem(
+                    'apartment_read_notifications',
+                    JSON.stringify(next)
+                )
+
+                window.dispatchEvent(
+                    new Event('apartment_notifications_updated')
+                )
+            }
+        } catch (err) {
+            console.error(err)
+        }
+    }, [])
+
+    // เมื่อมี id ใน URL ให้บันทึกว่า notification นี้ถูกอ่านแล้ว
+    // สำคัญ: effect นี้ไม่มี setState()
+    useEffect(() => {
+        if (!rawId) return
+
+        const found = initialNotifications.find(
+            (n) => String(n.id) === String(rawId)
+        )
+
+        if (found) {
+            markIdAsRead(found.id)
+        }
+    }, [rawId, markIdAsRead])
+
+    // เมื่อมี id ใน URL ให้เปลี่ยน notification ใน state เป็นสีเทา
+    // ทำใน event handler / การคลิก ไม่ทำใน effect
+    const handleOpenDetail = (item) => {
+        markIdAsRead(item.id)
+
+        setNotifications((prev) =>
+            prev.map((n) =>
+                n.id === item.id
+                    ? { ...n, dotColor: 'gray' }
+                    : n
+            )
+        )
+
+        setSearchParams(
+            { id: String(item.id) },
+            { replace: false }
+        )
+    }
+
+    // ปิด Modal และเคลียร์ query param ออกจาก URL
+    const handleCloseModal = useCallback(() => {
+        if (searchParams.get('id')) {
+            setSearchParams({}, { replace: true })
+        }
+    }, [searchParams, setSearchParams])
 
     // ปิด Modal ด้วยปุ่ม Esc
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape') {
-                setSelectedItem(null)
+                handleCloseModal()
             }
         }
-        window.addEventListener('keydown', handleKeyDown)
-        return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [])
 
-    // เมื่อกดคลิกดูรายละเอียด ให้เปลี่ยนสีวงกลมเป็นสีเทา
-    const handleOpenDetail = (item) => {
-        setNotifications((prev) =>
-            prev.map((n) => (n.id === item.id ? { ...n, dotColor: 'gray' } : n))
-        )
-        setSelectedItem({ ...item, dotColor: 'gray' })
-    }
+        window.addEventListener('keydown', handleKeyDown)
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+        }
+    }, [handleCloseModal])
 
     return (
         <div className="p-6">
-            {/* Header ด้านบน: หัวข้อ แจ้งเตือน และ Avatar AD */}
+            {/* Header ด้านบน */}
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">แจ้งเตือน</h1>
+                <h1 className="text-2xl font-bold text-gray-900">
+                    แจ้งเตือน
+                </h1>
+
                 <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#d8b4fe] text-[#581c87] font-semibold flex items-center justify-center text-sm shadow-xs">
-                        AD
-                    </div>
+                    <NotificationBell />
+                    <AvatarMenu />
                 </div>
             </div>
 
-            {/* กล่องแสดงรายการแจ้งเตือน ตามเทมเพลตและรูปภาพต้นแบบ */}
+            {/* กล่องแสดงรายการแจ้งเตือน */}
             <div className="bg-white rounded-2xl shadow-card p-6 md:p-8 border border-line">
                 <div className="flex flex-col">
                     {notifications.map((item) => {
-                        const dotColor = dotColorClasses[item.dotColor] || dotColorClasses.gray
+                        const dotColor =
+                            dotColorClasses[item.dotColor] ||
+                            dotColorClasses.gray
 
                         return (
                             <div
@@ -70,15 +161,18 @@ function NotificationsPage() {
                                         <h2 className="text-sm sm:text-base font-bold text-gray-900">
                                             {item.title}
                                         </h2>
+
                                         <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
                                             {item.subtitle}
                                         </p>
                                     </div>
                                 </div>
 
-                                {/* เวลาการส่งตรงส่วนท้ายช่อง */}
+                                {/* เวลา */}
                                 <span className="text-xs sm:text-sm text-gray-400 group-hover:text-gray-600 transition-colors shrink-0">
-                                    {formatNotificationTime(item.createdAt || item.time)}
+                                    {formatNotificationTime(
+                                        item.createdAt || item.time
+                                    )}
                                 </span>
                             </div>
                         )
@@ -92,11 +186,11 @@ function NotificationsPage() {
                 </div>
             </div>
 
-            {/* Modal แสดงรายละเอียดเพิ่มเติมเมื่อกดที่ข้อความ */}
+            {/* Modal รายละเอียด */}
             {selectedItem && (
                 <div
                     className="fixed inset-0 bg-primary-deep/50 backdrop-blur-xs flex items-center justify-center z-50 p-4"
-                    onClick={() => setSelectedItem(null)}
+                    onClick={handleCloseModal}
                 >
                     <div
                         className="bg-white rounded-2xl shadow-xl w-[560px] max-w-full overflow-hidden border border-line flex flex-col animate-in fade-in zoom-in-95"
@@ -107,16 +201,18 @@ function NotificationsPage() {
                             <div className="flex items-center gap-3">
                                 <span
                                     className={`w-3.5 h-3.5 rounded-full shrink-0 ${
-                                        dotColorClasses[selectedItem.dotColor] || dotColorClasses.gray
+                                        dotColorClasses.gray
                                     }`}
                                 />
+
                                 <h2 className="text-lg font-bold text-gray-900">
                                     {selectedItem.title}
                                 </h2>
                             </div>
+
                             <button
                                 type="button"
-                                onClick={() => setSelectedItem(null)}
+                                onClick={handleCloseModal}
                                 className="text-gray-400 hover:text-gray-700 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white text-lg transition-colors cursor-pointer"
                             >
                                 ✕
@@ -137,12 +233,24 @@ function NotificationsPage() {
                             {/* กล่องข้อมูลอ้างอิง */}
                             <div className="bg-sand/40 p-4 rounded-xl border border-line flex flex-col gap-2">
                                 <div className="flex justify-between items-center text-xs text-gray-500">
-                                    <span className="font-medium">ข้อมูลอ้างอิง</span>
-                                    <span>เวลาที่ส่ง: {formatNotificationTime(selectedItem.createdAt || selectedItem.time, true)}</span>
+                                    <span className="font-medium">
+                                        ข้อมูลอ้างอิง
+                                    </span>
+
+                                    <span>
+                                        เวลาที่ส่ง:{' '}
+                                        {formatNotificationTime(
+                                            selectedItem.createdAt ||
+                                                selectedItem.time,
+                                            true
+                                        )}
+                                    </span>
                                 </div>
+
                                 <div className="text-base text-gray-900 font-bold">
                                     {selectedItem.subtitle}
                                 </div>
+
                                 {selectedItem.tenantName && (
                                     <div className="text-xs text-gray-600 pt-1 border-t border-line/60 flex flex-wrap gap-x-4 gap-y-1">
                                         <span>
@@ -151,6 +259,7 @@ function NotificationsPage() {
                                                 {selectedItem.tenantName}
                                             </strong>
                                         </span>
+
                                         {selectedItem.phone && (
                                             <span>
                                                 เบอร์โทรติดต่อ:{' '}
@@ -168,31 +277,36 @@ function NotificationsPage() {
                                 <h3 className="text-xs font-semibold text-gray-500 mb-1.5">
                                     รายละเอียดการแจ้งเตือน
                                 </h3>
+
                                 <div className="text-sm text-gray-700 leading-relaxed bg-white border border-gray-200 rounded-xl p-4 shadow-2xs">
                                     {selectedItem.details}
                                 </div>
                             </div>
                         </div>
 
-                        {/* ส่วนท้าย Modal: ปุ่มปิด และปุ่มนำทาง */}
+                        {/* Footer */}
                         <div className="px-6 py-4 bg-sand/20 border-t border-gray-100 flex justify-end items-center gap-3">
                             <button
                                 type="button"
-                                onClick={() => setSelectedItem(null)}
+                                onClick={handleCloseModal}
                                 className="border border-gray-300 text-gray-700 hover:bg-gray-100 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer"
                             >
                                 ปิด
                             </button>
+
                             {selectedItem.actionLink && (
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setSelectedItem(null)
+                                        handleCloseModal()
                                         navigate(selectedItem.actionLink)
                                     }}
                                     className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
                                 >
-                                    <span>{selectedItem.actionLabel}</span>
+                                    <span>
+                                        {selectedItem.actionLabel}
+                                    </span>
+
                                     <span>→</span>
                                 </button>
                             )}
