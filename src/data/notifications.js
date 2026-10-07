@@ -92,7 +92,7 @@ export const initialNotifications = [
         createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1 ชั่วโมงที่แล้ว
         type: 'payment',
         typeLabel: 'การเงิน & ใบแจ้งหนี้',
-        dotColor: 'red',
+        dotColor: 'orange',
         details: 'มีรายการแจ้งชำระเงินค่าเช่าประจำเดือนมิถุนายนแนบสลิปเข้ามาใหม่จำนวน 2 รายการ ได้แก่ ห้อง 108 (ยอด 4,850 บาท) และ ห้อง 312 (ยอด 5,200 บาท) รอดำเนินการตรวจสอบความถูกต้องและออกใบเสร็จรับเงิน',
         tenantName: 'ห้อง 108: มนัสวี / ห้อง 312: กิตติศักดิ์',
         phone: '089-111-2233',
@@ -108,7 +108,7 @@ export const initialNotifications = [
         createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 ชั่วโมงที่แล้ว
         type: 'repair',
         typeLabel: 'แจ้งซ่อม',
-        dotColor: 'red',
+        dotColor: 'green',
         details: 'ผู้เช่าห้อง 101 ส่งเรื่องแจ้งซ่อมฉุกเฉิน: ท่อน้ำใต้อ่างล้างหน้าในห้องน้ำรั่วซึม มีน้ำไหลนองเต็มพื้นห้องน้ำ ต้องการให้ช่างเข้าทำการตรวจสอบและซ่อมแซมโดยด่วนที่สุด',
         tenantName: 'อนุชา เก่งการ',
         phone: '084-555-6677',
@@ -164,3 +164,10 @@ export const initialNotifications = [
         actionLabel: 'ดูข้อมูลผู้เช่าห้อง 201',
     },
 ]
+
+export const dotColorClasses = {
+    red: 'bg-[#ef4444]',
+    orange: 'bg-[#f59e0b]',
+    green: 'bg-[#22c55e]',
+    gray: 'bg-[#6b7280]',
+}
