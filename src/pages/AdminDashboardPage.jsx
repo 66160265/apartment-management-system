@@ -3,9 +3,10 @@ import { Link, useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import MonthPicker from '../components/MonthPicker'
-import { RATES, invoiceStatuses } from '../data/billing'
+import { invoiceStatuses } from '../data/billing'
 import { currentMonth, formatMonth } from '../lib/billing'
 import { supabase } from '../lib/supabaseClient'
+import { useSettings } from '../lib/useSettings'
 
 // อัตราที่เป็น 0 ถือเป็นค่าที่ถูกต้อง จึงใช้ค่าสำรองเฉพาะกรณีไม่มีข้อมูลเท่านั้น
 const toRate = (value, fallback) =>
@@ -33,6 +34,7 @@ async function fetchDashboardData() {
 }
 
 function AdminDashboardPage() {
+    const settings = useSettings()
     const navigate = useNavigate()
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
@@ -141,8 +143,8 @@ function AdminDashboardPage() {
         let waterCost = 0
         let elecCost = 0
 
-        const waterRate = toRate(invoicesForMonth[0]?.water_rate, RATES.water)
-        const elecRate = toRate(invoicesForMonth[0]?.elec_rate, RATES.electric)
+        const waterRate = toRate(invoicesForMonth[0]?.water_rate, settings.rateWater)
+        const elecRate = toRate(invoicesForMonth[0]?.elec_rate, settings.rateElectric)
 
         invoicesForMonth.forEach((inv) => {
             const w = Math.max(0, (inv.water_curr || 0) - (inv.water_prev || 0))
@@ -165,7 +167,7 @@ function AdminDashboardPage() {
             elecCost,
             totalCost: waterCost + elecCost,
         }
-    }, [invoicesForMonth])
+    }, [invoicesForMonth, settings.rateWater, settings.rateElectric])
 
     // สถิติแยกตามห้องประจำเดือนที่เลือก
     const roomUsage = useMemo(() => {

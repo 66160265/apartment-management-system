@@ -11,6 +11,7 @@ import UserDashboardPage from './pages/UserDashboardPage.jsx'
 import AccountPage from './pages/AccountPage.jsx'
 import AdminUsersPage from './pages/AdminUsersPage.jsx'
 import NotificationsPage from './pages/NotificationsPage.jsx'
+import SettingsPage from './pages/SettingsPage.jsx'
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
           <Route path="/admin/dashboard" element={<RequireRole role="admin"><AdminDashboardPage /></RequireRole>} />
           <Route path="/rooms" element={<RequireRole role="admin"><RoomsPage /></RequireRole>} />
           <Route path="/tenants" element={<RequireRole role="admin"><TenantsPage /></RequireRole>} />
+          <Route path="/settings" element={<RequireRole role="admin"><SettingsPage /></RequireRole>} />
           <Route path="/admin/users" element={<RequireRole role="admin"><AdminUsersPage /></RequireRole>} />
 
           {/* เฉพาะผู้เช่า */}

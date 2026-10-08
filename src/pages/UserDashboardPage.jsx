@@ -2,12 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import AvatarMenu from '../components/AvatarMenu'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
-import InvoicePrintModal from '../components/InvoicePrintModal'
-import { BANK, invoiceStatuses } from '../data/billing'
+import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
+import { invoiceStatuses } from '../data/billing'
 import { baht, formatDateTime, formatMonth } from '../lib/billing'
 import { generatePromptPayQR } from '../lib/promptpay'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
+import { useSettings } from '../lib/useSettings'
 
 const MAX_SIZE = 5 * 1024 * 1024
 const TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
@@ -71,6 +72,10 @@ function UserDashboardPage() {
 
     // สำหรับหน้าชำระเงิน (View 2)
     const [qrCodeUrl, setQrCodeUrl] = useState(null)
+    const [qrError, setQrError] = useState('')
+    // บัญชีรับชำระ/พร้อมเพย์ มาจากหน้า "ตั้งค่า" ของผู้ดูแล
+    const settings = useSettings()
+    const BANK = { name: settings.bankName, account: settings.bankAccount, holder: settings.bankHolder, promptpay: settings.promptpayId }
     const [uploadFile, setUploadFile] = useState(null)
     const [uploadPreview, setUploadPreview] = useState(null)
     const [isDragging, setIsDragging] = useState(false)
@@ -78,9 +83,6 @@ function UserDashboardPage() {
     const [uploading, setUploading] = useState(false)
     const [uploadSuccess, setUploadSuccess] = useState(false)
     const fileInputRef = useRef(null)
-
-    // สำหรับดูตัวอย่าง / ดาวน์โหลด PDF ใบแจ้งหนี้
-    const [showPdfModal, setShowPdfModal] = useState(false)
 
     // สถานะเปิดป็อปอัปดูประวัติใบแจ้งหนี้ทั้งหมด
     const [showHistoryModal, setShowHistoryModal] = useState(false)
@@ -154,11 +156,17 @@ function UserDashboardPage() {
     // สร้าง PromptPay QR เมื่อเลือกใบแจ้งหนี้หรือเข้าสู่หน้าชำระเงิน
     useEffect(() => {
         if (activeInvoice && currentView === 'payment') {
-            generatePromptPayQR(BANK.promptpay, activeInvoice.total)
-                .then(setQrCodeUrl)
-                .catch((e) => console.error('Failed to generate PromptPay QR:', e))
+            generatePromptPayQR(BANK.promptpay, activeInvoice.total, { width: 480 })
+                .then((url) => {
+                    setQrCodeUrl(url)
+                    setQrError('')
+                })
+                .catch((e) => {
+                    setQrCodeUrl(null)
+                    setQrError(e.message)
+                })
         }
-    }, [activeInvoice, currentView])
+    }, [activeInvoice, currentView, BANK.promptpay])
 
     // จัดการล้าง URL ตัวอย่างรูปเมื่อเปลี่ยนรูป
     useEffect(() => () => uploadPreview && URL.revokeObjectURL(uploadPreview), [uploadPreview])
@@ -607,14 +615,7 @@ function UserDashboardPage() {
                                 )}
 
                                 {activeInvoice && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPdfModal(true)}
-                                        className="w-full border border-line bg-sand/30 hover:bg-mist/40 text-primary-dark font-medium py-2.5 px-4 rounded-xl text-sm flex items-center justify-center gap-2 transition cursor-pointer"
-                                    >
-                                        <Icon name="fileText" className="w-4 h-4" />
-                                        <span>ดาวน์โหลดใบแจ้งหนี้ PDF</span>
-                                    </button>
+                                    <DownloadInvoiceButton invoice={activeInvoice} className="w-full border border-line bg-sand/30 hover:bg-mist/40 text-primary-dark font-medium py-2.5 px-4 rounded-xl text-sm flex items-center justify-center gap-2 transition cursor-pointer" />
                                 )}
                             </div>
                         </div>
@@ -674,6 +675,10 @@ function UserDashboardPage() {
                                         alt="PromptPay QR Code"
                                         className="w-56 h-56 sm:w-64 sm:h-64 object-contain rounded-xl"
                                     />
+                                ) : qrError ? (
+                                    <div className="w-56 h-56 flex items-center justify-center text-center text-red-600 text-xs px-4">
+                                        ยังสร้าง QR ไม่ได้ เพราะรหัสพร้อมเพย์ของหอพักไม่ถูกต้อง กรุณาติดต่อผู้ดูแลหอพัก หรือโอนเข้าบัญชีธนาคารแทน
+                                    </div>
                                 ) : (
                                     <div className="w-56 h-56 flex items-center justify-center text-muted text-xs">
                                         กำลังสร้าง QR Code...
@@ -815,27 +820,10 @@ function UserDashboardPage() {
                             </button>
 
                             {/* ปุ่มที่ 2: ดาวน์โหลดใบแจ้งหนี้ PDF (ตามรูปที่สอง) */}
-                            <button
-                                type="button"
-                                onClick={() => setShowPdfModal(true)}
-                                className="w-full border border-line bg-white hover:bg-sand/60 text-primary-dark py-3 rounded-xl font-medium shadow-2xs flex items-center justify-center gap-2 transition cursor-pointer text-sm"
-                            >
-                                <Icon name="fileText" className="w-4 h-4 text-primary" />
-                                <span>ดาวน์โหลดใบแจ้งหนี้ PDF</span>
-                            </button>
+                            <DownloadInvoiceButton invoice={activeInvoice} className="w-full border border-line bg-white hover:bg-sand/60 text-primary-dark py-3 rounded-xl font-medium shadow-2xs flex items-center justify-center gap-2 transition cursor-pointer text-sm" />
                         </div>
                     </div>
                 </>
-            )}
-
-            {/* Modal สำหรับดูตัวอย่างและพิมพ์/บันทึก PDF ใบแจ้งหนี้ */}
-            {showPdfModal && activeInvoice && (
-                <InvoicePrintModal
-                    invoice={activeInvoice}
-                    tenant={tenantInfo}
-                    roomFloor={roomInfo?.floor}
-                    onClose={() => setShowPdfModal(false)}
-                />
             )}
 
             {/* Modal ป็อปอัปแสดงประวัติใบแจ้งหนี้ทั้งหมด */}

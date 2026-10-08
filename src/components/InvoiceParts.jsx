@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import Icon from './Icon'
 import { invoiceStatuses } from '../data/billing'
 import { baht, calcInvoice, getSlipUrl } from '../lib/billing'
+import { formatPromptPayId, generatePromptPayQR } from '../lib/promptpay'
+import { useSettings } from '../lib/useSettings'
 
 export function StatusBadge({ status }) {
     const s = invoiceStatuses[status]
@@ -114,6 +116,42 @@ export function CopyButton({ text, label = 'คัดลอก' }) {
         >
             {copied ? 'คัดลอกแล้ว' : label}
         </button>
+    )
+}
+
+// การ์ด QR พร้อมเพย์ระบุยอดตามใบแจ้งหนี้ ให้ผู้เช่าสแกนจ่ายผ่านแอปธนาคาร
+export function PromptPayCard({ invoice }) {
+    const settings = useSettings()
+    const [qr, setQr] = useState({ url: null, error: '' })
+
+    useEffect(() => {
+        let active = true
+        generatePromptPayQR(settings.promptpayId, invoice.total, { width: 360 })
+            .then((url) => active && setQr({ url, error: '' }))
+            .catch((e) => active && setQr({ url: null, error: e.message }))
+        return () => {
+            active = false
+        }
+    }, [settings.promptpayId, invoice.total])
+
+    return (
+        <div className="bg-white rounded-2xl shadow-card p-4 flex flex-col items-center gap-3 text-center">
+            <div className="font-medium text-primary-dark">สแกนจ่ายด้วยพร้อมเพย์</div>
+            {qr.url ? (
+                <img src={qr.url} alt="QR พร้อมเพย์" className="w-48 h-48 rounded-xl border border-line" />
+            ) : qr.error ? (
+                <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">
+                    ยังสร้าง QR ไม่ได้ เพราะรหัสพร้อมเพย์ของหอพักไม่ถูกต้อง กรุณาติดต่อผู้ดูแลหอพัก หรือโอนเข้าบัญชีธนาคารแทน
+                </p>
+            ) : (
+                <div className="w-48 h-48 rounded-xl bg-line/60 animate-pulse" aria-label="กำลังสร้าง QR" />
+            )}
+            <div className="text-sm text-muted">
+                ยอด <span className="font-semibold text-ink">{baht(invoice.total)}</span> · พร้อมเพย์{' '}
+                <span className="tabular-nums">{formatPromptPayId(settings.promptpayId)}</span>
+            </div>
+            <CopyButton text={String(settings.promptpayId).replace(/\D/g, '')} label="คัดลอกเลขพร้อมเพย์" />
+        </div>
     )
 }
 

@@ -87,23 +87,3 @@ input[type="number"],
 textarea {
   cursor: text;
 }
-
-@media print {
-  body {
-    background: #ffffff !important;
-    color: #000000 !important;
-  }
-  aside,
-  header,
-  nav,
-  .print\:hidden {
-    display: none !important;
-  }
-  #printable-invoice {
-    padding: 0 !important;
-    margin: 0 !important;
-    border: none !important;
-    box-shadow: none !important;
-    width: 100% !important;
-  }
-}
