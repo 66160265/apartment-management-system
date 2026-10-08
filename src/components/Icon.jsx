@@ -27,6 +27,8 @@ const paths = {
     qr: 'M3 3h6v6H3zm12 0h6v6h-6zM3 15h6v6H3zm12 3h3v3h-3zm3-3h3v3h-3zm-3-3h3v3h-3z',
     printer: 'M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z',
     send: 'm22 2-7 20-4-9-9-4Zm0 0L11 13',
+    wrench: 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z',
+    plus: 'M12 5v14M5 12h14',
 }
 
 function Icon({ name, className = 'w-5 h-5' }) {
