@@ -1,6 +1,6 @@
 import Icon from './Icon'
 import { BANK } from '../data/billing'
-import { baht, formatDateTime, formatMonth } from '../lib/billing'
+import { baht, formatMonth } from '../lib/billing'
 
 // แปลงตัวเลขเป็นข้อความบาทภาษาไทย
 function thaiBahtText(num) {
@@ -94,8 +94,8 @@ function InvoicePrintModal({ invoice, tenant, roomFloor, onClose }) {
                     <div className="flex justify-between items-start border-b-2 border-primary pb-6 gap-4">
                         <div>
                             <div className="flex items-center gap-2">
-                                <span className="grid place-items-center w-10 h-10 rounded-xl bg-primary text-white text-xl font-bold">
-                                    🏢
+                                <span className="grid place-items-center w-10 h-10 rounded-xl bg-primary text-white">
+                                    <Icon name="building" className="w-6 h-6" />
                                 </span>
                                 <div>
                                     <h1 className="text-xl sm:text-2xl font-bold text-primary-dark tracking-tight">

@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import Icon from "../components/Icon";
 import { supabase } from "../lib/supabaseClient";
 import { usernameToEmail } from "../lib/tenantAccount";
+
+const features = [
+  { icon: "receipt", title: "ใบแจ้งหนี้และชำระเงิน", text: "ดูยอดค่าเช่า ค่าน้ำ ค่าไฟ และแนบสลิปได้ในระบบ" },
+  { icon: "wrench", title: "แจ้งซ่อมและติดตามสถานะ", text: "แจ้งปัญหาในห้องพักและดูความคืบหน้าได้ทันที" },
+  { icon: "bell", title: "แจ้งเตือนทันที", text: "รู้ทุกความเคลื่อนไหวของใบแจ้งหนี้และงานซ่อม" },
+];
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -81,320 +88,146 @@ function LoginPage() {
     }
   };
 
+  const fieldClass =
+    "w-full h-12 pl-11 pr-4 rounded-xl border border-line bg-sand/50 text-ink outline-none transition-colors focus:border-secondary focus:bg-white focus:ring-4 focus:ring-secondary/15";
+
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        width: "100vw",
-        height: "100vh",
-        minHeight: "100vh",
+    <div className="min-h-screen grid lg:grid-cols-[1.05fr_1fr] bg-white">
+      {/* ฝั่งซ้าย: แนะนำระบบ (ซ่อนบนจอเล็ก) */}
+      <section className="relative hidden lg:flex flex-col justify-between overflow-hidden bg-linear-to-br from-primary-deep via-primary-dark to-primary text-white p-12">
+        <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/5" />
+        <div className="absolute -bottom-32 -left-20 w-[28rem] h-[28rem] rounded-full bg-secondary/10" />
 
-        // Background
-        backgroundColor: "#F2EFE7",
-
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-
-        zIndex: 9999,
-
-        fontFamily: 'Arial, "Noto Sans Thai", sans-serif',
-        color: "#263238",
-        textAlign: "left",
-      }}
-    >
-      {/* Login Card */}
-      <div
-        style={{
-          width: "500px",
-          minHeight: "430px",
-
-          backgroundColor: "#FFFFFF",
-
-          borderRadius: "18px",
-
-          padding: "36px 42px",
-
-          boxSizing: "border-box",
-
-          // Shadow
-          boxShadow: "0 12px 35px rgba(51, 104, 160, 0.15)",
-
-          // Top accent
-          borderTop: "5px solid #3368A0",
-        }}
-      >
-        {/* Title */}
-        <div
-          style={{
-            textAlign: "center",
-          }}
-        >
-          <h1
-            style={{
-              margin: 0,
-              padding: 0,
-
-              fontSize: "28px",
-              lineHeight: "34px",
-              fontWeight: 700,
-
-              color: "#3368A0",
-
-              fontFamily: 'Arial, "Noto Sans Thai", sans-serif',
-            }}
-          >
-            ระบบจัดการหอพัก
-          </h1>
-
-          <p
-            style={{
-              margin: "7px 0 0 0",
-              padding: 0,
-
-              fontSize: "15px",
-              lineHeight: "19px",
-              fontWeight: 400,
-
-              color: "#66A3BF",
-            }}
-          >
-            Apartment Management System
-          </p>
+        <div className="relative flex items-center gap-3">
+          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-white/12 ring-1 ring-white/20">
+            <Icon name="building" className="w-7 h-7" />
+          </span>
+          <span className="text-lg font-semibold">ระบบจัดการหอพัก</span>
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div
-            style={{
-              marginTop: "18px",
-              marginBottom: "18px",
+        <div className="relative max-w-lg">
+          <h1 className="text-4xl font-semibold leading-tight">
+            จัดการหอพัก
+            <br />
+            ง่าย ครบ ในที่เดียว
+          </h1>
+          <p className="mt-4 text-white/75 leading-relaxed">
+            สำหรับผู้ดูแลหอพักและผู้เช่า ตั้งแต่ใบแจ้งหนี้ การชำระเงิน ไปจนถึงงานแจ้งซ่อม
+          </p>
+          <ul className="mt-10 flex flex-col gap-5">
+            {features.map((f) => (
+              <li key={f.title} className="flex items-start gap-4">
+                <span className="grid place-items-center w-10 h-10 rounded-xl bg-white/12 ring-1 ring-white/15 shrink-0">
+                  <Icon name={f.icon} className="w-5 h-5" />
+                </span>
+                <div>
+                  <div className="font-medium">{f.title}</div>
+                  <div className="text-sm text-white/65">{f.text}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
 
-              width: "100%",
-              minHeight: "52px",
+        <p className="relative text-xs text-white/50">Apartment Management System</p>
+      </section>
 
-              padding: "8px 12px",
-
-              boxSizing: "border-box",
-
-              backgroundColor: "#FDECEC",
-              border: "1px solid #E7A5A5",
-              borderRadius: "8px",
-
-              color: "#8B3A3A",
-
-              fontSize: "14px",
-              lineHeight: "18px",
-
-              textAlign: "center",
-
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-            }}
-          >
-            <div role="alert">{error}</div>
-          </div>
-        )}
-
-        {/* Form */}
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            marginTop: error ? "0px" : "32px",
-          }}
-        >
-          {/* Email */}
-          <div>
-            <label
-              htmlFor="email"
-              style={{
-                display: "block",
-
-                marginBottom: "7px",
-
-                fontSize: "15px",
-                lineHeight: "19px",
-
-                fontWeight: 500,
-
-                color: "#3368A0",
-              }}
-            >
-              อีเมล / ชื่อผู้ใช้
-            </label>
-
-            <input
-              id="email"
-              type="text"
-              required
-              autoComplete="username"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setError("");
-              }}
-              style={{
-                width: "100%",
-                height: "42px",
-
-                padding: "0 12px",
-
-                boxSizing: "border-box",
-
-                border: "1px solid #C8DFDB",
-                borderRadius: "8px",
-
-                outline: "none",
-
-                backgroundColor: "#F2EFE7",
-
-                color: "#263238",
-
-                fontSize: "15px",
-                fontFamily: "inherit",
-              }}
-            />
+      {/* ฝั่งขวา: ฟอร์มเข้าสู่ระบบ */}
+      <section className="flex items-center justify-center bg-sand px-6 py-12">
+        <div className="w-full max-w-md">
+          <div className="lg:hidden flex items-center justify-center gap-3 mb-8 text-primary-dark">
+            <span className="grid place-items-center w-11 h-11 rounded-2xl bg-white shadow-card">
+              <Icon name="building" className="w-6 h-6 text-primary" />
+            </span>
+            <span className="text-lg font-semibold">ระบบจัดการหอพัก</span>
           </div>
 
-          {/* Password */}
-          <div
-            style={{
-              marginTop: "25px",
-            }}
-          >
-            <label
-              htmlFor="password"
-              style={{
-                display: "block",
+          <div className="bg-white rounded-3xl shadow-card p-8 sm:p-10">
+            <h2 className="text-2xl font-semibold text-primary-dark">เข้าสู่ระบบ</h2>
+            <p className="text-sm text-muted mt-1">ยินดีต้อนรับ กรุณากรอกข้อมูลเพื่อเข้าใช้งาน</p>
 
-                marginBottom: "7px",
-
-                fontSize: "15px",
-                lineHeight: "19px",
-
-                fontWeight: 500,
-
-                color: "#3368A0",
-              }}
-            >
-              รหัสผ่าน
-            </label>
-
-            {/* Password Input */}
-            <input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              required
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setError("");
-              }}
-              style={{
-                width: "100%",
-                height: "42px",
-
-                padding: "0 12px",
-
-                boxSizing: "border-box",
-
-                border: "1px solid #C8DFDB",
-                borderRadius: "8px",
-
-                outline: "none",
-
-                backgroundColor: "#F2EFE7",
-
-                color: "#263238",
-
-                fontSize: "15px",
-                fontFamily: "inherit",
-              }}
-            />
-
-            {/* Show Password */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-
-                marginTop: "15px",
-              }}
-            >
-              <input
-                id="showPassword"
-                type="checkbox"
-                checked={showPassword}
-                onChange={(e) => setShowPassword(e.target.checked)}
-                style={{
-                  width: "17px",
-                  height: "17px",
-
-                  margin: 0,
-                  padding: 0,
-
-                  accentColor: "#3368A0",
-
-                  cursor: "pointer",
-                }}
-              />
-
-              <label
-                htmlFor="showPassword"
-                style={{
-                  marginLeft: "7px",
-
-                  fontSize: "14px",
-                  lineHeight: "18px",
-
-                  color: "#4F5B62",
-
-                  cursor: "pointer",
-                }}
+            {error && (
+              <div
+                role="alert"
+                className="mt-6 flex items-start gap-2.5 rounded-xl bg-red-50 ring-1 ring-red-200 text-red-800 text-sm px-4 py-3"
               >
-                แสดงรหัสผ่าน
-              </label>
-            </div>
+                <Icon name="alert" className="w-5 h-5 mt-px text-red-500" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className={`${error ? "mt-4" : "mt-8"} flex flex-col gap-5`}>
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-primary-dark mb-1.5">
+                  อีเมล / ชื่อผู้ใช้
+                </label>
+                <div className="relative">
+                  <Icon name="user" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted pointer-events-none" />
+                  <input
+                    id="email"
+                    type="text"
+                    required
+                    autoComplete="username"
+                    placeholder="เช่น T101 หรืออีเมลผู้ดูแล"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setError("");
+                    }}
+                    className={fieldClass}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-primary-dark mb-1.5">
+                  รหัสผ่าน
+                </label>
+                <div className="relative">
+                  <Icon name="lock" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted pointer-events-none" />
+                  <input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    required
+                    autoComplete="current-password"
+                    placeholder="กรอกรหัสผ่าน"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setError("");
+                    }}
+                    className={`${fieldClass} pr-12`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                    aria-pressed={showPassword}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-muted hover:text-primary-dark hover:bg-mist/40"
+                  >
+                    <Icon name={showPassword ? "eyeOff" : "eye"} className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="h-12 mt-1 rounded-xl bg-primary hover:bg-primary-dark disabled:opacity-70 disabled:cursor-not-allowed text-white font-medium shadow-card flex items-center justify-center gap-2"
+              >
+                {loading && <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
+                {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
+              </button>
+            </form>
+
+            <p className="mt-6 text-xs text-muted text-center leading-relaxed">
+              ผู้เช่าใช้ชื่อผู้ใช้ที่ได้รับจากผู้ดูแลหอพัก (เช่น T101)
+              <br />
+              หากลืมรหัสผ่าน กรุณาติดต่อผู้ดูแลหอพัก
+            </p>
           </div>
-
-          {/* Button */}
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: "100%",
-              height: "42px",
-
-              marginTop: "24px",
-
-              padding: 0,
-
-              border: "none",
-              borderRadius: "8px",
-
-              backgroundColor: loading ? "#9DB8C5" : "#3368A0",
-
-              color: "#FFFFFF",
-
-              fontSize: "15px",
-              fontWeight: 600,
-
-              fontFamily: "inherit",
-
-              cursor: loading ? "not-allowed" : "pointer",
-
-              boxShadow: loading
-                ? "none"
-                : "0 5px 12px rgba(51, 104, 160, 0.25)",
-            }}
-          >
-            {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
-          </button>
-        </form>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }

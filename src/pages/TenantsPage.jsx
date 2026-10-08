@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import AvatarMenu from '../components/AvatarMenu'
+import PageHeader from '../components/PageHeader'
 import DatePicker from '../components/DatePicker'
 import Icon from '../components/Icon'
 import { CopyButton } from '../components/InvoiceParts'
@@ -259,22 +259,17 @@ function TenantsPage() {
 
     return (
         <>
-            <div className="flex flex-wrap justify-between items-start gap-4 p-6 pb-4">
-                <div>
-                    <h1 className="text-2xl font-semibold text-primary-dark">จัดการผู้เช่า</h1>
-                    <p className="text-sm text-muted mt-1">ดูข้อมูลผู้เช่า สถานะสัญญา และเอกสารของแต่ละห้อง</p>
-                </div>
-                <div className="flex items-center gap-4">
-                    <button
+            <PageHeader title="จัดการผู้เช่า" subtitle="ดูข้อมูลผู้เช่า สถานะสัญญา และเอกสารของแต่ละห้อง" actions={
+                    <>
+                        <button
                         onClick={() => setModal('new')}
                         className="flex items-center gap-2 bg-primary hover:bg-primary-dark transition-colors text-white px-5 py-2.5 rounded-xl shadow-card"
                     >
                         <Icon name="plus" className="w-4 h-4" />
                         เพิ่มผู้เช่า
                     </button>
-                    <AvatarMenu />
-                </div>
-            </div>
+                    </>
+                } />
 
             <div className="px-6 pb-8 flex flex-col gap-6">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

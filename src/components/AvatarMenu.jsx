@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import NotificationBell from './NotificationBell'
+import UserNotificationBell from './UserNotificationBell'
 import { roleLabels, useCurrentUser } from '../lib/useCurrentUser'
 
 function AvatarMenu() {
@@ -35,7 +37,9 @@ function AvatarMenu() {
     const initials = info?.role === 'user' && info.tenant?.name ? info.tenant.name.trim().charAt(0) : 'AD'
 
     return (
-        <div ref={ref} className="relative">
+        <div className="flex items-center gap-3">
+            {info && (info.role === 'admin' ? <NotificationBell /> : <UserNotificationBell />)}
+            <div ref={ref} className="relative">
             <button
                 onClick={() => setOpen(!open)}
                 aria-label="เมนูบัญชีผู้ใช้"
@@ -84,6 +88,7 @@ function AvatarMenu() {
                     </div>
                 </div>
             )}
+            </div>
         </div>
     )
 }

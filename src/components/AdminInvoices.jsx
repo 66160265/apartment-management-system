@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import AvatarMenu from './AvatarMenu'
 import Icon from './Icon'
+import PageHeader from './PageHeader'
 import MonthPicker from './MonthPicker'
 import { CopyButton, InvoiceBreakdown, InvoiceStepper, SlipImage, StatusBadge } from './InvoiceParts'
 import { BANK, RATES, invoiceStatuses } from '../data/billing'
@@ -28,18 +28,6 @@ const summaryCards = [
     { value: 'review', label: 'รอตรวจสอบ', icon: 'review', tone: 'bg-sky-50 text-sky-700' },
     { value: 'paid', label: 'ชำระแล้ว', icon: 'checkCircle', tone: 'bg-emerald-50 text-emerald-700' },
 ]
-
-function PageHeader({ title, subtitle }) {
-    return (
-        <div className="flex justify-between items-start gap-4 p-6 pb-4">
-            <div>
-                <h1 className="text-2xl font-semibold text-primary-dark">{title}</h1>
-                {subtitle && <p className="text-sm text-muted mt-1">{subtitle}</p>}
-            </div>
-            <AvatarMenu />
-        </div>
-    )
-}
 
 function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
     const [rejecting, setRejecting] = useState(false)

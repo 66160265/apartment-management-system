@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import AvatarMenu from './AvatarMenu'
-import UserNotificationBell from './UserNotificationBell'
+import PageHeader from './PageHeader'
 import Icon from './Icon'
 import { CopyButton, InvoiceBreakdown, InvoiceStepper, SlipImage, StatusBadge } from './InvoiceParts'
 import { BANK } from '../data/billing'
@@ -228,16 +227,7 @@ function TenantInvoices({ userId }) {
 
     return (
         <>
-            <div className="flex justify-between items-start gap-4 p-6 pb-4">
-                <div>
-                    <h1 className="text-2xl font-semibold text-primary-dark">ใบแจ้งหนี้ของฉัน</h1>
-                    <p className="text-sm text-muted mt-1">ดูยอดที่ต้องชำระและแนบสลิปการโอนเงิน</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <UserNotificationBell />
-                    <AvatarMenu />
-                </div>
-            </div>
+            <PageHeader title="ใบแจ้งหนี้ของฉัน" subtitle="ดูยอดที่ต้องชำระและแนบสลิปการโอนเงิน" />
 
             {selected ? (
                 <InvoiceDetail key={selected.id} invoice={selected} userId={userId} onBack={() => setSelectedId(null)} onChanged={load} />

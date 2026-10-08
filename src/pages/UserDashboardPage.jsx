@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import AvatarMenu from '../components/AvatarMenu'
+import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import InvoicePrintModal from '../components/InvoicePrintModal'
-import UserNotificationBell from '../components/UserNotificationBell'
 import { BANK, invoiceStatuses } from '../data/billing'
 import { baht, formatDateTime, formatMonth } from '../lib/billing'
 import { generatePromptPayQR } from '../lib/promptpay'
@@ -49,7 +49,7 @@ function CopyBtn({ text, label = 'คัดลอก' }) {
             onClick={copy}
             className="text-xs px-2.5 py-1 rounded-lg bg-sand/80 hover:bg-mist/60 text-primary-dark font-medium border border-line transition cursor-pointer"
         >
-            {copied ? 'คัดลอกแล้ว ✓' : label}
+            {copied ? 'คัดลอกแล้ว' : label}
         </button>
     )
 }
@@ -303,7 +303,7 @@ function UserDashboardPage() {
 
     if (loading && !tenantInfo) {
         return (
-            <div className="p-6 md:p-8 max-w-7xl mx-auto flex flex-col gap-6">
+            <div className="p-6 flex flex-col gap-6">
                 <div className="flex justify-between items-center animate-pulse">
                     <div className="h-8 bg-gray-200 rounded-lg w-48" />
                     <div className="w-10 h-10 bg-gray-200 rounded-full" />
@@ -319,24 +319,11 @@ function UserDashboardPage() {
 
     if (!tenantInfo) {
         return (
-            <div className="p-6 md:p-8 max-w-7xl mx-auto flex flex-col gap-6">
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
-                            User Dashboard
-                        </h1>
-                        <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                            ยินดีต้อนรับเข้าสู่ระบบจัดการห้องพัก
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <UserNotificationBell />
-                        <AvatarMenu />
-                    </div>
-                </div>
+            <div className="p-6 flex flex-col gap-6">
+                <PageHeader flush title="ภาพรวม" subtitle="ยินดีต้อนรับเข้าสู่ระบบจัดการห้องพัก" />
                 <div className="bg-white rounded-2xl p-12 text-center shadow-card border border-line flex flex-col items-center gap-3">
-                    <span className="w-16 h-16 rounded-full bg-sand flex items-center justify-center text-3xl">
-                        🚪
+                    <span className="w-16 h-16 rounded-full bg-sand flex items-center justify-center text-muted">
+                        <Icon name="door" className="w-8 h-8" />
                     </span>
                     <h2 className="text-lg font-bold text-gray-800">ไม่พบข้อมูลห้องพักหรือสัญญาเช่า</h2>
                     <p className="text-sm text-muted max-w-md">
@@ -348,12 +335,12 @@ function UserDashboardPage() {
     }
 
     return (
-        <div className="p-6 md:p-8 flex flex-col gap-6 max-w-7xl mx-auto">
+        <div className="p-6 flex flex-col gap-6">
             {/* กล่องควบคุมสำหรับ Admin (ถ้า Admin เข้ามาดู Dashboard ผู้เช่า) */}
             {me?.role === 'admin' && adminTenantsList.length > 0 && (
                 <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 text-sm">
                     <div className="flex items-center gap-2">
-                        <span className="font-bold text-amber-800">👑 โหมดจำลองมุมมองผู้เช่า (Admin):</span>
+                        <span className="font-bold text-amber-800">โหมดจำลองมุมมองผู้เช่า (Admin):</span>
                         <span>กำลังดูห้อง</span>
                         <select
                             value={simulatedRoom}
@@ -391,20 +378,7 @@ function UserDashboardPage() {
             {currentView === 'overview' && (
                 <>
                     {/* Header ประจำหน้า */}
-                    <div className="flex flex-wrap justify-between items-center gap-4">
-                        <div>
-                            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
-                                User Dashboard
-                            </h1>
-                            <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                                ภาพรวมข้อมูลห้องพักและค่าใช้จ่ายประจำเดือน
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <UserNotificationBell />
-                            <AvatarMenu />
-                        </div>
-                    </div>
+                    <PageHeader flush title="ภาพรวม" subtitle="ภาพรวมข้อมูลห้องพักและค่าใช้จ่ายประจำเดือน" />
 
                     {/* แจ้งเตือนเมื่อส่งสลิปสำเร็จ */}
                     {uploadSuccess && (
@@ -420,7 +394,7 @@ function UserDashboardPage() {
                                 onClick={() => setUploadSuccess(false)}
                                 className="text-xs text-emerald-700 hover:text-emerald-900 font-semibold cursor-pointer"
                             >
-                                ปิด ✕
+                                ปิด
                             </button>
                         </div>
                     )}
@@ -653,7 +627,7 @@ function UserDashboardPage() {
                                 {activeInvoice?.status === 'pending' ? (
                                     <>
                                         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3.5 rounded-xl leading-relaxed">
-                                            <span className="font-semibold block mb-0.5">⚠️ มียอดรอชำระเงิน</span>
+                                            <span className="font-semibold mb-0.5 flex items-center gap-1.5"><Icon name="alert" className="w-4 h-4" />มียอดรอชำระเงิน</span>
                                             กรุณาชำระเงินและแนบหลักฐานการโอนภายในวันที่ {formatDueDate(activeInvoice.month)}
                                         </div>
 
@@ -686,7 +660,7 @@ function UserDashboardPage() {
                                 ) : activeInvoice?.status === 'paid' ? (
                                     <>
                                         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3.5 rounded-xl leading-relaxed">
-                                            <span className="font-semibold block mb-0.5">✅ ชำระเงินเรียบร้อยแล้ว</span>
+                                            <span className="font-semibold mb-0.5 flex items-center gap-1.5"><Icon name="checkCircle" className="w-4 h-4" />ชำระเงินเรียบร้อยแล้ว</span>
                                             ยอดของเดือนนี้ได้รับการตรวจสอบและยืนยันการชำระเงินแล้ว
                                         </div>
                                     </>
@@ -729,7 +703,6 @@ function UserDashboardPage() {
                             </h1>
                         </div>
                         <div className="flex items-center gap-3">
-                            <UserNotificationBell />
                             <AvatarMenu />
                         </div>
                     </div>
@@ -951,7 +924,7 @@ function UserDashboardPage() {
                                 onClick={() => setShowHistoryModal(false)}
                                 className="w-8 h-8 rounded-full bg-white hover:bg-line/60 text-gray-500 hover:text-gray-800 transition flex items-center justify-center cursor-pointer border border-line text-sm"
                             >
-                                ✕
+                                <Icon name="close" className="w-4 h-4" />
                             </button>
                         </div>
 

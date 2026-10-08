@@ -113,7 +113,7 @@ function NotificationDropdown({ emptyText }) {
                             }}
                             className="w-full py-1.5 text-xs font-semibold text-primary hover:text-primary-dark"
                         >
-                            ดูการแจ้งเตือนทั้งหมด →
+                            ดูการแจ้งเตือนทั้งหมด
                         </button>
                     </div>
                 </div>
