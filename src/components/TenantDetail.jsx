@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import AvatarMenu from './AvatarMenu'
+import PageHeader from './PageHeader'
 import Icon from './Icon'
 import DatePicker from './DatePicker'
 import { Avatar, ContractBadge } from './TenantParts'
@@ -112,13 +112,7 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
 
     return (
         <>
-            <div className="flex justify-between items-center gap-4 p-6 pb-4">
-                <div>
-                    <h1 className="text-2xl font-semibold text-primary-dark">รายละเอียดผู้เช่า</h1>
-                    <p className="text-sm text-muted mt-1">ตรวจสอบและแก้ไขข้อมูลผู้เช่า พร้อมจัดการเอกสาร</p>
-                </div>
-                <AvatarMenu />
-            </div>
+            <PageHeader title="รายละเอียดผู้เช่า" subtitle="ตรวจสอบและแก้ไขข้อมูลผู้เช่า พร้อมจัดการเอกสาร" />
 
             <div className="px-6 pb-28 flex flex-col gap-4">
                 <button onClick={onBack} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm">
@@ -190,7 +184,7 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
                 <TenantDocuments room={tenant.room} />
             </div>
 
-            <div className="fixed bottom-0 right-0 left-64 z-20 bg-white/90 backdrop-blur border-t border-line px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="fixed bottom-0 right-0 left-0 lg:left-64 z-20 bg-white/90 backdrop-blur border-t border-line px-6 py-3 flex flex-wrap items-center justify-between gap-3">
                 <button
                     type="button"
                     onClick={() => setConfirmDelete(true)}

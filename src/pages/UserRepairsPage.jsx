@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import AvatarMenu from '../components/AvatarMenu'
-import UserNotificationBell from '../components/UserNotificationBell'
+import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import { ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge } from '../components/RepairParts'
 import { repairStatuses, repairStatusKeys } from '../data/repairs'
@@ -219,22 +218,16 @@ function UserRepairsPage() {
 
     return (
         <>
-            <div className="flex justify-between items-start gap-4 p-6 pb-4">
-                <div>
-                    <h1 className="text-2xl font-semibold text-primary-dark">แจ้งซ่อม</h1>
-                    <p className="text-sm text-muted mt-1">แจ้งปัญหาในห้องพักและติดตามสถานะการซ่อม</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    {!editing && room && (
+            <PageHeader title="แจ้งซ่อม" subtitle="แจ้งปัญหาในห้องพักและติดตามสถานะการซ่อม" actions={
+                    <>
+                        {!editing && room && (
                         <button onClick={openNew} className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-sm font-medium shadow-card flex items-center gap-1.5">
                             <Icon name="plus" className="w-4 h-4" />
                             แจ้งซ่อมใหม่
                         </button>
                     )}
-                    <UserNotificationBell />
-                    <AvatarMenu />
-                </div>
-            </div>
+                    </>
+                } />
 
             <div className="px-6 pb-8 flex flex-col gap-5">
                 {notice && (

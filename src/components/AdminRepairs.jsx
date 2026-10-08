@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import AvatarMenu from './AvatarMenu'
+import PageHeader from './PageHeader'
 import Icon from './Icon'
 import { ConfirmDialog, RepairImagePicker, RepairStatusBadge } from './RepairParts'
 import { repairStatuses, repairStatusKeys } from '../data/repairs'
@@ -30,6 +30,14 @@ async function fetchData() {
         loading: false,
         loadError: '',
     }
+}
+
+// ไอคอนและสีของการ์ดสรุปแต่ละสถานะ
+const summaryMeta = {
+    all: { icon: 'wrench', tone: 'bg-slate-100 text-slate-600' },
+    pending: { icon: 'clock', tone: 'bg-sky-50 text-sky-700' },
+    in_progress: { icon: 'review', tone: 'bg-amber-50 text-amber-700' },
+    done: { icon: 'checkCircle', tone: 'bg-emerald-50 text-emerald-700' },
 }
 
 function AdminRepairs({ adminId }) {
@@ -187,19 +195,17 @@ function AdminRepairs({ adminId }) {
     const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.map((k) => ({ key: k, label: repairStatuses[k].label }))]
 
     return (
-        <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-semibold text-primary-dark">ระบบแจ้งซ่อม</h1>
-                <div className="flex items-center gap-3">
-                    {!editing && (
+        <div className="p-6 flex flex-col gap-5">
+            <PageHeader flush title="ระบบแจ้งซ่อม" subtitle="จัดการเรื่องที่ผู้เช่าแจ้งซ่อม อัปเดตสถานะ และส่งข้อความถึงผู้เช่า" actions={
+                    <>
+                        {!editing && (
                         <button onClick={openNew} className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-sm font-medium shadow-card flex items-center gap-1.5">
                             <Icon name="plus" className="w-4 h-4" />
                             แจ้งซ่อม
                         </button>
                     )}
-                    <AvatarMenu />
-                </div>
-            </div>
+                    </>
+                } />
 
             {editing ? (
                 <form onSubmit={handleSave} className="bg-white rounded-2xl shadow-card p-6 md:p-8 max-w-3xl mx-auto border border-line flex flex-col gap-5">
@@ -290,74 +296,98 @@ function AdminRepairs({ adminId }) {
                 </form>
             ) : (
                 <>
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-                        <div className="flex flex-wrap items-center gap-2">
-                            {tabs.map((t) => (
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        {tabs.map((t) => {
+                            const active = activeTab === t.key
+                            const meta = summaryMeta[t.key]
+                            return (
                                 <button
                                     key={t.key}
                                     onClick={() => setActiveTab(t.key)}
-                                    className={`px-4 py-1.5 rounded-full text-sm font-medium border ${
-                                        activeTab === t.key ? 'bg-primary text-white border-primary' : 'bg-white text-muted border-line hover:bg-sand'
-                                    }`}
+                                    aria-pressed={active}
+                                    className={`text-left rounded-2xl p-4 bg-white shadow-card border-2 transition ${active ? 'border-primary' : 'border-transparent hover:border-mist'}`}
                                 >
-                                    {t.label} ({counts[t.key] ?? 0})
+                                    <div className="flex items-center justify-between text-sm text-muted">
+                                        <span>{t.label}</span>
+                                        <span className={`grid place-items-center w-8 h-8 rounded-lg ${meta.tone}`}><Icon name={meta.icon} className="w-[18px] h-[18px]" /></span>
+                                    </div>
+                                    <div className="mt-2 flex items-baseline gap-2">
+                                        <span className="text-2xl font-semibold text-primary-dark">{counts[t.key] ?? 0}</span>
+                                        <span className="text-xs text-muted">รายการ</span>
+                                    </div>
                                 </button>
-                            ))}
-                        </div>
-                        <input
-                            type="search"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="ค้นหาห้อง / ปัญหา / ผู้แจ้ง"
-                            className="border border-line rounded-xl px-4 py-2 text-sm bg-white outline-none focus:border-secondary w-64 max-w-full"
-                        />
+                            )
+                        })}
                     </div>
 
-                    <div className="bg-white rounded-2xl shadow-card p-6 overflow-x-auto border border-line">
+                    <div className="bg-white rounded-2xl shadow-card p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                            <h2 className="font-medium text-primary-dark">
+                                รายการแจ้งซ่อม
+                                <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
+                            </h2>
+                            <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:bg-white">
+                                <Icon name="search" className="w-4 h-4 text-muted" />
+                                <input
+                                    type="search"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="ค้นหาห้อง ปัญหา หรือผู้แจ้ง"
+                                    className="outline-none w-full bg-transparent text-sm"
+                                />
+                            </div>
+                        </div>
+
                         {loading || loadError ? (
-                            <p className={`text-center py-10 ${loadError ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : loadError}</p>
+                            <p className={`text-center py-12 ${loadError ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : loadError}</p>
                         ) : (
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="text-muted text-sm border-b border-line">
-                                        <th className="pb-3 font-medium w-32">ห้อง</th>
-                                        <th className="pb-3 font-medium w-28">วันที่</th>
-                                        <th className="pb-3 font-medium">ปัญหา</th>
-                                        <th className="pb-3 font-medium w-44 text-center">สถานะ</th>
-                                        <th className="pb-3 w-24" />
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {visible.map((r) => (
-                                        <tr key={r.id} className="border-b border-line last:border-b-0 hover:bg-sand/40">
-                                            <td className="py-3.5">
-                                                <div className="font-bold text-ink">{r.room}</div>
-                                                {r.tenant_name && <div className="text-xs text-muted">{r.tenant_name}</div>}
-                                            </td>
-                                            <td className="py-3.5 text-muted text-sm">{formatThaiDate(r.created_at)}</td>
-                                            <td className="py-3.5 text-sm font-medium text-ink">
-                                                <span className="inline-flex items-center gap-2">
-                                                    {r.problem}
-                                                    {r.image_path && <Icon name="image" className="w-4 h-4 text-secondary" />}
-                                                </span>
-                                            </td>
-                                            <td className="py-3.5 text-center"><RepairStatusBadge status={r.status} /></td>
-                                            <td className="py-3.5 text-right">
-                                                <button onClick={() => openEdit(r)} className="bg-mist hover:bg-secondary/40 text-primary-dark font-medium px-3.5 py-1 rounded-md text-xs">
-                                                    จัดการ
-                                                </button>
-                                            </td>
+                            <div className="overflow-auto max-h-[36rem] rounded-xl border border-line shadow-sm">
+                                <table className="w-full min-w-[44rem] border-collapse text-sm">
+                                    <thead className="sticky top-0 z-10">
+                                        <tr className="bg-primary-dark text-white">
+                                            <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center w-12">#</th>
+                                            <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">ห้อง</th>
+                                            <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-left">ผู้แจ้ง</th>
+                                            <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">วันที่แจ้ง</th>
+                                            <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-left">ปัญหา</th>
+                                            <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">สถานะ</th>
+                                            <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">จัดการ</th>
                                         </tr>
-                                    ))}
-                                    {visible.length === 0 && (
-                                        <tr>
-                                            <td colSpan={5} className="py-10 text-center text-muted text-sm">
-                                                {repairs.length === 0 ? 'ยังไม่มีรายการแจ้งซ่อม' : 'ไม่พบรายการที่ตรงกับเงื่อนไข'}
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {visible.map((r, index) => (
+                                            <tr
+                                                key={r.id}
+                                                onClick={() => openEdit(r)}
+                                                className={`cursor-pointer border-b border-line transition-colors hover:bg-mist/30 ${r.status === 'pending' ? 'bg-sky-50/50' : index % 2 ? 'bg-sand/40' : 'bg-white'}`}
+                                            >
+                                                <td className="px-3 py-3 border-x border-line/60 text-center text-xs text-muted tabular-nums">{index + 1}</td>
+                                                <td className="px-3 py-3 border-x border-line/60 text-center">
+                                                    <span className="inline-block min-w-12 px-2.5 py-1 rounded-lg bg-mist/60 text-primary-dark font-semibold">{r.room}</span>
+                                                </td>
+                                                <td className="px-3 py-3 border-x border-line/60">{r.tenant_name || <span className="text-muted">-</span>}</td>
+                                                <td className="px-3 py-3 border-x border-line/60 text-center text-muted whitespace-nowrap">{formatThaiDate(r.created_at)}</td>
+                                                <td className="px-3 py-3 border-x border-line/60 font-medium text-ink">
+                                                    <span className="inline-flex items-center gap-2">
+                                                        {r.problem}
+                                                        {r.image_path && <Icon name="image" className="w-4 h-4 text-secondary" />}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-3 border-x border-line/60 text-center"><RepairStatusBadge status={r.status} /></td>
+                                                <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                                    <button onClick={() => openEdit(r)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist">จัดการ</button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {visible.length === 0 && (
+                                    <div className="py-12 text-center text-muted">
+                                        <span className="mx-auto mb-3 grid place-items-center w-12 h-12 rounded-full bg-sand text-muted"><Icon name="wrench" className="w-6 h-6" /></span>
+                                        {repairs.length === 0 ? 'ยังไม่มีรายการแจ้งซ่อม' : 'ไม่พบรายการที่ตรงกับเงื่อนไข'}
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 </>

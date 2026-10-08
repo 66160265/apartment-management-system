@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import AvatarMenu from '../components/AvatarMenu'
+import PageHeader from '../components/PageHeader'
+import Icon from '../components/Icon'
+import { Avatar } from '../components/TenantParts'
 import DatePicker from '../components/DatePicker'
 import { callAdminUsers } from '../lib/adminUsers'
 import { makeDefaultPassword } from '../lib/tenantAccount'
@@ -199,66 +201,90 @@ function AdminUsersPage() {
 
     return (
         <>
-            <div className="flex justify-between items-center p-6">
-                <h1 className="text-2xl font-semibold text-primary-dark">จัดการบัญชีผู้ใช้ทั้งหมด</h1>
-                <AvatarMenu />
-            </div>
+            <PageHeader title="จัดการบัญชีผู้ใช้ทั้งหมด" subtitle="ดูบัญชีของผู้ดูแลระบบและผู้เช่า รีเซ็ตรหัสผ่าน แก้ไขข้อมูล หรือลบบัญชี" />
 
             {me && !isAdmin ? (
                 <p className="px-6 text-red-600">หน้านี้สำหรับผู้ดูแลระบบเท่านั้น</p>
             ) : (
-                <>
-                    <div className="px-6">
-                        <div className="flex items-center gap-2 border border-line bg-white rounded-xl px-4 py-2 w-96 max-w-full focus-within:border-secondary">
-                            <span>🔍</span>
-                            <input
-                                type="text"
-                                placeholder="ค้นหาชื่อผู้ใช้/ชื่อ/ห้อง"
-                                className="outline-none w-full"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                            />
+                <div className="px-6 pb-10">
+                    <div className="bg-white rounded-2xl shadow-card p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                            <h2 className="font-medium text-primary-dark">
+                                บัญชีทั้งหมด
+                                <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
+                            </h2>
+                            <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:bg-white">
+                                <Icon name="search" className="w-4 h-4 text-muted" />
+                                <input
+                                    type="text"
+                                    placeholder="ค้นหาชื่อผู้ใช้ ชื่อ หรือห้อง"
+                                    className="outline-none w-full bg-transparent text-sm"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="overflow-auto max-h-[36rem] rounded-xl border border-line shadow-sm">
+                            <table className="w-full min-w-[48rem] border-collapse text-sm">
+                                <thead className="sticky top-0 z-10">
+                                    <tr className="bg-primary-dark text-white">
+                                        <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center w-12">#</th>
+                                        <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-left">ผู้ใช้</th>
+                                        <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">ห้อง</th>
+                                        <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">สิทธิ์</th>
+                                        <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-left">เข้าสู่ระบบล่าสุด</th>
+                                        <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">จัดการ</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {visible.map((u, index) => (
+                                        <tr key={u.id} className={`border-b border-line transition-colors hover:bg-mist/30 ${index % 2 ? 'bg-sand/40' : 'bg-white'}`}>
+                                            <td className="px-3 py-3 border-x border-line/60 text-center text-xs text-muted tabular-nums">{index + 1}</td>
+                                            <td className="px-3 py-3 border-x border-line/60">
+                                                <div className="flex items-center gap-3">
+                                                    <Avatar name={u.tenant?.name || 'A'} />
+                                                    <div>
+                                                        <div className="font-medium text-ink">{u.tenant?.name || 'ผู้ดูแลระบบ'}</div>
+                                                        <div className="text-xs text-muted">@{emailToUsername(u.email).toLowerCase()}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-3 py-3 border-x border-line/60 text-center">
+                                                {u.tenant ? (
+                                                    <span className="inline-block min-w-12 px-2.5 py-1 rounded-lg bg-mist/60 text-primary-dark font-semibold">{u.tenant.room}</span>
+                                                ) : (
+                                                    <span className="text-muted">-</span>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-3 border-x border-line/60 text-center">
+                                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                                                    u.role === 'admin' ? 'bg-violet-50 text-violet-800 ring-1 ring-violet-200' : 'bg-sky-50 text-sky-800 ring-1 ring-sky-200'
+                                                }`}>
+                                                    {roleLabels[u.role] || u.role || '-'}
+                                                </span>
+                                            </td>
+                                            <td className="px-3 py-3 border-x border-line/60 text-muted">{formatDateTime(u.lastSignInAt)}</td>
+                                            <td className="border-x border-line/60 px-2 py-2 text-center">
+                                                <div className="inline-flex rounded-lg border border-line bg-white overflow-hidden divide-x divide-line text-sm">
+                                                    <button onClick={() => setModal({ type: 'edit', user: u })} className="px-3.5 py-1 text-primary-dark hover:bg-mist/50">แก้ไข</button>
+                                                    {u.id !== currentUserId && (
+                                                        <button onClick={() => setModal({ type: 'delete', user: u })} className="px-3.5 py-1 text-red-600 hover:bg-red-50">ลบ</button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {(loading || loadError || visible.length === 0) && (
+                                <div className={`py-12 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
+                                    {loading ? 'กำลังโหลด...' : loadError || 'ไม่พบบัญชีผู้ใช้'}
+                                </div>
+                            )}
                         </div>
                     </div>
-                    <div className="mx-6 mt-4 mb-6 bg-white rounded-2xl shadow-card p-5 overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="text-muted text-sm">
-                                    <th className="pb-3 font-medium">ชื่อผู้ใช้</th>
-                                    <th className="pb-3 font-medium">ชื่อ-สกุล</th>
-                                    <th className="pb-3 font-medium">ห้อง</th>
-                                    <th className="pb-3 font-medium">สิทธิ์</th>
-                                    <th className="pb-3 font-medium">เข้าสู่ระบบล่าสุด</th>
-                                    <th className="pb-3 font-medium text-right">จัดการ</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {visible.map((u) => (
-                                    <tr key={u.id} className="border-t border-line hover:bg-sand/60">
-                                        <td className="py-3">{emailToUsername(u.email)}</td>
-                                        <td className="py-3">{u.tenant?.name || '-'}</td>
-                                        <td className="py-3">{u.tenant?.room || '-'}</td>
-                                        <td className="py-3">{roleLabels[u.role] || u.role || '-'}</td>
-                                        <td className="py-3 text-sm">{formatDateTime(u.lastSignInAt)}</td>
-                                        <td className="py-3 text-right whitespace-nowrap">
-                                            <button onClick={() => setModal({ type: 'edit', user: u })} className="bg-mist text-primary-dark hover:bg-secondary/40 transition-colors px-3 py-1 rounded-lg text-sm">แก้ไข</button>
-                                            {u.id !== currentUserId && (
-                                                <button onClick={() => setModal({ type: 'delete', user: u })} className="ml-2 border border-red-200 text-red-600 hover:bg-red-50 transition-colors px-3 py-1 rounded-lg text-sm">ลบ</button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                                {(loading || loadError || visible.length === 0) && (
-                                    <tr>
-                                        <td colSpan="6" className={`py-6 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
-                                            {loading ? 'กำลังโหลด...' : loadError || 'ไม่พบบัญชีผู้ใช้'}
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </>
+                </div>
             )}
 
             {modal?.type === 'edit' && (

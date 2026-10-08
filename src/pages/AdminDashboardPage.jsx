@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import AvatarMenu from '../components/AvatarMenu'
+import PageHeader from '../components/PageHeader'
+import Icon from '../components/Icon'
 import MonthPicker from '../components/MonthPicker'
-import NotificationBell from '../components/NotificationBell'
 import { RATES, invoiceStatuses } from '../data/billing'
 import { currentMonth, formatMonth } from '../lib/billing'
 import { supabase } from '../lib/supabaseClient'
@@ -179,27 +179,17 @@ function AdminDashboardPage() {
     }, [invoicesForMonth])
 
     return (
-        <div className="p-6 md:p-8 flex flex-col gap-6 max-w-7xl mx-auto">
+        <div className="p-6 flex flex-col gap-6">
             {/* Header: ชื่อหน้า Dashboard + ตัวเลือกเดือน + ปุ่มกระดิ่งแจ้งเตือน + Avatar */}
-            <div className="flex flex-wrap justify-between items-center gap-4">
-                <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
-                        Dashboard
-                    </h1>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-1">
-                        ภาพรวมระบบประจำเดือน {formatMonth(selectedMonth)}
-                    </p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <MonthPicker
+            <PageHeader flush title="ภาพรวมระบบ" subtitle={`สรุปรายได้ ยอดค้างชำระ และการใช้น้ำ-ไฟ ประจำเดือน ${formatMonth(selectedMonth)}`} actions={
+                    <>
+                        <MonthPicker
                         value={selectedMonth}
                         onChange={setSelectedMonth}
                         marked={monthsWithInvoices}
                     />
-                    <NotificationBell />
-                    <AvatarMenu />
-                </div>
-            </div>
+                    </>
+                } />
 
             {/* แจ้งเตือนข้อผิดพลาด (ถ้ามี) */}
             {loadError && (
@@ -300,25 +290,27 @@ function AdminDashboardPage() {
                     <div className="lg:col-span-5 flex flex-col gap-4">
                         <div className="grid grid-cols-2 gap-4">
                             {/* กล่องน้ำรวม */}
-                            <div className="bg-[#cffafe] border border-[#a5f3fc] rounded-2xl p-5 text-center flex flex-col justify-center shadow-2xs">
-                                <span className="text-xs font-semibold text-[#0e7490]">
+                            <div className="bg-cyan-50 border border-cyan-100 rounded-2xl p-5 text-center flex flex-col justify-center shadow-2xs">
+                                <Icon name="droplet" className="w-5 h-5 mx-auto mb-1 text-cyan-600" />
+                                <span className="text-xs font-semibold text-cyan-700">
                                     น้ำรวม
                                 </span>
                                 <span className="text-3xl sm:text-4xl font-bold text-gray-900 my-1">
                                     {loading ? '...' : utilityStats.waterUnits.toLocaleString()}
                                 </span>
-                                <span className="text-xs font-medium text-[#0e7490]">หน่วย</span>
+                                <span className="text-xs font-medium text-cyan-700">หน่วย</span>
                             </div>
 
                             {/* กล่องไฟรวม */}
-                            <div className="bg-[#ffedd5] border border-[#fed7aa] rounded-2xl p-5 text-center flex flex-col justify-center shadow-2xs">
-                                <span className="text-xs font-semibold text-[#c2410c]">
+                            <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5 text-center flex flex-col justify-center shadow-2xs">
+                                <Icon name="bolt" className="w-5 h-5 mx-auto mb-1 text-amber-600" />
+                                <span className="text-xs font-semibold text-amber-700">
                                     ไฟรวม
                                 </span>
                                 <span className="text-3xl sm:text-4xl font-bold text-gray-900 my-1">
                                     {loading ? '...' : utilityStats.elecUnits.toLocaleString()}
                                 </span>
-                                <span className="text-xs font-medium text-[#c2410c]">หน่วย</span>
+                                <span className="text-xs font-medium text-amber-700">หน่วย</span>
                             </div>
                         </div>
 
@@ -433,9 +425,10 @@ function AdminDashboardPage() {
                     </div>
                     <Link
                         to="/invoices"
-                        className="text-xs text-primary hover:text-primary-dark font-semibold transition"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-dark font-semibold transition"
                     >
-                        จัดการใบแจ้งหนี้ทั้งหมด →
+                        จัดการใบแจ้งหนี้ทั้งหมด
+                        <Icon name="arrowRight" className="w-3.5 h-3.5" />
                     </Link>
                 </div>
 
@@ -460,7 +453,7 @@ function AdminDashboardPage() {
                             ) : overdueInvoices.length === 0 ? (
                                 <tr>
                                     <td colSpan={5} className="py-8 text-center text-emerald-600 text-sm font-medium">
-                                        ไม่มีห้องที่ค้างชำระ (ชำระเงินเรียบร้อยทุกห้อง 🎉)
+                                        ไม่มีห้องที่ค้างชำระ (ชำระเงินเรียบร้อยทุกห้อง)
                                     </td>
                                 </tr>
                             ) : (
