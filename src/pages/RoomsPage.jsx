@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import PageHeader from '../components/PageHeader'
 import { baht } from '../lib/billing'
@@ -90,6 +90,9 @@ function RoomModal({ title, initial, onSave, onCancel }) {
     )
 }
 
+const fetchRooms = () =>
+    Promise.all([supabase.from('rooms').select('*'), supabase.from('tenants').select('room, name')])
+
 function RoomsPage() {
     const [rooms, setRooms] = useState([])
     // ห้อง -> ชื่อผู้เช่า (แสดงบนการ์ดห้อง)
@@ -100,11 +103,7 @@ function RoomsPage() {
     // null = ปิด, 'new' = เพิ่มห้อง, ออบเจ็กต์ห้อง = แก้ไขห้องนั้น
     const [modal, setModal] = useState(null)
 
-    const load = async () => {
-        const [roomsRes, tenantsRes] = await Promise.all([
-            supabase.from('rooms').select('*'),
-            supabase.from('tenants').select('room, name'),
-        ])
+    const applyResult = useCallback(([roomsRes, tenantsRes]) => {
         if (roomsRes.error) {
             setLoadError(`โหลดข้อมูลไม่สำเร็จ: ${roomsRes.error.message}`)
         } else {
@@ -113,11 +112,19 @@ function RoomsPage() {
             setLoadError('')
         }
         setLoading(false)
-    }
+    }, [])
+
+    const load = async () => applyResult(await fetchRooms())
 
     useEffect(() => {
-        load()
-    }, [])
+        let active = true
+        fetchRooms().then((result) => {
+            if (active) applyResult(result)
+        })
+        return () => {
+            active = false
+        }
+    }, [applyResult])
 
     const count = (status) => rooms.filter((r) => status === 'all' || r.status === status).length
     const visible = rooms.filter((r) => filter === 'all' || r.status === filter)
@@ -127,6 +134,11 @@ function RoomsPage() {
         const editing = modal !== 'new' ? modal.number : null
         if (rooms.some((r) => r.number === data.number && r.number !== editing)) {
             return 'เลขห้องนี้มีอยู่แล้ว'
+        }
+        // ห้องที่มีผู้เช่า: เปลี่ยนเลขห้องไม่ได้ (ชื่อผู้ใช้ผูกกับเลขห้อง) และสถานะต้องเป็น "มีผู้เช่า"
+        if (editing && tenantNames[editing]) {
+            if (data.number !== editing) return 'ห้องนี้มีผู้เช่าอยู่ ไม่สามารถเปลี่ยนเลขห้องได้'
+            if (data.status !== 'occupied') return 'ห้องนี้มีผู้เช่าอยู่ สถานะต้องเป็น "มีผู้เช่า" (หากผู้เช่าย้ายออก ให้ลบผู้เช่าก่อน)'
         }
         const { error } = editing
             ? await supabase.from('rooms').update(data).eq('number', editing)

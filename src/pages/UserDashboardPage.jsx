@@ -69,10 +69,6 @@ function UserDashboardPage() {
     const [invoices, setInvoices] = useState([])
     const [selectedInvoiceId, setSelectedInvoiceId] = useState(null)
 
-    // กรณี Admin เข้ามาดู สามารถเลือกผู้เช่าเพื่อจำลองมุมมองได้
-    const [adminTenantsList, setAdminTenantsList] = useState([])
-    const [simulatedRoom, setSimulatedRoom] = useState('')
-
     // สำหรับหน้าชำระเงิน (View 2)
     const [qrCodeUrl, setQrCodeUrl] = useState(null)
     const [uploadFile, setUploadFile] = useState(null)
@@ -96,24 +92,7 @@ function UserDashboardPage() {
         setLoadError('')
 
         try {
-            let activeTenant = me.tenant
-
-            // หากเป็น Admin และไม่มี tenant ของตัวเอง ให้ดึงรายชื่อผู้เช่าทั้งหมดมาจำลอง
-            if (me.role === 'admin' && !activeTenant) {
-                const { data: allTenants, error: tErr } = await supabase
-                    .from('tenants')
-                    .select('*')
-                    .order('room', { ascending: true })
-
-                if (tErr) throw tErr
-                setAdminTenantsList(allTenants || [])
-
-                if (allTenants && allTenants.length > 0) {
-                    const currentSimRoom = simulatedRoom || allTenants[0].room
-                    activeTenant = allTenants.find((t) => t.room === currentSimRoom) || allTenants[0]
-                    setSimulatedRoom(activeTenant.room)
-                }
-            }
+            const activeTenant = me.tenant
 
             if (!activeTenant) {
                 setTenantInfo(null)
@@ -134,13 +113,11 @@ function UserDashboardPage() {
             setRoomInfo(rData)
 
             // ดึงข้อมูลใบแจ้งหนี้ของผู้เช่าห้องนี้
-            let query = supabase.from('invoices').select('*').order('month', { ascending: false })
-            if (me.role === 'admin') {
-                query = query.eq('room', activeTenant.room)
-            } else {
-                query = query.eq('room', activeTenant.room)
-            }
-            const { data: invData, error: invErr } = await query
+            const { data: invData, error: invErr } = await supabase
+                .from('invoices')
+                .select('*')
+                .eq('room', activeTenant.room)
+                .order('month', { ascending: false })
             if (invErr) throw invErr
 
             const invList = invData || []
@@ -166,7 +143,7 @@ function UserDashboardPage() {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         loadData()
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [me, simulatedRoom])
+    }, [me])
 
     // ใบแจ้งหนี้ที่กำลังแสดงผล
     const activeInvoice = useMemo(() => {
@@ -242,30 +219,15 @@ function UserDashboardPage() {
                 throw new Error(`อัปโหลดไฟล์ไม่สำเร็จ: ${storageError.message}`)
             }
 
-            // ถ้าเป็น Admin ที่จำลองผู้เช่า ให้ update ตรง
-            if (me.role === 'admin' && activeInvoice.user_id !== me.id) {
-                const { error: updError } = await supabase
-                    .from('invoices')
-                    .update({
-                        slip_path: path,
-                        slip_uploaded_at: new Date().toISOString(),
-                        status: 'review',
-                        reject_reason: null,
-                    })
-                    .eq('id', activeInvoice.id)
+            // เรียก RPC submit_slip สำหรับผู้เช่า
+            const { error: rpcError } = await supabase.rpc('submit_slip', {
+                p_invoice: activeInvoice.id,
+                p_path: path,
+            })
 
-                if (updError) throw updError
-            } else {
-                // เรียก RPC submit_slip สำหรับผู้เช่า
-                const { error: rpcError } = await supabase.rpc('submit_slip', {
-                    p_invoice: activeInvoice.id,
-                    p_path: path,
-                })
-
-                if (rpcError) {
-                    await supabase.storage.from('slips').remove([path])
-                    throw new Error(`ส่งสลิปไม่สำเร็จ: ${rpcError.message}`)
-                }
+            if (rpcError) {
+                await supabase.storage.from('slips').remove([path])
+                throw new Error(`ส่งสลิปไม่สำเร็จ: ${rpcError.message}`)
             }
 
             await loadData()
@@ -336,30 +298,6 @@ function UserDashboardPage() {
 
     return (
         <div className="p-6 flex flex-col gap-6">
-            {/* กล่องควบคุมสำหรับ Admin (ถ้า Admin เข้ามาดู Dashboard ผู้เช่า) */}
-            {me?.role === 'admin' && adminTenantsList.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-                    <div className="flex items-center gap-2">
-                        <span className="font-bold text-amber-800">โหมดจำลองมุมมองผู้เช่า (Admin):</span>
-                        <span>กำลังดูห้อง</span>
-                        <select
-                            value={simulatedRoom}
-                            onChange={(e) => setSimulatedRoom(e.target.value)}
-                            className="bg-white border border-amber-300 rounded-lg px-2.5 py-1 text-sm font-semibold outline-none focus:ring-2 focus:ring-amber-400"
-                        >
-                            {adminTenantsList.map((t) => (
-                                <option key={t.room} value={t.room}>
-                                    ห้อง {t.room} - {t.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                    <span className="text-xs text-amber-700">
-                        คุณกำลังทดสอบการทำงานของหน้า Dashboard ในมุมมองของผู้เช่าจริง
-                    </span>
-                </div>
-            )}
-
             {/* Error Message ถ้ามี */}
             {loadError && (
                 <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex justify-between items-center">
