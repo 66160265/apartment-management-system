@@ -1,12 +1,15 @@
 import { NavLink } from "react-router-dom";
 import { menuItems } from "../data/menu";
 import { useCurrentUser } from "../lib/useCurrentUser";
+import { useNotifications } from "../lib/useNotifications";
 
 const USER_DASHBOARD = "/user/dashboard";
 
 function Sidebar() {
   // ใช้ role จากข้อมูลผู้ใช้ที่แชร์กัน เพื่อให้เมนู Dashboard ไปหน้าที่ถูกต้อง
   const role = useCurrentUser()?.role;
+  // จำนวนแจ้งเตือนที่ยังไม่อ่าน แสดงเป็นป้ายแดงที่เมนู "แจ้งเตือน"
+  const { unreadCount } = useNotifications();
 
   const resolvePath = (item) =>
     item.label === "Dashboard" && role === "user" ? USER_DASHBOARD : item.path;
@@ -32,6 +35,11 @@ function Sidebar() {
           >
             <span className="w-6 text-center">{item.icon}</span>
             {item.label}
+            {item.path === "/notifications" && unreadCount > 0 && (
+              <span className="ml-auto bg-red-500 text-white text-[11px] font-bold min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

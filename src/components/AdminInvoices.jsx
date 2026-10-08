@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import AvatarMenu from './AvatarMenu'
 import Icon from './Icon'
 import MonthPicker from './MonthPicker'
@@ -242,6 +242,16 @@ function MeterCard({ icon, tone, title, prefix, form, set, units, cost }) {
     )
 }
 
+// ดึงข้อมูลทั้งหมดที่หน้านี้ใช้ (ไม่แตะ state เพื่อเรียกใช้ได้ทั้งใน effect และหลังบันทึก)
+async function fetchData() {
+    const [tenantsRes, roomsRes, invoicesRes] = await Promise.all([
+        supabase.from('tenants').select('room, name, user_id'),
+        supabase.from('rooms').select('number, rent'),
+        supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+    ])
+    return { tenantsRes, roomsRes, invoicesRes }
+}
+
 function AdminInvoices() {
     const [tenants, setTenants] = useState([])
     const [rents, setRents] = useState({})
@@ -260,12 +270,7 @@ function AdminInvoices() {
     const [deleting, setDeleting] = useState(null)
     const ratesInitialized = useRef(false)
 
-    const load = async () => {
-        const [tenantsRes, roomsRes, invoicesRes] = await Promise.all([
-            supabase.from('tenants').select('room, name, user_id'),
-            supabase.from('rooms').select('number, rent'),
-            supabase.from('invoices').select('*').order('created_at', { ascending: false }),
-        ])
+    const applyResult = useCallback(({ tenantsRes, roomsRes, invoicesRes }) => {
         const err = tenantsRes.error || roomsRes.error || invoicesRes.error
         if (err) {
             setLoadError(`โหลดข้อมูลไม่สำเร็จ: ${err.message}`)
@@ -287,11 +292,21 @@ function AdminInvoices() {
             ratesInitialized.current = true
         }
         setLoading(false)
-    }
-
-    useEffect(() => {
-        load()
     }, [])
+
+    // โหลดซ้ำหลังบันทึก/ลบ
+    const load = useCallback(async () => applyResult(await fetchData()), [applyResult])
+
+    // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
+    useEffect(() => {
+        let active = true
+        fetchData().then((result) => {
+            if (active) applyResult(result)
+        })
+        return () => {
+            active = false
+        }
+    }, [applyResult])
 
     const set = (key) => (e) => {
         setForm({ ...form, [key]: e.target.value })

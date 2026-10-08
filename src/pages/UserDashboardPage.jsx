@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import AvatarMenu from '../components/AvatarMenu'
 import Icon from '../components/Icon'
 import InvoicePrintModal from '../components/InvoicePrintModal'
-import NotificationBell from '../components/NotificationBell'
+import UserNotificationBell from '../components/UserNotificationBell'
 import { BANK, invoiceStatuses } from '../data/billing'
 import { baht, formatDateTime, formatMonth } from '../lib/billing'
 import { generatePromptPayQR } from '../lib/promptpay'
@@ -330,7 +330,7 @@ function UserDashboardPage() {
                         </p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <NotificationBell />
+                        <UserNotificationBell />
                         <AvatarMenu />
                     </div>
                 </div>
@@ -401,7 +401,7 @@ function UserDashboardPage() {
                             </p>
                         </div>
                         <div className="flex items-center gap-3">
-                            <NotificationBell />
+                            <UserNotificationBell />
                             <AvatarMenu />
                         </div>
                     </div>
@@ -729,7 +729,7 @@ function UserDashboardPage() {
                             </h1>
                         </div>
                         <div className="flex items-center gap-3">
-                            <NotificationBell />
+                            <UserNotificationBell />
                             <AvatarMenu />
                         </div>
                     </div>
