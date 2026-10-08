@@ -1,31 +1,16 @@
 import { useEffect, useState } from 'react'
 import AvatarMenu from '../components/AvatarMenu'
-import { supabase } from '../lib/supabaseClient'
+import DatePicker from '../components/DatePicker'
+import { callAdminUsers } from '../lib/adminUsers'
 import { makeDefaultPassword } from '../lib/tenantAccount'
 import { emailToUsername, roleLabels, useCurrentUser } from '../lib/useCurrentUser'
 
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
 
-// 2026-03-01 -> 1 มี.ค. 69
-const formatDate = (iso) =>
-    iso
-        ? new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
-        : '-'
-
 const formatDateTime = (iso) =>
     iso
         ? new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
         : 'ยังไม่เคยเข้าสู่ระบบ'
-
-// เรียก Edge Function admin-users แล้วคืนค่า { data, error }
-async function callAdminUsers(body) {
-    const { data, error } = await supabase.functions.invoke('admin-users', { body })
-    if (error) {
-        const detail = await error.context?.json?.().catch(() => null)
-        return { error: detail?.error || error.message }
-    }
-    return data?.error ? { error: data.error } : { data }
-}
 
 function EditModal({ user, onSave, onCancel }) {
     const t = user.tenant
@@ -86,14 +71,14 @@ function EditModal({ user, onSave, onCancel }) {
                         </label>
                         <p className="text-sm text-muted">ห้องพัก: <span className="text-ink">{t.room}</span></p>
                         <div className="flex gap-4">
-                            <label className="flex-1 min-w-0 text-sm text-muted">
+                            <div className="flex-1 min-w-0 text-sm text-muted">
                                 เริ่มสัญญา
-                                <input type="date" className={inputClass} value={form.startDate} onChange={set('startDate')} />
-                            </label>
-                            <label className="flex-1 min-w-0 text-sm text-muted">
+                                <DatePicker value={form.startDate} onChange={(v) => set('startDate')({ target: { value: v } })} />
+                            </div>
+                            <div className="flex-1 min-w-0 text-sm text-muted">
                                 สิ้นสุดสัญญา
-                                <input type="date" className={inputClass} value={form.endDate} onChange={set('endDate')} />
-                            </label>
+                                <DatePicker value={form.endDate} onChange={(v) => set('endDate')({ target: { value: v } })} min={form.startDate} align="right" />
+                            </div>
                         </div>
                     </>
                 )}
