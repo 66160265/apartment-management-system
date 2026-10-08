@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import Icon from "./Icon";
-import { menuItems } from "../data/menu";
+import { menuItems, systemGroupLabel } from "../data/menu";
 import { supabase } from "../lib/supabaseClient";
 import { roleLabels, useCurrentUser } from "../lib/useCurrentUser";
 import { useNotifications } from "../lib/useNotifications";
@@ -26,6 +26,8 @@ function Sidebar({ open = false, onClose = () => {} }) {
     await supabase.auth.signOut();
     navigate("/");
   };
+
+  const visibleItems = menuItems.filter((item) => !item.adminOnly || role === "admin");
 
   const displayName = me?.tenant?.name || roleLabels[role] || "";
   const initial = role === "user" && me?.tenant?.name ? me.tenant.name.trim().charAt(0) : "AD";
@@ -54,11 +56,14 @@ function Sidebar({ open = false, onClose = () => {} }) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-1" aria-label="เมนูหลัก">
-        {menuItems
-          .filter((item) => !item.adminOnly || role === "admin")
-          .map((item) => (
+        {visibleItems.map((item, index) => (
+          <Fragment key={item.path}>
+            {item.group === "system" && visibleItems[index - 1]?.group !== "system" && (
+              <div className="mt-4 mb-1 px-3.5 pt-3 border-t border-white/10 text-[11px] font-medium tracking-wide text-white/45">
+                {systemGroupLabel}
+              </div>
+            )}
             <NavLink
-              key={item.path}
               to={resolvePath(item)}
               className={({ isActive }) =>
                 `group relative flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[15px] transition-colors ${
@@ -81,7 +86,8 @@ function Sidebar({ open = false, onClose = () => {} }) {
                 </>
               )}
             </NavLink>
-          ))}
+          </Fragment>
+        ))}
       </nav>
 
       <div className="p-3 border-t border-white/10">
