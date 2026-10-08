@@ -21,6 +21,12 @@ const paths = {
     arrowLeft: 'M19 12H5M11 6l-6 6 6 6',
     arrowRight: 'M5 12h14M13 6l6 6-6 6',
     copy: 'M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15V5a1 1 0 0 1 1-1h10',
+    download: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',
+    fileText: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
+    creditCard: 'M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7zm0 3h20M6 15h4',
+    qr: 'M3 3h6v6H3zm12 0h6v6h-6zM3 15h6v6H3zm12 3h3v3h-3zm3-3h3v3h-3zm-3-3h3v3h-3z',
+    printer: 'M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z',
+    send: 'm22 2-7 20-4-9-9-4Zm0 0L11 13',
 }
 
 function Icon({ name, className = 'w-5 h-5' }) {

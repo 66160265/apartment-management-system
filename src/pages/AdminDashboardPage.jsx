@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import AvatarMenu from '../components/AvatarMenu'
 import MonthPicker from '../components/MonthPicker'
@@ -6,6 +6,31 @@ import NotificationBell from '../components/NotificationBell'
 import { RATES, invoiceStatuses } from '../data/billing'
 import { currentMonth, formatMonth } from '../lib/billing'
 import { supabase } from '../lib/supabaseClient'
+
+// อัตราที่เป็น 0 ถือเป็นค่าที่ถูกต้อง จึงใช้ค่าสำรองเฉพาะกรณีไม่มีข้อมูลเท่านั้น
+const toRate = (value, fallback) =>
+    value === null || value === undefined || value === '' ? fallback : Number(value)
+
+// ดึงข้อมูลจากฐานข้อมูล (ไม่มีการ setState เพื่อให้เรียกซ้ำได้อย่างปลอดภัย)
+async function fetchDashboardData() {
+    const [invoicesRes, roomsRes, tenantsRes] = await Promise.all([
+        supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+        supabase.from('rooms').select('*').order('number', { ascending: true }),
+        supabase.from('tenants').select('*'),
+    ])
+
+    if (invoicesRes.error) throw invoicesRes.error
+    if (roomsRes.error) throw roomsRes.error
+    if (tenantsRes.error) throw tenantsRes.error
+
+    return {
+        invList: invoicesRes.data || [],
+        roomList: [...(roomsRes.data || [])].sort((a, b) =>
+            String(a.number).localeCompare(String(b.number), undefined, { numeric: true })
+        ),
+        tenantList: tenantsRes.data || [],
+    }
+}
 
 function AdminDashboardPage() {
     const navigate = useNavigate()
@@ -18,48 +43,50 @@ function AdminDashboardPage() {
     const [tenants, setTenants] = useState([])
     const [invoices, setInvoices] = useState([])
 
-    // โหลดข้อมูลจากฐานข้อมูล
-    const loadDashboardData = async () => {
+    // เลือกเดือนอัตโนมัติเพียงครั้งแรกที่โหลดสำเร็จ ไม่ให้ทับเดือนที่ผู้ใช้เลือกเอง
+    const hasAutoSelectedMonth = useRef(false)
+
+    const applyData = useCallback(({ invList, roomList, tenantList }) => {
+        setInvoices(invList)
+        setRooms(roomList)
+        setTenants(tenantList)
+        setLoadError('')
+
+        // หากเดือนปัจจุบันยังไม่มีใบแจ้งหนี้ แต่มีในเดือนอื่น ให้เลือกเดือนล่าสุดที่มีข้อมูล
+        if (!hasAutoSelectedMonth.current) {
+            hasAutoSelectedMonth.current = true
+            const months = [...new Set(invList.map((i) => i.month))].sort()
+            if (!invList.some((i) => i.month === currentMonth()) && months.length > 0) {
+                setSelectedMonth(months[months.length - 1])
+            }
+        }
+    }, [])
+
+    const applyError = useCallback((err) => {
+        console.error('Error loading dashboard data:', err)
+        setLoadError(`เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message || 'ไม่สามารถติดต่อฐานข้อมูลได้'}`)
+    }, [])
+
+    // โหลดครั้งแรก (ยกเลิกผลลัพธ์ถ้าคอมโพเนนต์ถูกถอดออกก่อนโหลดเสร็จ)
+    useEffect(() => {
+        let cancelled = false
+        fetchDashboardData()
+            .then((data) => !cancelled && applyData(data))
+            .catch((err) => !cancelled && applyError(err))
+            .finally(() => !cancelled && setLoading(false))
+        return () => {
+            cancelled = true
+        }
+    }, [applyData, applyError])
+
+    const retryLoad = () => {
         setLoading(true)
         setLoadError('')
-        try {
-            const [invoicesRes, roomsRes, tenantsRes] = await Promise.all([
-                supabase.from('invoices').select('*').order('created_at', { ascending: false }),
-                supabase.from('rooms').select('*').order('number', { ascending: true }),
-                supabase.from('tenants').select('*'),
-            ])
-
-            if (invoicesRes.error) throw invoicesRes.error
-            if (roomsRes.error) throw roomsRes.error
-            if (tenantsRes.error) throw tenantsRes.error
-
-            const invList = invoicesRes.data || []
-            const roomList = (roomsRes.data || []).sort((a, b) =>
-                a.number.localeCompare(b.number, undefined, { numeric: true })
-            )
-            const tenantList = tenantsRes.data || []
-
-            setInvoices(invList)
-            setRooms(roomList)
-            setTenants(tenantList)
-
-            // หากเดือนปัจจุบันยังไม่มีใบแจ้งหนี้ แต่มีในเดือนอื่น ให้เลือกเดือนล่าสุดที่มีข้อมูล
-            const monthsWithInvoices = [...new Set(invList.map((i) => i.month))].sort()
-            const now = currentMonth()
-            if (!invList.some((i) => i.month === now) && monthsWithInvoices.length > 0) {
-                setSelectedMonth(monthsWithInvoices[monthsWithInvoices.length - 1])
-            }
-        } catch (err) {
-            console.error('Error loading dashboard data:', err)
-            setLoadError(`เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message || 'ไม่สามารถติดต่อฐานข้อมูลได้'}`)
-        } finally {
-            setLoading(false)
-        }
+        fetchDashboardData()
+            .then(applyData)
+            .catch(applyError)
+            .finally(() => setLoading(false))
     }
-
-    useEffect(() => {
-        loadDashboardData()
-    }, [])
 
     // รายชื่อเดือนทั้งหมดที่มีใบแจ้งหนี้
     const monthsWithInvoices = useMemo(() => {
@@ -99,7 +126,7 @@ function AdminDashboardPage() {
                             : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'),
                 }
             })
-            .sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true }))
+            .sort((a, b) => String(a.room).localeCompare(String(b.room), undefined, { numeric: true }))
     }, [invoices, tenants])
 
     // จำนวนห้องที่ค้างชำระจริง
@@ -114,18 +141,14 @@ function AdminDashboardPage() {
         let waterCost = 0
         let elecCost = 0
 
-        const waterRate = invoicesForMonth[0]?.water_rate
-            ? Number(invoicesForMonth[0].water_rate)
-            : RATES.water
-        const elecRate = invoicesForMonth[0]?.elec_rate
-            ? Number(invoicesForMonth[0].elec_rate)
-            : RATES.electric
+        const waterRate = toRate(invoicesForMonth[0]?.water_rate, RATES.water)
+        const elecRate = toRate(invoicesForMonth[0]?.elec_rate, RATES.electric)
 
         invoicesForMonth.forEach((inv) => {
             const w = Math.max(0, (inv.water_curr || 0) - (inv.water_prev || 0))
             const e = Math.max(0, (inv.elec_curr || 0) - (inv.elec_prev || 0))
-            const wRate = Number(inv.water_rate || waterRate)
-            const eRate = Number(inv.elec_rate || elecRate)
+            const wRate = toRate(inv.water_rate, waterRate)
+            const eRate = toRate(inv.elec_rate, elecRate)
 
             waterUnits += w
             elecUnits += e
@@ -152,7 +175,7 @@ function AdminDashboardPage() {
                 water: Math.max(0, (inv.water_curr || 0) - (inv.water_prev || 0)),
                 electric: Math.max(0, (inv.elec_curr || 0) - (inv.elec_prev || 0)),
             }))
-            .sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true }))
+            .sort((a, b) => String(a.room).localeCompare(String(b.room), undefined, { numeric: true }))
     }, [invoicesForMonth])
 
     return (
@@ -184,7 +207,7 @@ function AdminDashboardPage() {
                     <span>{loadError}</span>
                     <button
                         type="button"
-                        onClick={loadDashboardData}
+                        onClick={retryLoad}
                         className="underline text-red-800 font-medium cursor-pointer"
                     >
                         ลองใหม่
@@ -446,7 +469,7 @@ function AdminDashboardPage() {
                                         key={inv.id || inv.room}
                                         onClick={() => navigate('/invoices')}
                                         className="hover:bg-sand/30 transition-colors cursor-pointer group"
-                                        title="คลิกเพื่อไปที่ใบแจ้งหนี้ห้องนี้"
+                                        title="คลิกเพื่อไปที่หน้าใบแจ้งหนี้"
                                     >
                                         <td className="py-3.5 px-2 font-medium text-gray-900">
                                             {inv.room}
