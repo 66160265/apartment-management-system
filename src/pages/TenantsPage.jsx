@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import DatePicker from '../components/DatePicker'
 import Icon from '../components/Icon'
@@ -171,6 +171,13 @@ function AddTenantModal({ rooms, onSave, onClose }) {
     )
 }
 
+const fetchTenantsData = () =>
+    Promise.all([
+        supabase.from('tenants').select('*'),
+        supabase.from('rooms').select('number, status, floor'),
+        supabase.from('tenant_documents').select('room, type'),
+    ])
+
 function TenantsPage() {
     const [tenants, setTenants] = useState([])
     const [rooms, setRooms] = useState([])
@@ -183,12 +190,7 @@ function TenantsPage() {
     // null = ปิด, 'new' = เพิ่มผู้เช่า, ออบเจ็กต์ผู้เช่า = หน้ารายละเอียด
     const [modal, setModal] = useState(null)
 
-    const load = async () => {
-        const [tenantsRes, roomsRes, docsRes] = await Promise.all([
-            supabase.from('tenants').select('*'),
-            supabase.from('rooms').select('number, status, floor'),
-            supabase.from('tenant_documents').select('room, type'),
-        ])
+    const applyResult = useCallback(([tenantsRes, roomsRes, docsRes]) => {
         const err = tenantsRes.error || roomsRes.error
         if (err) {
             setLoadError(`โหลดข้อมูลไม่สำเร็จ: ${err.message}`)
@@ -205,11 +207,19 @@ function TenantsPage() {
             setLoadError('')
         }
         setLoading(false)
-    }
+    }, [])
+
+    const load = async () => applyResult(await fetchTenantsData())
 
     useEffect(() => {
-        load()
-    }, [])
+        let active = true
+        fetchTenantsData().then((result) => {
+            if (active) applyResult(result)
+        })
+        return () => {
+            active = false
+        }
+    }, [applyResult])
 
     const handleCreate = async (data) => {
         const err = await createTenantAccount(data)

@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
 
   const { room, name, phone, startDate, endDate } = await req.json()
   const digits = String(phone ?? '').replace(/\D/g, '')
-  if (!/^\d{1,10}$/.test(String(room ?? '')) || digits.length < 4 || !name || !startDate || !endDate) {
+  if (!/^[A-Za-z0-9]{1,10}$/.test(String(room ?? '')) || digits.length < 4 || !name || !startDate || !endDate) {
     return json({ error: 'ข้อมูลผู้เช่าไม่ครบหรือไม่ถูกต้อง' }, 400)
   }
 

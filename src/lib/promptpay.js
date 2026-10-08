@@ -22,7 +22,7 @@ function crc16(data) {
  * @param {number|string} [amount] - ยอดเงินที่ต้องการระบุ (ถ้ามี)
  * @returns {string} Payload string
  */
-export function generatePromptPayPayload(target, amount) {
+function generatePromptPayPayload(target, amount) {
     if (!target) return ''
     const cleanTarget = target.replace(/[^0-9]/g, '')
     const targetType = cleanTarget.length >= 13 ? '02' : '01'

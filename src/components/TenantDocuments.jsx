@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import { supabase } from '../lib/supabaseClient'
 import { REQUIRED_DOCS, formatDate } from '../lib/tenants'
@@ -175,6 +175,9 @@ function DeleteDocumentModal({ doc, onConfirm, onCancel }) {
     )
 }
 
+const fetchDocs = (room) =>
+    supabase.from('tenant_documents').select('*').eq('room', room).order('uploaded_at', { ascending: true })
+
 // การ์ด "เอกสาร" ในหน้ารายละเอียดผู้เช่า: เพิ่ม ดู แก้ไข ลบ
 function TenantDocuments({ room }) {
     const [docs, setDocs] = useState([])
@@ -185,23 +188,26 @@ function TenantDocuments({ room }) {
     const [editing, setEditing] = useState(null)
     const [deleting, setDeleting] = useState(null)
 
-    const load = async () => {
-        const { data, error } = await supabase
-            .from('tenant_documents')
-            .select('*')
-            .eq('room', room)
-            .order('uploaded_at', { ascending: true })
+    const applyResult = useCallback(({ data, error }) => {
         if (error) setLoadError(`โหลดเอกสารไม่สำเร็จ: ${error.message}`)
         else {
             setDocs(data)
             setLoadError('')
         }
         setLoading(false)
-    }
+    }, [])
+
+    const load = async () => applyResult(await fetchDocs(room))
 
     useEffect(() => {
-        load()
-    }, [room])
+        let active = true
+        fetchDocs(room).then((result) => {
+            if (active) applyResult(result)
+        })
+        return () => {
+            active = false
+        }
+    }, [room, applyResult])
 
     const handleView = async (doc) => {
         setActionError('')

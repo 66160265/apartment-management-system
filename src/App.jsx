@@ -1,4 +1,3 @@
-import './App.css'
 import { RedirectIfAuthed, RequireAuth, RequireRole } from './components/AuthGuards.jsx'
 import { Navigate, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout.jsx'

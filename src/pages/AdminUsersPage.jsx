@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import { Avatar } from '../components/TenantParts'
@@ -148,6 +148,8 @@ function DeleteModal({ user, onConfirm, onCancel }) {
     )
 }
 
+const fetchUsers = () => callAdminUsers({ action: 'list' })
+
 function AdminUsersPage() {
     const me = useCurrentUser()
     const [users, setUsers] = useState([])
@@ -160,8 +162,7 @@ function AdminUsersPage() {
 
     const isAdmin = me?.role === 'admin'
 
-    const load = async () => {
-        const { data, error } = await callAdminUsers({ action: 'list' })
+    const applyResult = useCallback(({ data, error }) => {
         if (error) {
             setLoadError(`โหลดข้อมูลไม่สำเร็จ: ${error}`)
         } else {
@@ -171,12 +172,20 @@ function AdminUsersPage() {
             setLoadError('')
         }
         setLoading(false)
-    }
+    }, [])
+
+    const load = async () => applyResult(await fetchUsers())
 
     useEffect(() => {
         // ไม่ต้องรอข้อมูลผู้ใช้ก่อน ฟังก์ชันฝั่งเซิร์ฟเวอร์ตรวจสิทธิ์แอดมินเองอยู่แล้ว
-        load()
-    }, [])
+        let active = true
+        fetchUsers().then((result) => {
+            if (active) applyResult(result)
+        })
+        return () => {
+            active = false
+        }
+    }, [applyResult])
 
     const keyword = search.trim().toLowerCase()
     const visible = users.filter((u) =>

@@ -1,7 +1,7 @@
-// 2026-03-01 -> 1 มี.ค. 69
+// 2026-03-01 -> 1 มี.ค. 69 (วันที่ล้วนอ่านเป็นเวลาท้องถิ่น กันวันเลื่อนในเขตเวลาที่ติดลบ)
 export const formatDate = (iso) =>
     iso
-        ? new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
+        ? new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
         : '-'
 
 const EXPIRING_DAYS = 30

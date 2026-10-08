@@ -8,7 +8,7 @@ export const currentMonth = () => {
 
 // 2026-06 -> มิ.ย. 69
 export const formatMonth = (month) =>
-    new Date(`${month}-01`).toLocaleDateString('th-TH', { month: 'short', year: '2-digit' })
+    new Date(`${month}-01T00:00:00`).toLocaleDateString('th-TH', { month: 'short', year: '2-digit' })
 
 export const formatDateTime = (iso) =>
     iso

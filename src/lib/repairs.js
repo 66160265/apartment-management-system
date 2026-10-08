@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient'
 
-export const MAX_IMAGE_SIZE = 5 * 1024 * 1024
-export const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
 
 const BUCKET = 'repairs'
 
