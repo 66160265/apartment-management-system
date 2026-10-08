@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import AvatarMenu from '../components/AvatarMenu'
+import UserNotificationBell from '../components/UserNotificationBell'
 import Icon from '../components/Icon'
 import { ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge } from '../components/RepairParts'
 import { repairStatuses, repairStatusKeys } from '../data/repairs'
@@ -230,6 +231,7 @@ function UserRepairsPage() {
                             แจ้งซ่อมใหม่
                         </button>
                     )}
+                    <UserNotificationBell />
                     <AvatarMenu />
                 </div>
             </div>
