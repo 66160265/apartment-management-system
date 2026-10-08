@@ -11,9 +11,11 @@
 - ใบแจ้งหนี้: บันทึกมิเตอร์ สร้าง/แก้ไข/ลบใบแจ้งหนี้ ตรวจสลิปแล้วอนุมัติหรือปฏิเสธ
 - แจ้งซ่อม: รับเรื่อง เปลี่ยนสถานะ และส่งข้อความถึงผู้เช่า
 - บัญชีผู้ใช้: รีเซ็ตรหัสผ่าน แก้ไข และลบบัญชี
+- ตั้งค่า: ข้อมูลหอพัก บัญชีรับชำระ/พร้อมเพย์ วันครบกำหนด และอัตราค่าบริการเริ่มต้น
 
 **ผู้เช่า (user)**
-- ภาพรวมห้องและค่าใช้จ่ายประจำเดือน ชำระเงินด้วย QR PromptPay และแนบสลิป
+- ภาพรวมห้องและค่าใช้จ่ายประจำเดือน ชำระเงินด้วย QR PromptPay (ระบุยอดตามใบแจ้งหนี้) และแนบสลิป
+- ดาวน์โหลดใบแจ้งหนี้เป็นไฟล์ PDF ได้ทันที (ผู้ดูแลดาวน์โหลดได้เช่นกัน)
 - ใบแจ้งหนี้ของตัวเอง แจ้งซ่อมและติดตามสถานะ แจ้งเตือน และเปลี่ยนรหัสผ่าน
 
 ชื่อผู้ใช้ของผู้เช่าคือ `T` ตามด้วยเลขห้อง (เช่น `T101`) รหัสผ่านเริ่มต้นคือ `TP` + เลขห้อง + เลขท้ายเบอร์โทร 4 ตัว (เช่น `TP1010123`)
@@ -22,7 +24,7 @@
 
 - **Frontend:** React 19, React Router 7, Tailwind CSS 4, Vite 8 (JavaScript)
 - **Backend:** Supabase (Auth, PostgreSQL + Row Level Security, Storage, Edge Functions บน Deno)
-- **อื่น ๆ:** `qrcode` สร้าง QR PromptPay
+- **อื่น ๆ:** `qrcode` สร้าง QR PromptPay, `jspdf` + `html-to-image` สร้างไฟล์ PDF ใบแจ้งหนี้ (โหลดเมื่อกดดาวน์โหลดเท่านั้น)
 
 ## เริ่มต้นใช้งาน
 
@@ -50,7 +52,7 @@ npm run dev
 ## ตั้งค่า Supabase
 
 1. รันไฟล์ SQL ใน **SQL Editor** ตามลำดับนี้ (รันซ้ำได้):
-   `supabase/schema.sql` → `supabase/invoices.sql` → `supabase/repairs.sql` → `supabase/tenant-documents.sql` → `supabase/notifications.sql`
+   `supabase/schema.sql` → `supabase/invoices.sql` → `supabase/repairs.sql` → `supabase/tenant-documents.sql` → `supabase/notifications.sql` → `supabase/settings.sql`
 2. สร้างบัญชีแอดมินคนแรกที่ **Authentication → Users** แล้วเพิ่มแถวใน `profiles` (`id` = id ของผู้ใช้, `role` = `admin`)
 3. ปิดการยืนยันอีเมล (Authentication → Providers → Email → Confirm email) หรือใช้ Edge Function ซึ่งยืนยันให้อัตโนมัติ
 4. Deploy Edge Functions:
@@ -62,7 +64,7 @@ npx supabase functions deploy create-tenant
 npx supabase functions deploy admin-users
 ```
 
-5. ปรับข้อมูลบัญชีรับโอนและอัตราค่าน้ำ-ไฟเริ่มต้นใน `src/data/billing.js`
+5. เข้าสู่ระบบด้วยแอดมินแล้วไปที่เมนู **ตั้งค่า** กรอกข้อมูลหอพัก บัญชีธนาคาร **รหัสพร้อมเพย์จริง** (เบอร์มือถือ 10 หลัก หรือเลขบัตร 13 หลัก) วันครบกำหนด และอัตราค่าน้ำ-ไฟ แล้วลองสแกน QR ทดสอบด้วยแอปธนาคารว่าชื่อบัญชีปลายทางถูกต้อง
 
 ## โครงสร้างโปรเจกต์
 

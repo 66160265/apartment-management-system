@@ -1,26 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import DownloadInvoiceButton from './DownloadInvoiceButton'
 import Icon from './Icon'
 import PageHeader from './PageHeader'
 import MonthPicker from './MonthPicker'
 import { CopyButton, InvoiceBreakdown, InvoiceStepper, SlipImage, StatusBadge } from './InvoiceParts'
-import { BANK, RATES, invoiceStatuses } from '../data/billing'
+import { invoiceStatuses } from '../data/billing'
 import { baht, calcInvoice, currentMonth, formatDateTime, formatMonth } from '../lib/billing'
 import { supabase } from '../lib/supabaseClient'
+import { useSettings } from '../lib/useSettings'
 
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
 const smallInputClass = 'w-full border border-line bg-white rounded-lg px-2.5 py-1.5 mt-1 text-sm outline-none focus:border-secondary'
 
-const emptyForm = {
+// อัตราค่าบริการเป็น null = ใช้ค่าเริ่มต้นจากหน้า "ตั้งค่า" (แก้ในฟอร์มเพื่อกำหนดเฉพาะใบนี้)
+const makeEmptyForm = () => ({
     room: '',
     month: currentMonth(),
     waterPrev: 0,
     waterCurr: '',
-    waterRate: RATES.water,
+    waterRate: null,
     elecPrev: 0,
     elecCurr: '',
-    elecRate: RATES.electric,
-    commonFee: RATES.common,
-}
+    elecRate: null,
+    commonFee: null,
+})
 
 const summaryCards = [
     { value: 'all', label: 'ทั้งหมด', icon: 'receipt', tone: 'bg-slate-100 text-slate-600' },
@@ -30,6 +33,7 @@ const summaryCards = [
 ]
 
 function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
+    const settings = useSettings()
     const [rejecting, setRejecting] = useState(false)
     const [reason, setReason] = useState('')
     const [busy, setBusy] = useState(false)
@@ -72,7 +76,8 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                         </div>
                         <p className="text-sm text-muted mt-0.5">ห้อง {invoice.room} · ใบแจ้งหนี้เดือน {formatMonth(invoice.month)}</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
+                        <DownloadInvoiceButton invoice={invoice} label="ดาวน์โหลด PDF" className="border border-line text-primary-dark hover:bg-mist/50 px-4 py-1.5 rounded-xl text-sm" />
                         <button onClick={() => onEdit(invoice)} className="border border-line text-primary-dark hover:bg-mist/50 px-4 py-1.5 rounded-xl text-sm">แก้ไข</button>
                         <button onClick={() => onDelete(invoice)} className="border border-red-200 text-red-600 hover:bg-red-50 px-4 py-1.5 rounded-xl text-sm">ลบ</button>
                     </div>
@@ -87,10 +92,10 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                         <div className="bg-white rounded-2xl shadow-card p-4 text-sm flex items-center justify-between gap-3">
                             <div>
                                 <div className="text-xs text-muted">โอนเข้าบัญชี</div>
-                                <div className="font-medium text-ink mt-0.5">{BANK.name}</div>
-                                <div className="text-muted tabular-nums">{BANK.account} · {BANK.holder}</div>
+                                <div className="font-medium text-ink mt-0.5">{settings.bankName}</div>
+                                <div className="text-muted tabular-nums">{settings.bankAccount} · {settings.bankHolder}</div>
                             </div>
-                            <CopyButton text={BANK.account} />
+                            <CopyButton text={settings.bankAccount} />
                         </div>
                     </div>
 
@@ -246,7 +251,8 @@ function AdminInvoices() {
     const [invoices, setInvoices] = useState([])
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
-    const [form, setForm] = useState(emptyForm)
+    const settings = useSettings()
+    const [form, setForm] = useState(makeEmptyForm)
     const [formError, setFormError] = useState('')
     const [saving, setSaving] = useState(false)
     const [filter, setFilter] = useState('all')
@@ -256,7 +262,6 @@ function AdminInvoices() {
     // id ของใบแจ้งหนี้ที่กำลังแก้ไขในฟอร์มด้านบน (null = สร้างใหม่)
     const [editingId, setEditingId] = useState(null)
     const [deleting, setDeleting] = useState(null)
-    const ratesInitialized = useRef(false)
 
     const applyResult = useCallback(({ tenantsRes, roomsRes, invoicesRes }) => {
         const err = tenantsRes.error || roomsRes.error || invoicesRes.error
@@ -267,17 +272,6 @@ function AdminInvoices() {
             setRents(Object.fromEntries(roomsRes.data.map((r) => [r.number, Number(r.rent)])))
             setInvoices(invoicesRes.data)
             setLoadError('')
-            // ครั้งแรกที่เปิดหน้า ใช้อัตราค่าบริการจากใบแจ้งหนี้ล่าสุดเป็นค่าตั้งต้น
-            const latest = invoicesRes.data[0]
-            if (latest && !ratesInitialized.current) {
-                setForm((f) => ({
-                    ...f,
-                    waterRate: Number(latest.water_rate),
-                    elecRate: Number(latest.elec_rate),
-                    commonFee: Number(latest.common_fee),
-                }))
-            }
-            ratesInitialized.current = true
         }
         setLoading(false)
     }, [])
@@ -318,6 +312,13 @@ function AdminInvoices() {
         setFormError('')
     }
 
+    // ค่าที่ใช้แสดงและคำนวณ: อัตราที่ยังไม่ได้กำหนดใช้ค่าจากหน้าตั้งค่า
+    const view = {
+        ...form,
+        waterRate: form.waterRate ?? settings.rateWater,
+        elecRate: form.elecRate ?? settings.rateElectric,
+        commonFee: form.commonFee ?? settings.commonFee,
+    }
     const tenant = tenants.find((t) => t.room === form.room)
     const editing = invoices.find((i) => i.id === editingId)
     // ตอนแก้ไขใช้ค่าเช่าที่บันทึกไว้ในใบแจ้งหนี้เดิม
@@ -327,9 +328,9 @@ function AdminInvoices() {
         waterCurr: Number(form.waterCurr),
         elecPrev: Number(form.elecPrev),
         elecCurr: Number(form.elecCurr),
-        waterRate: Number(form.waterRate),
-        elecRate: Number(form.elecRate),
-        commonFee: Number(form.commonFee),
+        waterRate: Number(view.waterRate),
+        elecRate: Number(view.elecRate),
+        commonFee: Number(view.commonFee),
     }
     const calc = calcInvoice({ rent, ...numbers })
 
@@ -353,7 +354,7 @@ function AdminInvoices() {
 
     const cancelEdit = () => {
         setEditingId(null)
-        setForm({ ...emptyForm, waterRate: form.waterRate, elecRate: form.elecRate, commonFee: form.commonFee })
+        setForm({ ...makeEmptyForm(), waterRate: form.waterRate, elecRate: form.elecRate, commonFee: form.commonFee })
         setFormError('')
     }
 
@@ -409,7 +410,7 @@ function AdminInvoices() {
         }
         await load()
         setEditingId(null)
-        setForm({ ...emptyForm, month: form.month, waterRate: form.waterRate, elecRate: form.elecRate, commonFee: form.commonFee })
+        setForm({ ...makeEmptyForm(), month: form.month, waterRate: form.waterRate, elecRate: form.elecRate, commonFee: form.commonFee })
     }
 
     // ลบใบแจ้งหนี้พร้อมรูปสลิป (ถ้าลบรูปไม่สำเร็จก็ยังลบใบแจ้งหนี้ได้ เหลือแค่ไฟล์ค้าง)
@@ -529,12 +530,12 @@ function AdminInvoices() {
                             </select>
                         </label>
                         <div className="grid sm:grid-cols-2 gap-4">
-                            <MeterCard icon="droplet" tone="bg-cyan-50 text-cyan-700" title="มิเตอร์น้ำ" prefix="water" form={form} set={set} units={calc.waterUnits} cost={calc.water} />
-                            <MeterCard icon="bolt" tone="bg-amber-50 text-amber-700" title="มิเตอร์ไฟ" prefix="elec" form={form} set={set} units={calc.elecUnits} cost={calc.elec} />
+                            <MeterCard icon="droplet" tone="bg-cyan-50 text-cyan-700" title="มิเตอร์น้ำ" prefix="water" form={view} set={set} units={calc.waterUnits} cost={calc.water} />
+                            <MeterCard icon="bolt" tone="bg-amber-50 text-amber-700" title="มิเตอร์ไฟ" prefix="elec" form={view} set={set} units={calc.elecUnits} cost={calc.elec} />
                         </div>
                         <label className="text-sm text-muted sm:w-1/2">
                             ค่าส่วนกลาง (฿)
-                            <input type="number" min="0" step="any" className={inputClass} value={form.commonFee} onChange={set('commonFee')} />
+                            <input type="number" min="0" step="any" className={inputClass} value={view.commonFee} onChange={set('commonFee')} />
                         </label>
                     </div>
 

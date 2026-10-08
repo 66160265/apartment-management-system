@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import PageHeader from './PageHeader'
 import Icon from './Icon'
-import { CopyButton, InvoiceBreakdown, InvoiceStepper, SlipImage, StatusBadge } from './InvoiceParts'
-import { BANK } from '../data/billing'
+import DownloadInvoiceButton from './DownloadInvoiceButton'
+import { CopyButton, InvoiceBreakdown, InvoiceStepper, PromptPayCard, SlipImage, StatusBadge } from './InvoiceParts'
 import { baht, formatDateTime, formatMonth } from '../lib/billing'
 import { supabase } from '../lib/supabaseClient'
+import { useSettings } from '../lib/useSettings'
 
 const MAX_SIZE = 5 * 1024 * 1024
 const TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
@@ -110,15 +111,16 @@ function SlipUpload({ invoice, userId, onUploaded }) {
 }
 
 function BankCard() {
+    const settings = useSettings()
     return (
         <div className="bg-white rounded-2xl shadow-card p-4 flex items-center gap-4">
             <span className="grid place-items-center w-11 h-11 rounded-xl bg-mist/60 text-primary-dark"><Icon name="bank" className="w-6 h-6" /></span>
             <div className="flex-1 min-w-0">
                 <div className="text-xs text-muted">โอนเข้าบัญชี</div>
-                <div className="font-medium text-ink">{BANK.name}</div>
-                <div className="text-sm text-muted tabular-nums">{BANK.account} · {BANK.holder}</div>
+                <div className="font-medium text-ink">{settings.bankName}</div>
+                <div className="text-sm text-muted tabular-nums">{settings.bankAccount} · {settings.bankHolder}</div>
             </div>
-            <CopyButton text={BANK.account} label="คัดลอกเลขบัญชี" />
+            <CopyButton text={settings.bankAccount} label="คัดลอกเลขบัญชี" />
         </div>
     )
 }
@@ -134,7 +136,10 @@ function InvoiceDetail({ invoice, userId, onBack, onChanged }) {
                         <h2 className="text-lg font-semibold text-primary-dark">ใบแจ้งหนี้เดือน {formatMonth(invoice.month)}</h2>
                         <p className="text-sm text-muted mt-0.5">ห้อง {invoice.room}</p>
                     </div>
-                    <StatusBadge status={invoice.status} />
+                    <div className="flex flex-wrap items-center gap-3">
+                        <DownloadInvoiceButton invoice={invoice} label="ดาวน์โหลด PDF" className="border border-line bg-white text-primary-dark hover:bg-mist/50 px-4 py-1.5 rounded-xl text-sm" />
+                        <StatusBadge status={invoice.status} />
+                    </div>
                 </div>
                 <InvoiceStepper status={invoice.status} />
             </div>
@@ -142,6 +147,7 @@ function InvoiceDetail({ invoice, userId, onBack, onChanged }) {
             <div className="grid gap-4 lg:grid-cols-2 items-start">
                 <div className="flex flex-col gap-4">
                     <InvoiceBreakdown invoice={invoice} />
+                    {invoice.status === 'pending' && <PromptPayCard invoice={invoice} />}
                     {invoice.status !== 'paid' && <BankCard />}
                 </div>
 

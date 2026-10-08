@@ -6,5 +6,6 @@ export const menuItems = [
     { label: 'ใบแจ้งหนี้', path: '/invoices', icon: 'receipt' },
     { label: 'แจ้งซ่อม', path: '/repairs', icon: 'wrench' },
     { label: 'บัญชีผู้ใช้', path: '/admin/users', icon: 'key', adminOnly: true },
+    { label: 'ตั้งค่า', path: '/settings', icon: 'settings', adminOnly: true },
     { label: 'แจ้งเตือน', path: '/notifications', icon: 'bell' },
 ]
