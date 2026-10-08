@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import AvatarMenu from './AvatarMenu'
+import UserNotificationBell from './UserNotificationBell'
 import Icon from './Icon'
 import { CopyButton, InvoiceBreakdown, InvoiceStepper, SlipImage, StatusBadge } from './InvoiceParts'
 import { BANK } from '../data/billing'
@@ -187,26 +188,37 @@ function InvoiceDetail({ invoice, userId, onBack, onChanged }) {
     )
 }
 
+// RLS ให้อ่านได้เฉพาะใบแจ้งหนี้ของตัวเอง (ไม่แตะ state เพื่อเรียกใช้ได้ทั้งใน effect และหลังส่งสลิป)
+const fetchInvoices = () => supabase.from('invoices').select('*').order('month', { ascending: false })
+
 function TenantInvoices({ userId }) {
     const [invoices, setInvoices] = useState([])
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
     const [selectedId, setSelectedId] = useState(null)
 
-    const load = async () => {
-        // RLS ให้อ่านได้เฉพาะใบแจ้งหนี้ของตัวเอง
-        const { data, error } = await supabase.from('invoices').select('*').order('month', { ascending: false })
+    const applyResult = useCallback(({ data, error }) => {
         if (error) setLoadError(`โหลดข้อมูลไม่สำเร็จ: ${error.message}`)
         else {
             setInvoices(data)
             setLoadError('')
         }
         setLoading(false)
-    }
-
-    useEffect(() => {
-        load()
     }, [])
+
+    // โหลดซ้ำหลังส่งสลิป
+    const load = useCallback(async () => applyResult(await fetchInvoices()), [applyResult])
+
+    // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
+    useEffect(() => {
+        let active = true
+        fetchInvoices().then((result) => {
+            if (active) applyResult(result)
+        })
+        return () => {
+            active = false
+        }
+    }, [applyResult])
 
     const selected = invoices.find((i) => i.id === selectedId)
     // ใบที่ต้องทำต่อ: ค้างชำระเดือนเก่าสุดก่อน แล้วค่อยเป็นใบที่รอตรวจสอบ
@@ -221,7 +233,10 @@ function TenantInvoices({ userId }) {
                     <h1 className="text-2xl font-semibold text-primary-dark">ใบแจ้งหนี้ของฉัน</h1>
                     <p className="text-sm text-muted mt-1">ดูยอดที่ต้องชำระและแนบสลิปการโอนเงิน</p>
                 </div>
-                <AvatarMenu />
+                <div className="flex items-center gap-3">
+                    <UserNotificationBell />
+                    <AvatarMenu />
+                </div>
             </div>
 
             {selected ? (

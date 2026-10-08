@@ -1,318 +1,203 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import AvatarMenu from '../components/AvatarMenu'
 import NotificationBell from '../components/NotificationBell'
-import { initialNotifications, formatNotificationTime } from '../data/notifications'
+import UserNotificationBell from '../components/UserNotificationBell'
+import { ConfirmDialog } from '../components/RepairParts'
+import { formatNotificationTime, readDotClass, typeLabels, unreadDotClass } from '../data/notifications'
+import { clearRead, markAllRead, markRead, removeNotification, useNotifications } from '../lib/useNotifications'
+import { useCurrentUser } from '../lib/useCurrentUser'
 
-// แมปสีของจุดแจ้งเตือนตามภาพต้นแบบ
-const dotColorClasses = {
-    red: 'bg-[#ef4444]',
-    orange: 'bg-[#f59e0b]',
-    green: 'bg-[#22c55e]',
-    gray: 'bg-[#6b7280]',
-}
+const tabs = [
+    { key: 'all', label: 'ทั้งหมด' },
+    { key: 'unread', label: 'ยังไม่อ่าน' },
+]
 
 function NotificationsPage() {
     const navigate = useNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
+    const me = useCurrentUser()
+    const { items, loading, error, unreadCount } = useNotifications()
 
-    const [notifications, setNotifications] = useState(() => {
-        try {
-            const readList = JSON.parse(
-                localStorage.getItem('apartment_read_notifications') || '[]'
-            )
+    const [activeTab, setActiveTab] = useState('all')
+    const [confirmClear, setConfirmClear] = useState(false)
 
-            return initialNotifications.map((n) =>
-                readList.includes(n.id)
-                    ? { ...n, dotColor: 'gray' }
-                    : n
-            )
-        } catch {
-            return initialNotifications
-        }
-    })
-
-    // หา notification ที่ถูกเลือกจาก id ใน URL
     const rawId = searchParams.get('id')
+    const selected = rawId ? items.find((n) => n.id === rawId) : null
+    const readCount = items.length - unreadCount
+    const visible = activeTab === 'unread' ? items.filter((n) => !n.read_at) : items
 
-    const selectedItem = rawId
-        ? notifications.find(
-              (n) => String(n.id) === String(rawId)
-          )
-        : null
-
-    // ฟังก์ชันบันทึกว่าอ่านแจ้งเตือนนี้แล้ว
-    const markIdAsRead = useCallback((id) => {
-        try {
-            const stored = JSON.parse(
-                localStorage.getItem('apartment_read_notifications') || '[]'
-            )
-
-            if (!stored.includes(id)) {
-                const next = [...stored, id]
-
-                localStorage.setItem(
-                    'apartment_read_notifications',
-                    JSON.stringify(next)
-                )
-
-                window.dispatchEvent(
-                    new Event('apartment_notifications_updated')
-                )
-            }
-        } catch (err) {
-            console.error(err)
-        }
-    }, [])
-
-    // เมื่อมี id ใน URL ให้บันทึกว่า notification นี้ถูกอ่านแล้ว
-    // สำคัญ: effect นี้ไม่มี setState()
+    // เปิดรายละเอียดจากลิงก์ (เช่น กดจากกระดิ่ง) ให้ทำเครื่องหมายว่าอ่านแล้ว
     useEffect(() => {
-        if (!rawId) return
+        if (selected && !selected.read_at) markRead(selected.id)
+    }, [selected])
 
-        const found = initialNotifications.find(
-            (n) => String(n.id) === String(rawId)
-        )
-
-        if (found) {
-            markIdAsRead(found.id)
-        }
-    }, [rawId, markIdAsRead])
-
-    // เมื่อมี id ใน URL ให้เปลี่ยน notification ใน state เป็นสีเทา
-    // ทำใน event handler / การคลิก ไม่ทำใน effect
-    const handleOpenDetail = (item) => {
-        markIdAsRead(item.id)
-
-        setNotifications((prev) =>
-            prev.map((n) =>
-                n.id === item.id
-                    ? { ...n, dotColor: 'gray' }
-                    : n
-            )
-        )
-
-        setSearchParams(
-            { id: String(item.id) },
-            { replace: false }
-        )
+    const closeModal = () => {
+        if (searchParams.get('id')) setSearchParams({}, { replace: true })
     }
 
-    // ปิด Modal และเคลียร์ query param ออกจาก URL
-    const handleCloseModal = useCallback(() => {
-        if (searchParams.get('id')) {
-            setSearchParams({}, { replace: true })
-        }
-    }, [searchParams, setSearchParams])
-
-    // ปิด Modal ด้วยปุ่ม Esc
+    // ปิดรายละเอียดด้วยปุ่ม Esc
     useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.key === 'Escape') {
-                handleCloseModal()
-            }
-        }
+        if (!rawId) return
+        const onKey = (e) => e.key === 'Escape' && setSearchParams({}, { replace: true })
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [rawId, setSearchParams])
 
-        window.addEventListener('keydown', handleKeyDown)
+    const openDetail = (item) => {
+        markRead(item.id)
+        setSearchParams({ id: item.id })
+    }
 
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown)
-        }
-    }, [handleCloseModal])
+    const handleDelete = () => {
+        removeNotification(selected.id)
+        closeModal()
+    }
 
     return (
         <div className="p-6">
-            {/* Header ด้านบน */}
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-gray-900">
-                    แจ้งเตือน
-                </h1>
-
+                <h1 className="text-2xl font-bold text-ink">แจ้งเตือน</h1>
                 <div className="flex items-center gap-3">
-                    <NotificationBell />
+                    {me?.role === 'admin' ? <NotificationBell /> : <UserNotificationBell />}
                     <AvatarMenu />
                 </div>
             </div>
 
-            {/* กล่องแสดงรายการแจ้งเตือน */}
-            <div className="bg-white rounded-2xl shadow-card p-6 md:p-8 border border-line">
-                <div className="flex flex-col">
-                    {notifications.map((item) => {
-                        const dotColor =
-                            dotColorClasses[item.dotColor] ||
-                            dotColorClasses.gray
-
-                        return (
-                            <div
-                                key={item.id}
-                                onClick={() => handleOpenDetail(item)}
-                                className="group py-4 px-3 sm:px-4 flex items-center justify-between gap-4 cursor-pointer hover:bg-sand/40 rounded-xl transition-all border-b border-gray-200"
-                                title="คลิกเพื่อดูรายละเอียดเพิ่มเติม"
-                            >
-                                <div className="flex items-center gap-4 min-w-0 flex-1">
-                                    {/* จุดสีแจ้งเตือน */}
-                                    <span
-                                        className={`w-3.5 h-3.5 rounded-full shrink-0 transition-transform group-hover:scale-125 ${dotColor}`}
-                                    />
-
-                                    {/* ข้อความแจ้งเตือน */}
-                                    <div className="flex-1 min-w-0">
-                                        <h2 className="text-sm sm:text-base font-bold text-gray-900">
-                                            {item.title}
-                                        </h2>
-
-                                        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-                                            {item.subtitle}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {/* เวลา */}
-                                <span className="text-xs sm:text-sm text-gray-400 group-hover:text-gray-600 transition-colors shrink-0">
-                                    {formatNotificationTime(
-                                        item.createdAt || item.time
-                                    )}
-                                </span>
-                            </div>
-                        )
-                    })}
-
-                    {notifications.length === 0 && (
-                        <div className="py-12 text-center text-gray-400 text-sm">
-                            ไม่มีรายการแจ้งเตือน
-                        </div>
-                    )}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2">
+                    {tabs.map((t) => (
+                        <button
+                            key={t.key}
+                            onClick={() => setActiveTab(t.key)}
+                            className={`px-4 py-1.5 rounded-full text-sm font-medium border ${
+                                activeTab === t.key ? 'bg-primary text-white border-primary' : 'bg-white text-muted border-line hover:bg-sand'
+                            }`}
+                        >
+                            {t.label} ({t.key === 'all' ? items.length : unreadCount})
+                        </button>
+                    ))}
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                    <button onClick={markAllRead} disabled={unreadCount === 0} className="text-primary hover:text-primary-dark font-medium">
+                        อ่านทั้งหมด
+                    </button>
+                    <button onClick={() => setConfirmClear(true)} disabled={readCount === 0} className="text-red-600 hover:text-red-700 font-medium">
+                        ล้างที่อ่านแล้ว
+                    </button>
                 </div>
             </div>
 
-            {/* Modal รายละเอียด */}
-            {selectedItem && (
-                <div
-                    className="fixed inset-0 bg-primary-deep/50 backdrop-blur-xs flex items-center justify-center z-50 p-4"
-                    onClick={handleCloseModal}
-                >
+            <div className="bg-white rounded-2xl shadow-card p-4 md:p-6 border border-line">
+                {loading || error ? (
+                    <p className={`py-12 text-center text-sm ${error ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : error}</p>
+                ) : visible.length === 0 ? (
+                    <p className="py-12 text-center text-muted text-sm">
+                        {items.length === 0 ? 'ยังไม่มีรายการแจ้งเตือน' : 'ไม่มีการแจ้งเตือนที่ยังไม่อ่าน'}
+                    </p>
+                ) : (
+                    <ul className="flex flex-col">
+                        {visible.map((item) => {
+                            const unread = !item.read_at
+                            return (
+                                <li key={item.id} className="border-b border-line last:border-b-0">
+                                    <button
+                                        onClick={() => openDetail(item)}
+                                        title="คลิกเพื่อดูรายละเอียดเพิ่มเติม"
+                                        className="group w-full text-left py-4 px-3 sm:px-4 flex items-center justify-between gap-4 hover:bg-sand/40 rounded-xl"
+                                    >
+                                        <div className="flex items-center gap-4 min-w-0 flex-1">
+                                            <span className={`w-3.5 h-3.5 rounded-full shrink-0 ${unread ? unreadDotClass : readDotClass}`} />
+                                            <div className="min-w-0 flex-1">
+                                                <h2 className={`text-sm sm:text-base text-ink ${unread ? 'font-bold' : 'font-medium'}`}>{item.title}</h2>
+                                                <p className="text-xs sm:text-sm text-muted mt-0.5 truncate">{item.subtitle}</p>
+                                            </div>
+                                        </div>
+                                        <span className="text-xs sm:text-sm text-muted shrink-0">{formatNotificationTime(item.created_at)}</span>
+                                    </button>
+                                </li>
+                            )
+                        })}
+                    </ul>
+                )}
+            </div>
+
+            {selected && (
+                <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-xs flex items-center justify-center z-50 p-4" onClick={closeModal}>
                     <div
-                        className="bg-white rounded-2xl shadow-xl w-[560px] max-w-full overflow-hidden border border-line flex flex-col animate-in fade-in zoom-in-95"
+                        role="dialog"
+                        aria-modal="true"
+                        className="bg-white rounded-2xl shadow-xl w-[560px] max-w-full overflow-hidden border border-line flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        {/* Header ของ Modal */}
-                        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-sand/30">
-                            <div className="flex items-center gap-3">
-                                <span
-                                    className={`w-3.5 h-3.5 rounded-full shrink-0 ${
-                                        dotColorClasses.gray
-                                    }`}
-                                />
-
-                                <h2 className="text-lg font-bold text-gray-900">
-                                    {selectedItem.title}
-                                </h2>
+                        <div className="px-6 py-4 border-b border-line flex items-center justify-between bg-sand/30">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <span className={`w-3.5 h-3.5 rounded-full shrink-0 ${unreadDotClass}`} />
+                                <h2 className="text-lg font-bold text-ink wrap-break-word">{selected.title}</h2>
                             </div>
-
-                            <button
-                                type="button"
-                                onClick={handleCloseModal}
-                                className="text-gray-400 hover:text-gray-700 w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white text-lg transition-colors cursor-pointer"
-                            >
+                            <button type="button" onClick={closeModal} aria-label="ปิด" className="text-muted hover:text-ink w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white text-lg">
                                 ✕
                             </button>
                         </div>
 
-                        {/* เนื้อหาใน Modal */}
                         <div className="p-6 flex flex-col gap-4">
-                            {/* แท็กประเภท */}
-                            {selectedItem.typeLabel && (
-                                <div className="flex items-center gap-2">
-                                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-[#ebd5fc] text-purple-900 border border-[#d8b4fe]">
-                                        {selectedItem.typeLabel}
-                                    </span>
+                            <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                                <span className="px-3 py-1 rounded-full font-semibold bg-mist text-primary-dark">{typeLabels[selected.type] || 'ระบบ'}</span>
+                                <span>เวลาที่ส่ง: {formatNotificationTime(selected.created_at, true)}</span>
+                            </div>
+
+                            {selected.subtitle && <div className="text-base text-ink font-bold">{selected.subtitle}</div>}
+
+                            {selected.details && (
+                                <div>
+                                    <h3 className="text-xs font-semibold text-muted mb-1.5">รายละเอียดการแจ้งเตือน</h3>
+                                    <div className="text-sm text-ink leading-relaxed bg-white border border-line rounded-xl p-4 whitespace-pre-line wrap-break-word">
+                                        {selected.details}
+                                    </div>
                                 </div>
                             )}
-
-                            {/* กล่องข้อมูลอ้างอิง */}
-                            <div className="bg-sand/40 p-4 rounded-xl border border-line flex flex-col gap-2">
-                                <div className="flex justify-between items-center text-xs text-gray-500">
-                                    <span className="font-medium">
-                                        ข้อมูลอ้างอิง
-                                    </span>
-
-                                    <span>
-                                        เวลาที่ส่ง:{' '}
-                                        {formatNotificationTime(
-                                            selectedItem.createdAt ||
-                                                selectedItem.time,
-                                            true
-                                        )}
-                                    </span>
-                                </div>
-
-                                <div className="text-base text-gray-900 font-bold">
-                                    {selectedItem.subtitle}
-                                </div>
-
-                                {selectedItem.tenantName && (
-                                    <div className="text-xs text-gray-600 pt-1 border-t border-line/60 flex flex-wrap gap-x-4 gap-y-1">
-                                        <span>
-                                            ผู้เกี่ยวข้อง:{' '}
-                                            <strong className="text-gray-800">
-                                                {selectedItem.tenantName}
-                                            </strong>
-                                        </span>
-
-                                        {selectedItem.phone && (
-                                            <span>
-                                                เบอร์โทรติดต่อ:{' '}
-                                                <strong className="text-gray-800">
-                                                    {selectedItem.phone}
-                                                </strong>
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* รายละเอียดเพิ่มเติม */}
-                            <div>
-                                <h3 className="text-xs font-semibold text-gray-500 mb-1.5">
-                                    รายละเอียดการแจ้งเตือน
-                                </h3>
-
-                                <div className="text-sm text-gray-700 leading-relaxed bg-white border border-gray-200 rounded-xl p-4 shadow-2xs">
-                                    {selectedItem.details}
-                                </div>
-                            </div>
                         </div>
 
-                        {/* Footer */}
-                        <div className="px-6 py-4 bg-sand/20 border-t border-gray-100 flex justify-end items-center gap-3">
-                            <button
-                                type="button"
-                                onClick={handleCloseModal}
-                                className="border border-gray-300 text-gray-700 hover:bg-gray-100 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer"
-                            >
-                                ปิด
+                        <div className="px-6 py-4 bg-sand/20 border-t border-line flex justify-between items-center gap-3">
+                            <button type="button" onClick={handleDelete} className="text-red-600 hover:text-red-700 text-sm font-medium">
+                                ลบการแจ้งเตือนนี้
                             </button>
-
-                            {selectedItem.actionLink && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        handleCloseModal()
-                                        navigate(selectedItem.actionLink)
-                                    }}
-                                    className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-medium transition-colors shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
-                                >
-                                    <span>
-                                        {selectedItem.actionLabel}
-                                    </span>
-
-                                    <span>→</span>
+                            <div className="flex items-center gap-3">
+                                <button type="button" onClick={closeModal} className="border border-line text-muted hover:bg-sand px-4 py-2 rounded-xl text-sm font-medium">
+                                    ปิด
                                 </button>
-                            )}
+                                {selected.action_link && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            closeModal()
+                                            navigate(selected.action_link)
+                                        }}
+                                        className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-sm font-medium shadow-xs flex items-center gap-1.5"
+                                    >
+                                        {selected.action_label || 'เปิดดู'}
+                                        <span>→</span>
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {confirmClear && (
+                <ConfirmDialog
+                    title="ล้างการแจ้งเตือนที่อ่านแล้ว"
+                    confirmLabel="ล้างรายการ"
+                    onCancel={() => setConfirmClear(false)}
+                    onConfirm={() => {
+                        clearRead()
+                        setConfirmClear(false)
+                    }}
+                >
+                    ต้องการลบการแจ้งเตือน {readCount} รายการที่อ่านแล้วใช่หรือไม่? การลบไม่สามารถย้อนกลับได้
+                </ConfirmDialog>
             )}
         </div>
     )
