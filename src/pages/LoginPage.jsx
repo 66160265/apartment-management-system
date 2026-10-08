@@ -28,7 +28,12 @@ function LoginPage() {
         });
 
       if (loginError) {
-        setError("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
+        // 400 = ข้อมูลผิด ส่วนอย่างอื่น (เน็ตหลุด/เซิร์ฟเวอร์ล่ม) ไม่ควรบอกว่ารหัสผิด
+        setError(
+          loginError.status === 400
+            ? "ชื่อผู้ใช้/อีเมลหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง"
+            : "เชื่อมต่อระบบไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองอีกครั้ง"
+        );
         return;
       }
 
@@ -47,10 +52,6 @@ function LoginPage() {
           .select("role")
           .eq("id", user.id)
           .single();
-
-      console.log("User:", user);
-      console.log("Profile:", profile);
-      console.log("Profile Error:", profileError);
 
       if (profileError || !profile) {
         setError("ไม่พบข้อมูลสิทธิ์ของผู้ใช้");
@@ -193,8 +194,7 @@ function LoginPage() {
               justifyContent: "center",
             }}
           >
-            <div>อีเมลหรือรหัสผ่านไม่ถูกต้อง</div>
-            <div>กรุณาใส่อีกครั้ง</div>
+            <div role="alert">{error}</div>
           </div>
         )}
 
