@@ -4,8 +4,9 @@ export const RATES = { water: 32, electric: 7, common: 0 }
 // บัญชีรับโอนที่แสดงให้ผู้เช่า ปรับเป็นข้อมูลจริงของหอพัก
 export const BANK = {
     name: 'ธนาคารกสิกรไทย',
-    account: 'xxx-x-xx456-x',
+    account: '098-2-87654-3',
     holder: 'หอพักสุขสันต์',
+    promptpay: '062-895-4321',
 }
 
 export const invoiceStatuses = {

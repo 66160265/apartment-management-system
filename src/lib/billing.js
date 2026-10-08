@@ -1,6 +1,10 @@
 import { supabase } from './supabaseClient'
 
-export const currentMonth = () => new Date().toISOString().slice(0, 7)
+// ใช้เวลาท้องถิ่นของเครื่อง (toISOString เป็น UTC ทำให้ช่วง 00:00-07:00 ของวันที่ 1 ในไทยได้เดือนก่อนหน้า)
+export const currentMonth = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
 
 // 2026-06 -> มิ.ย. 69
 export const formatMonth = (month) =>
