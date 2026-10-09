@@ -4,7 +4,7 @@ import Icon from '../components/Icon'
 import { ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge } from '../components/RepairParts'
 import { repairStatuses, repairStatusKeys } from '../data/repairs'
 import { formatDateTime } from '../lib/billing'
-import { removeRepairImage, uploadRepairImage } from '../lib/repairs'
+import { formatThaiDate, removeRepairImage, uploadRepairImage } from '../lib/repairs'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
 
@@ -24,62 +24,32 @@ async function fetchRepairs(userId) {
 function Progress({ status }) {
     const current = repairStatusKeys.indexOf(status)
     return (
-        <ol className="flex flex-wrap items-center gap-2 text-xs">
-            {repairStatusKeys.map((k, i) => (
-                <li key={k} className="flex items-center gap-2">
-                    <span className={`flex items-center gap-1.5 ${i <= current ? 'text-primary-dark font-medium' : 'text-muted/70'}`}>
-                        <span className={`grid place-items-center w-4 h-4 rounded-full ${i <= current ? 'bg-primary text-white' : 'bg-line'}`}>
-                            {i < current || status === 'done' ? <Icon name="check" className="w-3 h-3" /> : null}
+        <ol className="grid grid-cols-3">
+            {repairStatusKeys.map((k, i) => {
+                const isDone = i < current || status === 'done'
+                const isCurrent = i === current && status !== 'done'
+                const reached = i <= current
+                return (
+                    <li key={k} className="relative flex flex-col items-center gap-1.5">
+                        {i > 0 && <span className={`absolute top-2.5 right-1/2 w-full h-0.5 -translate-y-1/2 ${reached ? 'bg-primary' : 'bg-line'}`} />}
+                        <span
+                            className={`relative z-10 grid place-items-center w-5 h-5 rounded-full ${
+                                isDone
+                                    ? 'bg-primary text-white'
+                                    : isCurrent
+                                      ? 'bg-white border-[5px] border-primary ring-4 ring-primary/15'
+                                      : 'bg-white border-2 border-line'
+                            }`}
+                        >
+                            {isDone && <Icon name="check" className="w-3 h-3" />}
                         </span>
-                        {repairStatuses[k].label}
-                    </span>
-                    {i < repairStatusKeys.length - 1 && <span className={`w-6 h-px ${i < current ? 'bg-primary' : 'bg-line'}`} />}
-                </li>
-            ))}
+                        <span className={`text-xs ${isCurrent ? 'text-primary-dark font-semibold' : reached ? 'text-primary-dark' : 'text-muted/60'}`}>
+                            {repairStatuses[k].label}
+                        </span>
+                    </li>
+                )
+            })}
         </ol>
-    )
-}
-
-function RepairCard({ repair, onEdit, onCancel }) {
-    const canChange = repair.status === 'pending'
-    return (
-        <article className="bg-white rounded-2xl shadow-card border border-line p-5 flex flex-col gap-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                    <h3 className="font-semibold text-ink wrap-break-word">{repair.problem}</h3>
-                    <p className="text-xs text-muted mt-0.5">แจ้งเมื่อ {formatDateTime(repair.created_at)}</p>
-                </div>
-                <RepairStatusBadge status={repair.status} />
-            </div>
-
-            <Progress status={repair.status} />
-
-            {repair.detail && <p className="text-sm text-ink/80 whitespace-pre-line wrap-break-word">{repair.detail}</p>}
-
-            {repair.image_path && <RepairImage path={repair.image_path} className="max-h-48" />}
-
-            {repair.admin_note && (
-                <div className="rounded-xl bg-mist/50 border border-mist px-4 py-3 text-sm">
-                    <div className="text-xs font-medium text-primary-dark mb-0.5">ข้อความจากผู้ดูแล</div>
-                    <p className="whitespace-pre-line wrap-break-word">{repair.admin_note}</p>
-                </div>
-            )}
-
-            {repair.status === 'done' && repair.completed_at && (
-                <p className="text-xs text-emerald-700">ซ่อมเสร็จเมื่อ {formatDateTime(repair.completed_at)}</p>
-            )}
-
-            {canChange && (
-                <div className="flex justify-end gap-2 pt-3 border-t border-line">
-                    <button onClick={() => onCancel(repair)} className="border border-red-300 text-red-600 hover:bg-red-50 px-4 py-1.5 rounded-lg text-sm">
-                        ยกเลิกการแจ้ง
-                    </button>
-                    <button onClick={() => onEdit(repair)} className="bg-mist hover:bg-secondary/40 text-primary-dark px-4 py-1.5 rounded-lg text-sm font-medium">
-                        แก้ไข
-                    </button>
-                </div>
-            )}
-        </article>
     )
 }
 
@@ -207,9 +177,12 @@ function UserRepairsPage() {
         await load()
         setSaving(false)
         setCancelTarget(null)
+        setEditing(null)
     }
 
     const isNew = editing === 'new'
+    // รายการที่ผู้ดูแลรับเรื่องแล้วจะแก้ไขไม่ได้ แสดงเป็นหน้าดูรายละเอียดอย่างเดียว
+    const readOnly = !isNew && editing?.status !== 'pending'
     const existingPath = editing && !isNew && !removeExisting ? editing.image_path : null
     const active = repairs.filter((r) => r.status !== 'done').length
     const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.map((k) => ({ key: k, label: repairStatuses[k].label }))]
@@ -244,8 +217,16 @@ function UserRepairsPage() {
                             <button type="button" onClick={closeForm} disabled={saving} aria-label="กลับ" className="text-muted hover:text-primary-dark">
                                 <Icon name="arrowLeft" />
                             </button>
-                            <h2 className="text-lg font-semibold text-primary-dark">{isNew ? 'แจ้งซ่อมใหม่' : 'แก้ไขเรื่องแจ้งซ่อม'}</h2>
+                            <h2 className="text-lg font-semibold text-primary-dark">{isNew ? 'แจ้งซ่อมใหม่' : readOnly ? 'รายละเอียดการแจ้งซ่อม' : 'แก้ไขเรื่องแจ้งซ่อม'}</h2>
+                            {!isNew && <div className="ml-auto"><RepairStatusBadge status={editing.status} /></div>}
                         </div>
+
+                        {!isNew && (
+                            <div className="rounded-xl bg-sand/60 border border-line px-4 py-4">
+                                <Progress status={editing.status} />
+                                <p className="text-xs text-muted text-center mt-3">แจ้งเมื่อ {formatDateTime(editing.created_at)}</p>
+                            </div>
+                        )}
 
                         <div>
                             <label className="block text-sm text-muted mb-1">ห้อง</label>
@@ -254,17 +235,26 @@ function UserRepairsPage() {
 
                         <div>
                             <label className="block text-sm text-muted mb-1">ปัญหาที่พบ <span className="text-red-500">*</span></label>
-                            <input required maxLength={200} value={form.problem} onChange={set('problem')} disabled={saving} placeholder="เช่น หลอดไฟขาด, ก๊อกน้ำรั่ว" className={inputClass} />
+                            <input required maxLength={200} value={form.problem} onChange={set('problem')} disabled={saving || readOnly} placeholder="เช่น หลอดไฟขาด, ก๊อกน้ำรั่ว" className={inputClass} />
                         </div>
 
                         <div>
                             <label className="block text-sm text-muted mb-1">รายละเอียดเพิ่มเติม</label>
-                            <textarea rows={4} maxLength={2000} value={form.detail} onChange={set('detail')} disabled={saving} placeholder="อธิบายอาการ ตำแหน่ง หรือช่วงเวลาที่สะดวกให้ช่างเข้า" className={inputClass} />
+                            <textarea rows={4} maxLength={2000} value={form.detail} onChange={set('detail')} disabled={saving || readOnly} placeholder="อธิบายอาการ ตำแหน่ง หรือช่วงเวลาที่สะดวกให้ช่างเข้า" className={inputClass} />
                         </div>
 
                         <div>
                             <label className="block text-sm text-muted mb-1">รูปภาพ (ถ้ามี)</label>
-                            <RepairImagePicker
+                            {readOnly ? (
+                                editing.image_path ? (
+                                    <div className="rounded-2xl bg-sand/70 border border-line p-4 flex justify-center">
+                                        <RepairImage path={editing.image_path} className="max-h-72" />
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-muted">ไม่มีรูปภาพ</p>
+                                )
+                            ) : (
+                                <RepairImagePicker
                                 file={file}
                                 existingPath={existingPath}
                                 disabled={saving}
@@ -274,18 +264,45 @@ function UserRepairsPage() {
                                     setRemoveExisting(true)
                                 }}
                             />
+                            )}
                         </div>
+
+                        {!isNew && editing.admin_note && (
+                            <div className="rounded-xl bg-mist/40 border-l-4 border-primary px-4 py-3">
+                                <div className="text-xs font-semibold text-primary-dark mb-0.5">ข้อความจากผู้ดูแล</div>
+                                <p className="text-sm text-ink whitespace-pre-line wrap-break-word">{editing.admin_note}</p>
+                            </div>
+                        )}
+
+                        {!isNew && editing.status === 'done' && editing.completed_at && (
+                            <p className="text-sm font-medium text-emerald-700 flex items-center gap-1.5">
+                                <Icon name="checkCircle" className="w-4 h-4" />
+                                ซ่อมเสร็จเมื่อ {formatDateTime(editing.completed_at)}
+                            </p>
+                        )}
 
                         {formError && <p className="text-sm text-red-600">{formError}</p>}
 
-                        <div className="flex justify-end gap-3 pt-4 border-t border-line">
-                            <button type="button" onClick={closeForm} disabled={saving} className="border border-line text-muted hover:bg-sand rounded-xl px-8 py-2.5 text-sm font-semibold">
-                                ยกเลิก
-                            </button>
-                            <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark text-white rounded-xl px-8 py-2.5 text-sm font-semibold shadow-card flex items-center gap-2">
-                                <Icon name="send" className="w-4 h-4" />
-                                {saving ? 'กำลังส่ง...' : isNew ? 'ส่งเรื่อง' : 'บันทึก'}
-                            </button>
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-line">
+                            {!isNew && !readOnly ? (
+                                <button type="button" onClick={() => setCancelTarget(editing)} disabled={saving} className="flex items-center gap-1.5 text-red-600 hover:bg-red-50 px-3 py-2 rounded-xl text-sm">
+                                    <Icon name="trash" className="w-4 h-4" />
+                                    ยกเลิกการแจ้ง
+                                </button>
+                            ) : (
+                                <span />
+                            )}
+                            <div className="flex gap-3">
+                                <button type="button" onClick={closeForm} disabled={saving} className="border border-line text-muted hover:bg-sand rounded-xl px-8 py-2.5 text-sm font-semibold">
+                                    {readOnly ? 'ปิด' : 'ยกเลิก'}
+                                </button>
+                                {!readOnly && (
+                                    <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark text-white rounded-xl px-8 py-2.5 text-sm font-semibold shadow-card flex items-center gap-2">
+                                        <Icon name="send" className="w-4 h-4" />
+                                        {saving ? 'กำลังส่ง...' : isNew ? 'ส่งเรื่อง' : 'บันทึก'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </form>
                 ) : loading || loadError ? (
@@ -328,10 +345,44 @@ function UserRepairsPage() {
                                 )}
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                                {visible.map((r) => (
-                                    <RepairCard key={r.id} repair={r} onEdit={openEdit} onCancel={setCancelTarget} />
-                                ))}
+                            <div className="bg-white rounded-2xl shadow-card p-5">
+                                <div className="overflow-auto rounded-xl border border-line shadow-sm">
+                                    <table className="w-full min-w-[34rem] border-collapse text-sm">
+                                        <thead>
+                                            <tr className="bg-primary-dark text-white">
+                                                <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center w-12">#</th>
+                                                <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">วันที่แจ้ง</th>
+                                                <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-left">ปัญหา</th>
+                                                <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">สถานะ</th>
+                                                <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">จัดการ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {visible.map((r, index) => (
+                                                <tr
+                                                    key={r.id}
+                                                    onClick={() => openEdit(r)}
+                                                    className={`cursor-pointer border-b border-line transition-colors hover:bg-mist/30 ${r.status === 'pending' ? 'bg-sky-50/50' : index % 2 ? 'bg-sand/40' : 'bg-white'}`}
+                                                >
+                                                    <td className="px-3 py-3 border-x border-line/60 text-center text-xs text-muted tabular-nums">{index + 1}</td>
+                                                    <td className="px-3 py-3 border-x border-line/60 text-center text-muted whitespace-nowrap">{formatThaiDate(r.created_at)}</td>
+                                                    <td className="px-3 py-3 border-x border-line/60 font-medium text-ink">
+                                                        <span className="inline-flex items-center gap-2">
+                                                            {r.problem}
+                                                            {r.image_path && <Icon name="image" className="w-4 h-4 text-secondary" />}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-3 py-3 border-x border-line/60 text-center"><RepairStatusBadge status={r.status} /></td>
+                                                    <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                                        <button onClick={() => openEdit(r)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist whitespace-nowrap">
+                                                            {r.status === 'pending' ? 'แก้ไข' : 'ดูรายละเอียด'}
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         )}
                     </>
