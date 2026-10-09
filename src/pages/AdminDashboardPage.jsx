@@ -181,7 +181,7 @@ function AdminDashboardPage() {
     }, [invoicesForMonth])
 
     return (
-        <div className="p-6 flex flex-col gap-6">
+        <div className="p-4 sm:p-6 flex flex-col gap-6">
             {/* Header: ชื่อหน้า Dashboard + ตัวเลือกเดือน + ปุ่มกระดิ่งแจ้งเตือน + Avatar */}
             <PageHeader flush title="ภาพรวมระบบ" subtitle={`สรุปรายได้ ยอดค้างชำระ และการใช้น้ำ-ไฟ ประจำเดือน ${formatMonth(selectedMonth)}`} actions={
                     <>

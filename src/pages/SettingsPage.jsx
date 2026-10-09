@@ -119,7 +119,7 @@ function SettingsPage() {
             ) : !form ? (
                 <p className="px-6 text-muted">กำลังโหลด...</p>
             ) : (
-                <form onSubmit={handleSubmit} className="px-6 pb-28 flex flex-col gap-6 max-w-5xl">
+                <form onSubmit={handleSubmit} className="px-4 sm:px-6 pb-28 flex flex-col gap-6 max-w-5xl">
                     <Section icon="building" title="ข้อมูลหอพัก" hint="แสดงที่หัวใบแจ้งหนี้ (PDF)">
                         <div className="grid gap-4 sm:grid-cols-2">
                             <Field label="ชื่อหอพัก">

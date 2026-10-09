@@ -135,7 +135,7 @@ function AccountPage() {
             {!info ? (
                 <p className="px-6 text-muted">กำลังโหลด...</p>
             ) : (
-                <div className="px-6 pb-10 flex flex-col gap-6">
+                <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6">
                     <div className="bg-white rounded-2xl shadow-card p-5 flex flex-wrap items-center gap-4">
                         <Avatar name={t?.name || 'A'} className="w-16 h-16 text-2xl" />
                         <div className="flex-1 min-w-48">

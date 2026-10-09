@@ -21,10 +21,13 @@ const summaryCards = [
     { value: 'maintenance', label: 'ปรับปรุง', icon: 'wrench', tone: 'bg-amber-50 text-amber-700' },
 ]
 
-function RoomModal({ title, initial, onSave, onCancel }) {
+// onDelete มีเฉพาะตอนแก้ไขห้องเดิม tenantName = ชื่อผู้เช่าของห้องนี้ (ถ้ามี ลบไม่ได้)
+function RoomModal({ title, initial, tenantName, onSave, onDelete, onCancel }) {
     const [form, setForm] = useState(initial)
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
+    const [confirming, setConfirming] = useState(false)
+    const [deleting, setDeleting] = useState(false)
 
     const set = (key) => (e) => {
         setForm({ ...form, [key]: e.target.value })
@@ -48,9 +51,19 @@ function RoomModal({ title, initial, onSave, onCancel }) {
         if (err) setError(err)
     }
 
+    const handleDelete = async () => {
+        setDeleting(true)
+        const err = await onDelete(initial)
+        setDeleting(false)
+        if (err) {
+            setConfirming(false)
+            setError(err)
+        }
+    }
+
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-xl w-[440px] max-w-full flex flex-col gap-4">
+            <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-xl w-[440px] max-w-full max-h-[92vh] overflow-y-auto flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-primary-dark">{title}</h2>
                 <div className="grid grid-cols-2 gap-4">
                     <label className="text-sm text-muted">
@@ -79,12 +92,44 @@ function RoomModal({ title, initial, onSave, onCancel }) {
                     <textarea rows="3" className={inputClass} value={form.note} onChange={set('note')} />
                 </label>
                 {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
-                <div className="flex justify-end gap-2">
-                    <button type="button" onClick={onCancel} className="border border-line text-muted hover:bg-sand px-5 py-2 rounded-xl">ยกเลิก</button>
-                    <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark disabled:opacity-60 text-white px-6 py-2 rounded-xl shadow-card">
-                        {saving ? 'กำลังบันทึก...' : 'บันทึก'}
-                    </button>
-                </div>
+                {confirming ? (
+                    <div className="rounded-xl bg-red-50 ring-1 ring-red-200 p-4 flex flex-col gap-3">
+                        <p className="text-sm text-red-900">
+                            ลบห้อง <b>{initial.number}</b> ออกจากระบบถาวร การลบไม่สามารถกู้คืนได้
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <button type="button" onClick={() => setConfirming(false)} disabled={deleting} className="border border-line bg-white text-muted hover:bg-sand px-4 py-1.5 rounded-xl">ยกเลิก</button>
+                            <button type="button" onClick={handleDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-xl">
+                                {deleting ? 'กำลังลบ...' : 'ยืนยันลบห้อง'}
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex items-center justify-between gap-2">
+                        {onDelete ? (
+                            <button
+                                type="button"
+                                onClick={() => setConfirming(true)}
+                                disabled={!!tenantName}
+                                title={tenantName ? `ห้องนี้มีผู้เช่า (${tenantName}) ต้องลบผู้เช่าออกก่อน` : undefined}
+                                className="border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent px-4 py-2 rounded-xl"
+                            >
+                                ลบห้อง
+                            </button>
+                        ) : (
+                            <span />
+                        )}
+                        <div className="flex gap-2">
+                            <button type="button" onClick={onCancel} className="border border-line text-muted hover:bg-sand px-5 py-2 rounded-xl">ยกเลิก</button>
+                            <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark disabled:opacity-60 text-white px-6 py-2 rounded-xl shadow-card">
+                                {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+                {onDelete && tenantName && !confirming && (
+                    <p className="text-xs text-muted -mt-2">ห้องนี้มีผู้เช่า ({tenantName}) จึงลบห้องไม่ได้ ต้องลบผู้เช่าออกก่อน</p>
+                )}
             </form>
         </div>
     )
@@ -130,6 +175,21 @@ function RoomsPage() {
     const visible = rooms.filter((r) => filter === 'all' || r.status === filter)
     const floors = [...new Set(visible.map((r) => r.floor))].sort((a, b) => a - b)
 
+    // ลบห้อง: ห้องที่มีผู้เช่า หรือมีประวัติใบแจ้งหนี้/แจ้งซ่อม ลบไม่ได้ (ข้อมูลอ้างอิงห้องนี้อยู่)
+    const handleDelete = async (room) => {
+        if (tenantNames[room.number]) return 'ห้องนี้มีผู้เช่าอยู่ ต้องลบผู้เช่าออกก่อน'
+        const { data, error } = await supabase.from('rooms').delete().eq('number', room.number).select('number')
+        if (error) {
+            return error.code === '23503'
+                ? 'ลบไม่ได้ เพราะห้องนี้มีประวัติใบแจ้งหนี้หรือแจ้งซ่อมอยู่ หากไม่ต้องการใช้ห้องนี้แล้ว ให้เปลี่ยนสถานะเป็น "ปรับปรุง" แทน'
+                : `ลบไม่สำเร็จ: ${error.message}`
+        }
+        if (!data?.length) return 'ลบไม่สำเร็จ ไม่พบห้องนี้หรือไม่มีสิทธิ์ลบ'
+        await load()
+        setModal(null)
+        return null
+    }
+
     const handleSave = async (data) => {
         const editing = modal !== 'new' ? modal.number : null
         if (rooms.some((r) => r.number === data.number && r.number !== editing)) {
@@ -164,7 +224,7 @@ function RoomsPage() {
                 }
             />
 
-            <div className="px-6 pb-10 flex flex-col gap-6">
+            <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {summaryCards.map((c) => {
                         const active = filter === c.value
@@ -236,7 +296,9 @@ function RoomsPage() {
                     key={modal === 'new' ? 'new' : modal.number}
                     title={modal === 'new' ? 'เพิ่มห้องใหม่' : `แก้ไขห้อง ${modal.number}`}
                     initial={modal === 'new' ? emptyForm : modal}
+                    tenantName={modal === 'new' ? undefined : tenantNames[modal.number]}
                     onSave={handleSave}
+                    onDelete={modal === 'new' ? undefined : handleDelete}
                     onCancel={() => setModal(null)}
                 />
             )}

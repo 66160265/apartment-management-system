@@ -13,6 +13,18 @@ function Layout() {
         setMenuOpen(false)
     }, [pathname])
 
+    // ตอนเมนูเปิด ไม่ให้หน้าด้านหลังเลื่อน และกด Esc เพื่อปิดได้
+    useEffect(() => {
+        if (!menuOpen) return
+        const onKey = (e) => e.key === 'Escape' && setMenuOpen(false)
+        document.body.style.overflow = 'hidden'
+        window.addEventListener('keydown', onKey)
+        return () => {
+            document.body.style.overflow = ''
+            window.removeEventListener('keydown', onKey)
+        }
+    }, [menuOpen])
+
     return (
         <div className="flex min-h-screen bg-sand">
             <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />

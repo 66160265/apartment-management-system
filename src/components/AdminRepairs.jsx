@@ -195,7 +195,7 @@ function AdminRepairs({ adminId }) {
     const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.map((k) => ({ key: k, label: repairStatuses[k].label }))]
 
     return (
-        <div className="p-6 flex flex-col gap-5">
+        <div className="p-4 sm:p-6 flex flex-col gap-5">
             <PageHeader flush title="ระบบแจ้งซ่อม" subtitle="จัดการเรื่องที่ผู้เช่าแจ้งซ่อม อัปเดตสถานะ และส่งข้อความถึงผู้เช่า" actions={
                     <>
                         {!editing && (
@@ -341,8 +341,8 @@ function AdminRepairs({ adminId }) {
                         {loading || loadError ? (
                             <p className={`text-center py-12 ${loadError ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : loadError}</p>
                         ) : (
-                            <div className="overflow-auto max-h-[36rem] rounded-xl border border-line shadow-sm">
-                                <table className="w-full min-w-[44rem] border-collapse text-sm">
+                            <div className="xl:overflow-auto xl:max-h-[36rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
+                                <table className="hidden xl:table w-full min-w-[44rem] border-collapse text-sm">
                                     <thead className="sticky top-0 z-10">
                                         <tr className="bg-primary-dark text-white">
                                             <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center w-12">#</th>
@@ -381,6 +381,26 @@ function AdminRepairs({ adminId }) {
                                         ))}
                                     </tbody>
                                 </table>
+                                <div className="xl:hidden grid gap-3 md:grid-cols-2">
+                                    {visible.map((r) => (
+                                        <div
+                                            key={r.id}
+                                            className={`rounded-2xl border border-line p-4 flex flex-col gap-3 ${r.status === 'pending' ? 'bg-sky-50/60' : 'bg-white'}`}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <span className="inline-block min-w-12 px-2.5 py-1 rounded-lg bg-mist/60 text-primary-dark font-semibold text-center">{r.room}</span>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="font-medium text-ink">{r.problem}</div>
+                                                    <div className="text-xs text-muted">
+                                                        {r.tenant_name || '-'} · {formatThaiDate(r.created_at)}
+                                                    </div>
+                                                </div>
+                                                <RepairStatusBadge status={r.status} />
+                                            </div>
+                                            <button onClick={() => openEdit(r)} className="py-2 rounded-xl text-sm bg-mist/60 text-primary-dark hover:bg-mist">จัดการเรื่องนี้</button>
+                                        </div>
+                                    ))}
+                                </div>
                                 {visible.length === 0 && (
                                     <div className="py-12 text-center text-muted">
                                         <span className="mx-auto mb-3 grid place-items-center w-12 h-12 rounded-full bg-sand text-muted"><Icon name="wrench" className="w-6 h-6" /></span>

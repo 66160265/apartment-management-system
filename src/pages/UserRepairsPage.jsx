@@ -202,7 +202,7 @@ function UserRepairsPage() {
                     </>
                 } />
 
-            <div className="px-6 pb-8 flex flex-col gap-5">
+            <div className="px-4 sm:px-6 pb-8 flex flex-col gap-5">
                 {notice && (
                     <div role="status" className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 text-sm px-4 py-3">
                         {notice}

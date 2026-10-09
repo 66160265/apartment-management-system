@@ -60,7 +60,7 @@ function NotificationsPage() {
     }
 
     return (
-        <div className="p-6 flex flex-col gap-5">
+        <div className="p-4 sm:p-6 flex flex-col gap-5">
             <PageHeader flush title="แจ้งเตือน" subtitle="ติดตามความเคลื่อนไหวของใบแจ้งหนี้และงานแจ้งซ่อม" />
 
             <div className="bg-white rounded-2xl shadow-card p-5">
