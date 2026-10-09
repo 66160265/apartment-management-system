@@ -478,7 +478,7 @@ function AdminInvoices() {
         <>
             <PageHeader title="ใบแจ้งหนี้ & ชำระเงิน" subtitle="บันทึกมิเตอร์ สร้างใบแจ้งหนี้ และตรวจสอบสลิปการโอนเงินของผู้เช่า" />
 
-            <div className="px-6 pb-8 flex flex-col gap-6">
+            <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {summaryCards.map((c) => {
                         const active = filter === c.value
@@ -629,8 +629,8 @@ function AdminInvoices() {
                             )
                         })}
                     </div>
-                    <div className="overflow-auto max-h-[32rem] rounded-xl border border-line shadow-sm">
-                        <table className="w-full min-w-[60rem] border-collapse text-sm">
+                    <div className="xl:overflow-auto xl:max-h-[32rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
+                        <table className="hidden xl:table w-full min-w-[60rem] border-collapse text-sm">
                             <thead className="sticky top-0 z-10">
                                 <tr className="bg-primary-dark text-white">
                                     <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center w-12">#</th>
@@ -699,6 +699,48 @@ function AdminInvoices() {
                                 </tfoot>
                             )}
                         </table>
+                        {visible.length > 0 && (
+                            <div className="xl:hidden flex items-center justify-between rounded-xl bg-mist/50 px-4 py-2.5 mb-3 text-sm font-semibold text-primary-dark">
+                                <span>รวม {visible.length} รายการ</span>
+                                <span className="tabular-nums">{baht(totals.total)}</span>
+                            </div>
+                        )}
+                        <div className="xl:hidden grid gap-3 md:grid-cols-2">
+                            {visible.map((i) => {
+                                const c = rowCalc(i)
+                                return (
+                                    <div
+                                        key={i.id}
+                                        className={`rounded-2xl border border-line p-4 flex flex-col gap-3 ${i.status === 'review' ? 'bg-sky-50/60' : 'bg-white'}`}
+                                    >
+                                        <button type="button" onClick={() => setSelectedId(i.id)} className="text-left flex items-start gap-3">
+                                            <span className="inline-block min-w-12 px-2.5 py-1 rounded-lg bg-mist/60 text-primary-dark font-semibold text-center">{i.room}</span>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="font-medium text-ink truncate">{i.tenant_name}</div>
+                                                <div className="text-xs text-muted">{formatMonth(i.month)}</div>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1.5">
+                                                <div className="font-semibold text-primary-dark tabular-nums">{baht(i.total)}</div>
+                                                <StatusBadge status={i.status} />
+                                            </div>
+                                        </button>
+                                        <div className="text-xs text-muted tabular-nums">
+                                            ค่าเช่า {baht(i.rent)} · น้ำ {baht(c.water)} · ไฟ {baht(c.elec)}{Number(i.common_fee) > 0 ? ` · ส่วนกลาง ${baht(i.common_fee)}` : ''}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setSelectedId(i.id)}
+                                                className={`flex-1 py-2 rounded-xl text-sm ${i.status === 'review' ? 'bg-primary text-white hover:bg-primary-dark' : 'bg-mist/60 text-primary-dark hover:bg-mist'}`}
+                                            >
+                                                {i.status === 'review' ? 'ตรวจสอบสลิป' : 'รายละเอียด'}
+                                            </button>
+                                            <button onClick={() => startEdit(i)} className="px-4 py-2 rounded-xl text-sm border border-line text-primary-dark hover:bg-mist/40">แก้ไข</button>
+                                            <button onClick={() => setDeleting(i)} className="px-4 py-2 rounded-xl text-sm border border-red-200 text-red-600 hover:bg-red-50">ลบ</button>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
                         {(loading || loadError || visible.length === 0) && (
                             <div className={`py-10 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
                                 {loading ? (

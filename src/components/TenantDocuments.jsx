@@ -103,7 +103,7 @@ function DocumentModal({ doc, room, onSaved, onCancel }) {
 
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-xl w-[440px] max-w-[92vw] flex flex-col gap-4">
+            <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-xl w-[440px] max-w-[92vw] max-h-[92vh] overflow-y-auto flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-primary-dark">
                     {isEdit ? 'แก้ไขเอกสาร' : 'เพิ่มเอกสาร'}{!isOther && ` · ${doc.title}`}
                 </h2>

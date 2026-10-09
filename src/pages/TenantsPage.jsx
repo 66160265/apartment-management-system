@@ -281,7 +281,7 @@ function TenantsPage() {
                     </>
                 } />
 
-            <div className="px-6 pb-8 flex flex-col gap-6">
+            <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {summary.map((c) => {
                         const body = (
@@ -351,8 +351,8 @@ function TenantsPage() {
                         })}
                     </div>
 
-                    <div className="overflow-auto max-h-[34rem] rounded-xl border border-line shadow-sm">
-                        <table className="w-full min-w-[56rem] border-collapse text-sm">
+                    <div className="xl:overflow-auto xl:max-h-[34rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
+                        <table className="hidden xl:table w-full min-w-[56rem] border-collapse text-sm">
                             <thead className="sticky top-0 z-10">
                                 <tr className="bg-primary-dark text-white">
                                     <th className={`${head} text-center w-12`}>#</th>
@@ -406,6 +406,47 @@ function TenantsPage() {
                                 })}
                             </tbody>
                         </table>
+                        <div className="xl:hidden grid gap-3 md:grid-cols-2">
+                            {visible.map((t) => {
+                                const docs = docCounts[t.room] ?? 0
+                                const complete = docs >= REQUIRED_DOCS.length
+                                return (
+                                    <button
+                                        key={t.room}
+                                        type="button"
+                                        onClick={() => setModal(t)}
+                                        className="text-left rounded-2xl border border-line bg-white p-4 flex flex-col gap-3 hover:border-secondary transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <Avatar name={t.name} />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="font-medium text-ink truncate">{t.name}</div>
+                                                {t.username && <div className="text-xs text-muted">@{t.username.toLowerCase()}</div>}
+                                            </div>
+                                            <span className="inline-block min-w-12 px-2.5 py-1 rounded-lg bg-mist/60 text-primary-dark font-semibold text-center">{t.room}</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                            <div>
+                                                <div className="text-xs text-muted">เบอร์โทร</div>
+                                                <div className="tabular-nums">{t.phone}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xs text-muted">ระยะสัญญา</div>
+                                                <div>{formatDate(t.startDate)} – {formatDate(t.endDate)}</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <ContractBadge endDate={t.endDate} showHint />
+                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                                                complete ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200' : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
+                                            }`}>
+                                                เอกสาร {complete ? 'ครบ' : `${docs}/${REQUIRED_DOCS.length}`}
+                                            </span>
+                                        </div>
+                                    </button>
+                                )
+                            })}
+                        </div>
                         {(loading || loadError || visible.length === 0) && (
                             <div className={`py-12 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
                                 {loading ? (

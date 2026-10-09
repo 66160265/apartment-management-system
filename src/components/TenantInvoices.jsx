@@ -127,7 +127,7 @@ function BankCard() {
 
 function InvoiceDetail({ invoice, userId, onBack, onChanged }) {
     return (
-        <div className="px-6 pb-8 flex flex-col gap-4">
+        <div className="px-4 sm:px-6 pb-8 flex flex-col gap-4">
             <button onClick={onBack} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm"><Icon name="arrowLeft" className="w-4 h-4" />กลับไปรายการใบแจ้งหนี้</button>
 
             <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-5">
@@ -238,7 +238,7 @@ function TenantInvoices({ userId }) {
             {selected ? (
                 <InvoiceDetail key={selected.id} invoice={selected} userId={userId} onBack={() => setSelectedId(null)} onChanged={load} />
             ) : (
-                <div className="px-6 pb-8 flex flex-col gap-6">
+                <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
                     {loading || loadError ? (
                         <p className={`text-center py-10 ${loadError ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : loadError}</p>
                     ) : (

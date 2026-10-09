@@ -273,7 +273,7 @@ function UserDashboardPage() {
 
     if (loading && !tenantInfo) {
         return (
-            <div className="p-6 flex flex-col gap-6">
+            <div className="p-4 sm:p-6 flex flex-col gap-6">
                 <div className="flex justify-between items-center animate-pulse">
                     <div className="h-8 bg-gray-200 rounded-lg w-48" />
                     <div className="w-10 h-10 bg-gray-200 rounded-full" />
@@ -289,7 +289,7 @@ function UserDashboardPage() {
 
     if (!tenantInfo) {
         return (
-            <div className="p-6 flex flex-col gap-6">
+            <div className="p-4 sm:p-6 flex flex-col gap-6">
                 <PageHeader flush title="ภาพรวม" subtitle="ยินดีต้อนรับเข้าสู่ระบบจัดการห้องพัก" />
                 <div className="bg-white rounded-2xl p-12 text-center shadow-card border border-line flex flex-col items-center gap-3">
                     <span className="w-16 h-16 rounded-full bg-sand flex items-center justify-center text-muted">
@@ -305,7 +305,7 @@ function UserDashboardPage() {
     }
 
     return (
-        <div className="p-6 flex flex-col gap-6">
+        <div className="p-4 sm:p-6 flex flex-col gap-6">
             {/* Error Message ถ้ามี */}
             {loadError && (
                 <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex justify-between items-center">

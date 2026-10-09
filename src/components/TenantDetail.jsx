@@ -114,7 +114,7 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
         <>
             <PageHeader title="รายละเอียดผู้เช่า" subtitle="ตรวจสอบและแก้ไขข้อมูลผู้เช่า พร้อมจัดการเอกสาร" />
 
-            <div className="px-6 pb-28 flex flex-col gap-4">
+            <div className="px-4 sm:px-6 pb-28 flex flex-col gap-4">
                 <button onClick={onBack} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm">
                     <Icon name="arrowLeft" className="w-4 h-4" />
                     กลับไปรายชื่อผู้เช่า
@@ -136,13 +136,13 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
                             )}
                         </div>
                     </div>
-                    <dl className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                         {facts.map((f) => (
                             <div key={f.label} className="flex items-center gap-3 rounded-xl bg-sand/60 px-4 py-3">
                                 <span className="grid place-items-center w-9 h-9 rounded-lg bg-white text-primary shrink-0"><Icon name={f.icon} className="w-[18px] h-[18px]" /></span>
                                 <div className="min-w-0">
                                     <dt className="text-xs text-muted">{f.label}</dt>
-                                    <dd className="text-sm font-medium text-ink truncate">{f.value}</dd>
+                                    <dd className="text-sm font-medium text-ink break-words">{f.value}</dd>
                                 </div>
                             </div>
                         ))}

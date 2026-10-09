@@ -87,3 +87,16 @@ input[type="number"],
 textarea {
   cursor: text;
 }
+
+/* จอโทรศัพท์: ช่องกรอกต้องมีตัวอักษรอย่างน้อย 16px ไม่งั้น iOS จะซูมหน้าเองตอนแตะ */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
