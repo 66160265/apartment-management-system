@@ -66,6 +66,15 @@ npx supabase functions deploy admin-users
 
 5. เข้าสู่ระบบด้วยแอดมินแล้วไปที่เมนู **ตั้งค่า** กรอกข้อมูลหอพัก บัญชีธนาคาร **รหัสพร้อมเพย์จริง** (เบอร์มือถือ 10 หลัก หรือเลขบัตร 13 หลัก) วันครบกำหนด และอัตราค่าน้ำ-ไฟ แล้วลองสแกน QR ทดสอบด้วยแอปธนาคารว่าชื่อบัญชีปลายทางถูกต้อง
 
+## Deploy บน Vercel
+
+1. นำ repo เข้า Vercel (Add New → Project → Import) ระบบตรวจจับ Vite ให้เอง (Build: `npm run build`, Output: `dist`)
+2. เพิ่ม Environment Variables: `VITE_SUPABASE_URL` และ `VITE_SUPABASE_PUBLISHABLE_KEY` (ถ้าเปลี่ยนโดเมนอีเมลภายใน ให้เพิ่ม `VITE_USERNAME_EMAIL_DOMAIN` ด้วย) แล้วกด Deploy — ห้ามใส่ service role key
+3. ที่ Supabase → Authentication → URL Configuration ตั้ง Site URL และ Redirect URLs เป็นลิงก์ของ Vercel
+4. ไฟล์ `vercel.json` ตั้งให้ทุกเส้นทางส่งกลับ `index.html` เพื่อให้รีเฟรชหน้าอย่าง `/rooms` ได้ ไม่ขึ้น 404
+
+ค่า env ฝังตอน build ถ้าแก้ค่าบน Vercel ต้องกด Redeploy
+
 ## โครงสร้างโปรเจกต์
 
 ```
