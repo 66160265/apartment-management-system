@@ -212,8 +212,8 @@ function UserRepairsPage() {
                 {!room ? (
                     <p className="text-center py-10 text-muted">บัญชีนี้ยังไม่ได้ผูกกับห้องพัก จึงยังไม่สามารถแจ้งซ่อมได้ กรุณาติดต่อผู้ดูแล</p>
                 ) : editing ? (
-                    <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-card p-6 md:p-8 max-w-2xl w-full mx-auto border border-line flex flex-col gap-5">
-                        <div className="flex items-center gap-3">
+                    <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-card p-5 sm:p-6 md:p-8 max-w-2xl w-full mx-auto border border-line flex flex-col gap-5">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                             <button type="button" onClick={closeForm} disabled={saving} aria-label="กลับ" className="text-muted hover:text-primary-dark">
                                 <Icon name="arrowLeft" />
                             </button>
@@ -283,21 +283,21 @@ function UserRepairsPage() {
 
                         {formError && <p className="text-sm text-red-600">{formError}</p>}
 
-                        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-line">
+                        <div className="flex flex-col-reverse sm:flex-row justify-between items-center gap-4 pt-4 border-t border-line">
                             {!isNew && !readOnly ? (
-                                <button type="button" onClick={() => setCancelTarget(editing)} disabled={saving} className="flex items-center gap-1.5 text-red-600 hover:bg-red-50 px-3 py-2 rounded-xl text-sm">
+                                <button type="button" onClick={() => setCancelTarget(editing)} disabled={saving} className="flex items-center justify-center gap-1.5 border border-red-500 text-red-600 hover:bg-red-50 px-6 py-2.5 rounded-xl text-sm font-semibold w-full sm:w-auto">
                                     <Icon name="trash" className="w-4 h-4" />
                                     ยกเลิกการแจ้ง
                                 </button>
                             ) : (
                                 <span />
                             )}
-                            <div className="flex gap-3">
-                                <button type="button" onClick={closeForm} disabled={saving} className="border border-line text-muted hover:bg-sand rounded-xl px-8 py-2.5 text-sm font-semibold">
+                            <div className="flex gap-3 w-full sm:w-auto justify-end">
+                                <button type="button" onClick={closeForm} disabled={saving} className="border border-line text-muted hover:bg-sand rounded-xl px-8 py-2.5 text-sm font-semibold flex-1 sm:flex-initial">
                                     {readOnly ? 'ปิด' : 'ยกเลิก'}
                                 </button>
                                 {!readOnly && (
-                                    <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark text-white rounded-xl px-8 py-2.5 text-sm font-semibold shadow-card flex items-center gap-2">
+                                    <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark text-white rounded-xl px-8 py-2.5 text-sm font-semibold shadow-card flex items-center justify-center gap-2 flex-1 sm:flex-initial">
                                         <Icon name="send" className="w-4 h-4" />
                                         {saving ? 'กำลังส่ง...' : isNew ? 'ส่งเรื่อง' : 'บันทึก'}
                                     </button>
@@ -309,28 +309,34 @@ function UserRepairsPage() {
                     <p className={`text-center py-10 ${loadError ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : loadError}</p>
                 ) : (
                     <>
-                        <div className="rounded-2xl bg-linear-to-br from-primary-dark to-primary text-white p-6 shadow-card flex flex-wrap items-center justify-between gap-4">
+                        <div className="rounded-2xl bg-linear-to-br from-primary-dark to-primary text-white p-5 sm:p-6 shadow-card flex items-center justify-between gap-4">
                             <div>
                                 <div className="text-sm text-white/75">ห้อง {room}</div>
-                                <div className="text-3xl font-semibold mt-1">
+                                <div className="text-2xl sm:text-3xl font-semibold mt-1">
                                     {active > 0 ? `${active} รายการที่ยังไม่เสร็จ` : 'ไม่มีรายการค้างซ่อม'}
                                 </div>
                             </div>
-                            <Icon name="wrench" className="w-12 h-12 text-white/30" />
+                            <Icon name="wrench" className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 text-white/30" />
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                            {tabs.map((t) => (
-                                <button
-                                    key={t.key}
-                                    onClick={() => setActiveTab(t.key)}
-                                    className={`px-4 py-1.5 rounded-full text-sm font-medium border ${
-                                        activeTab === t.key ? 'bg-primary text-white border-primary' : 'bg-white text-muted border-line hover:bg-sand'
-                                    }`}
-                                >
-                                    {t.label} ({countOf(t.key)})
-                                </button>
-                            ))}
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            {tabs.map((t) => {
+                                const isActive = activeTab === t.key
+                                return (
+                                    <button
+                                        key={t.key}
+                                        onClick={() => setActiveTab(t.key)}
+                                        aria-pressed={isActive}
+                                        className={`text-left rounded-2xl p-4 bg-white shadow-card border-2 transition ${isActive ? 'border-primary' : 'border-transparent hover:border-mist'}`}
+                                    >
+                                        <div className="text-sm text-muted">{t.label}</div>
+                                        <div className="mt-1 flex items-baseline gap-2">
+                                            <span className="text-2xl font-semibold text-primary-dark">{countOf(t.key)}</span>
+                                            <span className="text-xs text-muted">รายการ</span>
+                                        </div>
+                                    </button>
+                                )
+                            })}
                         </div>
 
                         {visible.length === 0 ? (
@@ -345,10 +351,10 @@ function UserRepairsPage() {
                                 )}
                             </div>
                         ) : (
-                            <div className="bg-white rounded-2xl shadow-card p-5">
-                                <div className="overflow-auto rounded-xl border border-line shadow-sm">
-                                    <table className="w-full min-w-[34rem] border-collapse text-sm">
-                                        <thead>
+                            <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
+                                <div className="xl:overflow-auto xl:max-h-[36rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
+                                    <table className="hidden xl:table w-full min-w-[34rem] border-collapse text-sm">
+                                        <thead className="sticky top-0 z-10">
                                             <tr className="bg-primary-dark text-white">
                                                 <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center w-12">#</th>
                                                 <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">วันที่แจ้ง</th>
@@ -382,6 +388,28 @@ function UserRepairsPage() {
                                             ))}
                                         </tbody>
                                     </table>
+                                    <div className="xl:hidden grid gap-3 md:grid-cols-2">
+                                        {visible.map((r) => (
+                                            <div
+                                                key={r.id}
+                                                className={`rounded-2xl border border-line p-4 flex flex-col gap-3 ${r.status === 'pending' ? 'bg-sky-50/60' : 'bg-white'}`}
+                                            >
+                                                <div className="flex items-start gap-3">
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="font-medium text-ink wrap-break-word">
+                                                            {r.problem}
+                                                            {r.image_path && <Icon name="image" className="inline-block ml-2 -mt-0.5 w-4 h-4 text-secondary" />}
+                                                        </div>
+                                                        <div className="text-xs text-muted mt-0.5">แจ้งเมื่อ {formatThaiDate(r.created_at)}</div>
+                                                    </div>
+                                                    <RepairStatusBadge status={r.status} />
+                                                </div>
+                                                <button onClick={() => openEdit(r)} className="py-2 rounded-xl text-sm bg-mist/60 text-primary-dark hover:bg-mist">
+                                                    {r.status === 'pending' ? 'แก้ไขเรื่องนี้' : 'ดูรายละเอียด'}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         )}
