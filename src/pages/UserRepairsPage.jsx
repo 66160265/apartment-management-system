@@ -62,6 +62,7 @@ function UserRepairsPage() {
     const { repairs, loading, loadError } = data
     const [activeTab, setActiveTab] = useState('all')
     const [notice, setNotice] = useState('')
+    const [search, setSearch] = useState('')
 
     // editing: null = หน้ารายการ, 'new' = แจ้งซ่อมใหม่, ออบเจ็กต์ = แก้ไขรายการนั้น
     const [editing, setEditing] = useState(null)
@@ -187,7 +188,12 @@ function UserRepairsPage() {
     const active = repairs.filter((r) => r.status !== 'done').length
     const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.map((k) => ({ key: k, label: repairStatuses[k].label }))]
     const countOf = (key) => (key === 'all' ? repairs.length : repairs.filter((r) => r.status === key).length)
-    const visible = activeTab === 'all' ? repairs : repairs.filter((r) => r.status === activeTab)
+    // กรองตามแท็บสถานะ และค้นหาจากชื่อปัญหาเท่านั้น
+    const q = search.trim().toLowerCase()
+    const visible = repairs.filter((r) => {
+        if (activeTab !== 'all' && r.status !== activeTab) return false
+        return !q || r.problem?.toLowerCase().includes(q)
+    })
 
     return (
         <>
@@ -339,78 +345,94 @@ function UserRepairsPage() {
                             })}
                         </div>
 
-                        {visible.length === 0 ? (
+                        {repairs.length === 0 ? (
                             <div className="bg-white rounded-2xl border border-line shadow-card text-center py-12 text-muted">
-                                {repairs.length === 0 ? (
-                                    <>
-                                        <p>ยังไม่เคยแจ้งซ่อม</p>
-                                        <button onClick={openNew} className="mt-3 text-primary hover:underline font-medium">แจ้งซ่อมรายการแรก</button>
-                                    </>
-                                ) : (
-                                    <p>ไม่มีรายการในสถานะนี้</p>
-                                )}
+                                <p>ยังไม่เคยแจ้งซ่อม</p>
+                                <button onClick={openNew} className="mt-3 text-primary hover:underline font-medium">แจ้งซ่อมรายการแรก</button>
                             </div>
                         ) : (
                             <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
-                                <div className="xl:overflow-auto xl:max-h-[36rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
-                                    <table className="hidden xl:table w-full min-w-[34rem] border-collapse text-sm">
-                                        <thead className="sticky top-0 z-10">
-                                            <tr className="bg-primary-dark text-white">
-                                                <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center w-12">#</th>
-                                                <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">วันที่แจ้ง</th>
-                                                <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-left">ปัญหา</th>
-                                                <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">สถานะ</th>
-                                                <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">จัดการ</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {visible.map((r, index) => (
-                                                <tr
-                                                    key={r.id}
-                                                    onClick={() => openEdit(r)}
-                                                    className={`cursor-pointer border-b border-line transition-colors hover:bg-mist/30 ${r.status === 'pending' ? 'bg-sky-50/50' : index % 2 ? 'bg-sand/40' : 'bg-white'}`}
-                                                >
-                                                    <td className="px-3 py-3 border-x border-line/60 text-center text-xs text-muted tabular-nums">{index + 1}</td>
-                                                    <td className="px-3 py-3 border-x border-line/60 text-center text-muted whitespace-nowrap">{formatThaiDate(r.created_at)}</td>
-                                                    <td className="px-3 py-3 border-x border-line/60 font-medium text-ink">
-                                                        <span className="inline-flex items-center gap-2">
-                                                            {r.problem}
-                                                            {r.image_path && <Icon name="image" className="w-4 h-4 text-secondary" />}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-3 py-3 border-x border-line/60 text-center"><RepairStatusBadge status={r.status} /></td>
-                                                    <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                                                        <button onClick={() => openEdit(r)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist whitespace-nowrap">
-                                                            {r.status === 'pending' ? 'แก้ไข' : 'ดูรายละเอียด'}
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                    <div className="xl:hidden grid gap-3 md:grid-cols-2">
-                                        {visible.map((r) => (
-                                            <div
-                                                key={r.id}
-                                                className={`rounded-2xl border border-line p-4 flex flex-col gap-3 ${r.status === 'pending' ? 'bg-sky-50/60' : 'bg-white'}`}
-                                            >
-                                                <div className="flex items-start gap-3">
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="font-medium text-ink wrap-break-word">
-                                                            {r.problem}
-                                                            {r.image_path && <Icon name="image" className="inline-block ml-2 -mt-0.5 w-4 h-4 text-secondary" />}
-                                                        </div>
-                                                        <div className="text-xs text-muted mt-0.5">แจ้งเมื่อ {formatThaiDate(r.created_at)}</div>
-                                                    </div>
-                                                    <RepairStatusBadge status={r.status} />
-                                                </div>
-                                                <button onClick={() => openEdit(r)} className="py-2 rounded-xl text-sm bg-mist/60 text-primary-dark hover:bg-mist">
-                                                    {r.status === 'pending' ? 'แก้ไขเรื่องนี้' : 'ดูรายละเอียด'}
-                                                </button>
-                                            </div>
-                                        ))}
+                                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                                    <h2 className="font-medium text-primary-dark">
+                                        รายการแจ้งซ่อม
+                                        <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
+                                    </h2>
+                                    <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:bg-white">
+                                        <Icon name="search" className="w-4 h-4 text-muted" />
+                                        <input
+                                            type="search"
+                                            value={search}
+                                            onChange={(e) => setSearch(e.target.value)}
+                                            placeholder="ค้นหาปัญหา"
+                                            aria-label="ค้นหาปัญหา"
+                                            className="outline-none w-full bg-transparent text-sm"
+                                        />
                                     </div>
                                 </div>
+
+                                {visible.length === 0 ? (
+                                    <p className="text-center py-12 text-muted">{search.trim() ? 'ไม่พบปัญหาที่ค้นหา' : 'ไม่มีรายการในสถานะนี้'}</p>
+                                ) : (
+                                    <div className="xl:overflow-auto xl:max-h-[36rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
+                                        <table className="hidden xl:table w-full min-w-[34rem] border-collapse text-sm">
+                                            <thead className="sticky top-0 z-10">
+                                                <tr className="bg-primary-dark text-white">
+                                                    <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center w-12">#</th>
+                                                    <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">วันที่แจ้ง</th>
+                                                    <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-left">ปัญหา</th>
+                                                    <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">สถานะ</th>
+                                                    <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">จัดการ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {visible.map((r, index) => (
+                                                    <tr
+                                                        key={r.id}
+                                                        onClick={() => openEdit(r)}
+                                                        className={`cursor-pointer border-b border-line transition-colors hover:bg-mist/30 ${r.status === 'pending' ? 'bg-sky-50/50' : index % 2 ? 'bg-sand/40' : 'bg-white'}`}
+                                                    >
+                                                        <td className="px-3 py-3 border-x border-line/60 text-center text-xs text-muted tabular-nums">{index + 1}</td>
+                                                        <td className="px-3 py-3 border-x border-line/60 text-center text-muted whitespace-nowrap">{formatThaiDate(r.created_at)}</td>
+                                                        <td className="px-3 py-3 border-x border-line/60 font-medium text-ink">
+                                                            <span className="inline-flex items-center gap-2">
+                                                                {r.problem}
+                                                                {r.image_path && <Icon name="image" className="w-4 h-4 text-secondary" />}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-3 py-3 border-x border-line/60 text-center"><RepairStatusBadge status={r.status} /></td>
+                                                        <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                                            <button onClick={() => openEdit(r)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist whitespace-nowrap">
+                                                                {r.status === 'pending' ? 'แก้ไข' : 'ดูรายละเอียด'}
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                        <div className="xl:hidden grid gap-3 md:grid-cols-2">
+                                            {visible.map((r) => (
+                                                <div
+                                                    key={r.id}
+                                                    className={`rounded-2xl border border-line p-4 flex flex-col gap-3 ${r.status === 'pending' ? 'bg-sky-50/60' : 'bg-white'}`}
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="font-medium text-ink wrap-break-word">
+                                                                {r.problem}
+                                                                {r.image_path && <Icon name="image" className="inline-block ml-2 -mt-0.5 w-4 h-4 text-secondary" />}
+                                                            </div>
+                                                            <div className="text-xs text-muted mt-0.5">แจ้งเมื่อ {formatThaiDate(r.created_at)}</div>
+                                                        </div>
+                                                        <RepairStatusBadge status={r.status} />
+                                                    </div>
+                                                    <button onClick={() => openEdit(r)} className="py-2 rounded-xl text-sm bg-mist/60 text-primary-dark hover:bg-mist">
+                                                        {r.status === 'pending' ? 'แก้ไขเรื่องนี้' : 'ดูรายละเอียด'}
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </>
