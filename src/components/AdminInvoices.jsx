@@ -9,6 +9,7 @@ import { baht, calcInvoice, currentMonth, formatDateTime, formatMonth } from '..
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
+// คลาส Tailwind ของช่องกรอกปกติ และช่องกรอกขนาดเล็กในการ์ดมิเตอร์
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
 const smallInputClass = 'w-full border border-line bg-white rounded-lg px-2.5 py-1.5 mt-1 text-sm outline-none focus:border-secondary'
 
@@ -25,6 +26,7 @@ const makeEmptyForm = () => ({
     commonFee: null,
 })
 
+// การ์ดสรุป/แท็บกรองตามสถานะใบแจ้งหนี้
 const summaryCards = [
     { value: 'all', label: 'ทั้งหมด', icon: 'receipt', tone: 'bg-slate-100 text-slate-600' },
     { value: 'pending', label: 'รอชำระ', icon: 'clock', tone: 'bg-amber-50 text-amber-700' },
@@ -32,13 +34,16 @@ const summaryCards = [
     { value: 'paid', label: 'ชำระแล้ว', icon: 'checkCircle', tone: 'bg-emerald-50 text-emerald-700' },
 ]
 
+// หน้ารายละเอียดใบแจ้งหนี้ฝั่งแอดมิน: ดูยอด ดูสลิป อนุมัติ/ปฏิเสธสลิป แก้ไขหรือลบใบแจ้งหนี้
 function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
+    // การตั้งค่า (บัญชีธนาคาร), กำลังพิมพ์เหตุผลปฏิเสธ, เหตุผล, กำลังบันทึก และ error
     const settings = useSettings()
     const [rejecting, setRejecting] = useState(false)
     const [reason, setReason] = useState('')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
 
+    // ตรวจสลิป: approve = true เปลี่ยนเป็น "ชำระแล้ว", false ปฏิเสธพร้อมเหตุผลและกลับไป "รอชำระ" (อัปเดตได้เฉพาะใบที่ยังรอตรวจสอบ)
     const review = async (approve) => {
         if (!approve && !reason.trim()) {
             setError('กรุณาระบุเหตุผลที่ปฏิเสธ')
@@ -65,8 +70,10 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
         <>
             <PageHeader title="รายละเอียดใบแจ้งหนี้" />
             <div className="mx-6 mb-6 flex flex-col gap-4">
+                {/* ปุ่มกลับไปรายการ */}
                 <button onClick={onBack} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm"><Icon name="arrowLeft" className="w-4 h-4" />กลับไปรายการใบแจ้งหนี้</button>
 
+                {/* การ์ดหัว: เลขห้อง ชื่อผู้เช่า สถานะ ปุ่ม PDF/แก้ไข/ลบ และไทม์ไลน์ขั้นตอน */}
                 <div className="bg-white rounded-2xl shadow-card p-5 flex flex-wrap items-center gap-4">
                     <span className="grid place-items-center w-14 h-14 rounded-2xl bg-mist text-primary-dark text-lg font-semibold">{invoice.room}</span>
                     <div className="flex-1 min-w-48">
@@ -87,6 +94,7 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start">
+                    {/* ซ้าย: รายการค่าใช้จ่าย + บัญชีรับโอน */}
                     <div className="flex flex-col gap-4">
                         <InvoiceBreakdown invoice={invoice} />
                         <div className="bg-white rounded-2xl shadow-card p-4 text-sm flex items-center justify-between gap-3">
@@ -99,6 +107,7 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                         </div>
                     </div>
 
+                    {/* ขวา: รูปสลิป (หรือเหตุผลที่ปฏิเสธครั้งก่อน) และปุ่มตรวจสลิป */}
                     <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
                         <div className="flex justify-between items-baseline gap-3">
                             <h3 className="font-medium text-primary-dark">หลักฐานการโอนเงิน</h3>
@@ -119,6 +128,7 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                             )}
                         </div>
 
+                        {/* รอตรวจสอบ: ปุ่มอนุมัติ / ปฏิเสธ (กดปฏิเสธแล้วต้องกรอกเหตุผลก่อนยืนยัน) */}
                         {invoice.status === 'review' && (
                             <>
                                 {rejecting && (
@@ -159,10 +169,12 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
     )
 }
 
+// หน้าต่างยืนยันการลบใบแจ้งหนี้
 function DeleteModal({ invoice, onConfirm, onCancel }) {
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
 
+    // กดยืนยันลบ: เรียก onConfirm แล้วแสดงข้อความ error ถ้าลบไม่สำเร็จ
     const handleDelete = async () => {
         setBusy(true)
         const err = await onConfirm(invoice)
@@ -177,6 +189,7 @@ function DeleteModal({ invoice, onConfirm, onCancel }) {
                     <span className="grid place-items-center w-10 h-10 rounded-full bg-red-50 text-red-600"><Icon name="trash" className="w-5 h-5" /></span>
                     <h2 className="text-lg font-semibold text-primary-dark">ลบใบแจ้งหนี้</h2>
                 </div>
+                {/* รายละเอียดใบที่จะลบ + คำเตือนถ้าเป็นใบที่ชำระแล้ว */}
                 <p className="text-sm text-ink">
                     ลบใบแจ้งหนี้เดือน {formatMonth(invoice.month)} ของห้อง {invoice.room} ({invoice.tenant_name}) ยอด {baht(invoice.total)}
                     {invoice.slip_path && ' พร้อมรูปสลิปที่แนบมา'} ผู้เช่าจะไม่เห็นใบแจ้งหนี้นี้อีก การลบไม่สามารถกู้คืนได้
@@ -198,6 +211,7 @@ function DeleteModal({ invoice, onConfirm, onCancel }) {
 
 // การ์ดกรอกมิเตอร์ของน้ำ/ไฟ พร้อมสรุปหน่วยที่ใช้
 function MeterCard({ icon, tone, title, prefix, form, set, units, cost }) {
+    // prefix = 'water' หรือ 'elec' ใช้อ่านค่าของมิเตอร์นั้นจากฟอร์ม
     const curr = form[`${prefix}Curr`]
     const prev = form[`${prefix}Prev`]
     return (
@@ -206,6 +220,7 @@ function MeterCard({ icon, tone, title, prefix, form, set, units, cost }) {
                 <span className={`grid place-items-center w-8 h-8 rounded-lg ${tone}`}><Icon name={icon} className="w-[18px] h-[18px]" /></span>
                 {title}
             </div>
+            {/* หน่วยปัจจุบัน (ตัวใหญ่ กรอกบ่อยสุด) */}
             <label className="text-xs text-muted">
                 หน่วยปัจจุบัน
                 <input
@@ -217,6 +232,7 @@ function MeterCard({ icon, tone, title, prefix, form, set, units, cost }) {
                     placeholder="0"
                 />
             </label>
+            {/* หน่วยก่อนหน้า และราคาต่อหน่วย */}
             <div className="grid grid-cols-2 gap-3">
                 <label className="text-xs text-muted">
                     หน่วยก่อนหน้า
@@ -227,6 +243,7 @@ function MeterCard({ icon, tone, title, prefix, form, set, units, cost }) {
                     <input type="number" min="0" step="any" className={smallInputClass} value={form[`${prefix}Rate`]} onChange={set(`${prefix}Rate`)} />
                 </label>
             </div>
+            {/* สรุปหน่วยที่ใช้และค่าใช้จ่าย */}
             <div className="flex justify-between text-xs pt-2 border-t border-line/80">
                 <span className="text-muted">ใช้ไป {units} หน่วย</span>
                 <span className="font-medium text-primary-dark">{baht(cost)}</span>
@@ -237,6 +254,7 @@ function MeterCard({ icon, tone, title, prefix, form, set, units, cost }) {
 
 // ดึงข้อมูลทั้งหมดที่หน้านี้ใช้ (ไม่แตะ state เพื่อเรียกใช้ได้ทั้งใน effect และหลังบันทึก)
 async function fetchData() {
+    // ดึงผู้เช่า, ค่าเช่าของแต่ละห้อง และใบแจ้งหนี้ทั้งหมดพร้อมกัน
     const [tenantsRes, roomsRes, invoicesRes] = await Promise.all([
         supabase.from('tenants').select('room, name, user_id'),
         supabase.from('rooms').select('number, rent'),
@@ -245,13 +263,16 @@ async function fetchData() {
     return { tenantsRes, roomsRes, invoicesRes }
 }
 
+// หน้าจัดการใบแจ้งหนี้ของแอดมิน: บันทึกมิเตอร์ สร้าง/แก้ไข/ลบใบแจ้งหนี้ และดูรายการทั้งหมด
 function AdminInvoices() {
+    // ข้อมูลที่โหลด: ผู้เช่า, ห้อง -> ค่าเช่า, ใบแจ้งหนี้, สถานะโหลด และ error
     const [tenants, setTenants] = useState([])
     const [rents, setRents] = useState({})
     const [invoices, setInvoices] = useState([])
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
     const settings = useSettings()
+    // ฟอร์มสร้าง/แก้ไขใบแจ้งหนี้ และตัวกรองรายการ (สถานะ คำค้นหา เดือน) และใบที่เปิดดูอยู่
     const [form, setForm] = useState(makeEmptyForm)
     const [formError, setFormError] = useState('')
     const [saving, setSaving] = useState(false)
@@ -263,6 +284,7 @@ function AdminInvoices() {
     const [editingId, setEditingId] = useState(null)
     const [deleting, setDeleting] = useState(null)
 
+    // นำผลการโหลดไปตั้งค่า state: เรียงผู้เช่าตามห้อง และสร้างแผนที่ ห้อง -> ค่าเช่า
     const applyResult = useCallback(({ tenantsRes, roomsRes, invoicesRes }) => {
         const err = tenantsRes.error || roomsRes.error || invoicesRes.error
         if (err) {
@@ -290,6 +312,7 @@ function AdminInvoices() {
         }
     }, [applyResult])
 
+    // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key และล้างข้อความ error
     const set = (key) => (e) => {
         setForm({ ...form, [key]: e.target.value })
         setFormError('')
@@ -319,10 +342,12 @@ function AdminInvoices() {
         elecRate: form.elecRate ?? settings.rateElectric,
         commonFee: form.commonFee ?? settings.commonFee,
     }
+    // ผู้เช่าของห้องที่เลือก และใบแจ้งหนี้ที่กำลังแก้ไข (ถ้ามี)
     const tenant = tenants.find((t) => t.room === form.room)
     const editing = invoices.find((i) => i.id === editingId)
     // ตอนแก้ไขใช้ค่าเช่าที่บันทึกไว้ในใบแจ้งหนี้เดิม
     const rent = editing ? Number(editing.rent) : (rents[form.room] ?? 0)
+    // แปลงค่าในฟอร์มเป็นตัวเลข แล้วคำนวณยอด
     const numbers = {
         waterPrev: Number(form.waterPrev),
         waterCurr: Number(form.waterCurr),
@@ -334,6 +359,7 @@ function AdminInvoices() {
     }
     const calc = calcInvoice({ rent, ...numbers })
 
+    // เริ่มแก้ไขใบแจ้งหนี้: เติมข้อมูลเดิมลงในฟอร์ม
     const startEdit = (invoice) => {
         setForm({
             room: invoice.room,
@@ -352,14 +378,17 @@ function AdminInvoices() {
         setSelectedId(null)
     }
 
+    // ยกเลิกการแก้ไข: ล้างฟอร์ม แต่คงอัตราค่าน้ำ/ไฟ/ส่วนกลางที่กรอกไว้
     const cancelEdit = () => {
         setEditingId(null)
         setForm({ ...makeEmptyForm(), waterRate: form.waterRate, elecRate: form.elecRate, commonFee: form.commonFee })
         setFormError('')
     }
 
+    // บันทึกฟอร์ม: ตรวจข้อมูล คำนวณยอด แล้วสร้างใบแจ้งหนี้ใหม่หรืออัปเดตใบเดิม
     const handleSubmit = async (e) => {
         e.preventDefault()
+        // ตรวจ: เลือกห้องและกรอกมิเตอร์ครบ, มิเตอร์ไม่ถอยหลัง, อัตราไม่ติดลบ, ห้องมีบัญชีผู้เช่า (ไม่งั้นผู้เช่าเห็นใบนี้ไม่ได้)
         if (!tenant || form.waterCurr === '' || form.elecCurr === '') {
             setFormError('กรุณาเลือกห้องและกรอกมิเตอร์น้ำ/ไฟให้ครบ')
             return
@@ -376,6 +405,7 @@ function AdminInvoices() {
             setFormError('ห้องนี้ยังไม่มีบัญชีผู้เช่า จึงส่งใบแจ้งหนี้ไม่ได้')
             return
         }
+        // ค่าที่บันทึกลงใบแจ้งหนี้
         const amounts = {
             water_prev: numbers.waterPrev,
             water_curr: numbers.waterCurr,
@@ -402,12 +432,14 @@ function AdminInvoices() {
                 ...amounts,
             })
         setSaving(false)
+        // บันทึกไม่สำเร็จ: error 23505 = ห้องนี้มีใบแจ้งหนี้เดือนนั้นแล้ว
         if (error) {
             setFormError(error.code === '23505'
                 ? `ห้อง ${tenant.room} มีใบแจ้งหนี้เดือน ${formatMonth(form.month)} แล้ว`
                 : `สร้างใบแจ้งหนี้ไม่สำเร็จ: ${error.message}`)
             return
         }
+        // สำเร็จ: โหลดใหม่ แล้วล้างฟอร์ม (คงเดือนและอัตราที่ใช้ไว้ เพื่อกรอกห้องถัดไปได้เร็ว)
         await load()
         setEditingId(null)
         setForm({ ...makeEmptyForm(), month: form.month, waterRate: form.waterRate, elecRate: form.elecRate, commonFee: form.commonFee })
@@ -424,6 +456,7 @@ function AdminInvoices() {
         setDeleting(null)
     }
 
+    // เลือกใบแจ้งหนี้แล้ว: แสดงหน้ารายละเอียดแทนหน้ารายการ
     const selected = invoices.find((i) => i.id === selectedId)
     if (selected) {
         return (
@@ -434,6 +467,7 @@ function AdminInvoices() {
         )
     }
 
+    // คำนวณหน่วยและค่าน้ำ/ไฟของใบแจ้งหนี้แต่ละแถวเพื่อแสดงในตาราง
     const rowCalc = (i) =>
         calcInvoice({
             rent: Number(i.rent),
@@ -446,12 +480,14 @@ function AdminInvoices() {
             commonFee: Number(i.common_fee),
         })
 
+    // จำนวนและยอดรวมของแต่ละสถานะ (แสดงบนการ์ดสรุป)
     const stats = Object.fromEntries(
         summaryCards.map((c) => {
             const list = invoices.filter((i) => c.value === 'all' || i.status === c.value)
             return [c.value, { count: list.length, sum: list.reduce((acc, i) => acc + Number(i.total), 0) }]
         })
     )
+    // รายการที่แสดง: กรองตามสถานะ เดือน และคำค้นหา (ห้อง/ชื่อ) เรียงเดือนใหม่สุดก่อน แล้วตามเลขห้อง
     const keyword = search.trim().toLowerCase()
     const months = [...new Set(invoices.map((i) => i.month))].sort().reverse()
     const visible = invoices
@@ -460,6 +496,7 @@ function AdminInvoices() {
         .filter((i) => !keyword || i.room.includes(keyword) || i.tenant_name.toLowerCase().includes(keyword))
         .sort((a, b) => b.month.localeCompare(a.month) || a.room.localeCompare(b.room, undefined, { numeric: true }))
 
+    // ยอดรวมของรายการที่แสดง (แถวรวมท้ายตาราง)
     const totals = visible.reduce(
         (acc, i) => {
             const c = rowCalc(i)
@@ -479,6 +516,7 @@ function AdminInvoices() {
             <PageHeader title="ใบแจ้งหนี้ & ชำระเงิน" subtitle="บันทึกมิเตอร์ สร้างใบแจ้งหนี้ และตรวจสอบสลิปการโอนเงินของผู้เช่า" />
 
             <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
+                {/* การ์ดสรุปตามสถานะ (กดเพื่อกรอง) การ์ดรอตรวจสอบมีป้ายเตือนเมื่อมีสลิปรอ */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {summaryCards.map((c) => {
                         const active = filter === c.value
@@ -507,8 +545,10 @@ function AdminInvoices() {
                     })}
                 </div>
 
+                {/* ฟอร์มสร้าง/แก้ไขใบแจ้งหนี้: ซ้าย = กรอกข้อมูล, ขวา = สรุปยอด */}
                 <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
                     <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                        {/* หัวฟอร์ม + เลือกเดือน (เดือนที่ห้องนี้มีใบแล้วมีจุด; ตอนแก้ไขเปลี่ยนเดือนไม่ได้) */}
                         <div className="flex flex-wrap justify-between items-center gap-3">
                             <h2 className="font-medium text-primary-dark">
                                 {editingId ? `แก้ไขใบแจ้งหนี้ ห้อง ${form.room}` : 'บันทึกมิเตอร์'}
@@ -520,6 +560,7 @@ function AdminInvoices() {
                                 disabled={!!editingId}
                             />
                         </div>
+                        {/* เลือกห้อง (เลือกแล้วดึงเลขมิเตอร์ครั้งก่อนมาให้อัตโนมัติ) */}
                         <label className="text-sm text-muted">
                             ห้องพัก
                             <select className={inputClass} value={form.room} onChange={handleRoomChange} disabled={!!editingId}>
@@ -529,16 +570,19 @@ function AdminInvoices() {
                                 ))}
                             </select>
                         </label>
+                        {/* การ์ดมิเตอร์น้ำ และมิเตอร์ไฟ */}
                         <div className="grid sm:grid-cols-2 gap-4">
                             <MeterCard icon="droplet" tone="bg-cyan-50 text-cyan-700" title="มิเตอร์น้ำ" prefix="water" form={view} set={set} units={calc.waterUnits} cost={calc.water} />
                             <MeterCard icon="bolt" tone="bg-amber-50 text-amber-700" title="มิเตอร์ไฟ" prefix="elec" form={view} set={set} units={calc.elecUnits} cost={calc.elec} />
                         </div>
+                        {/* ค่าส่วนกลาง */}
                         <label className="text-sm text-muted sm:w-1/2">
                             ค่าส่วนกลาง (฿)
                             <input type="number" min="0" step="any" className={inputClass} value={view.commonFee} onChange={set('commonFee')} />
                         </label>
                     </div>
 
+                    {/* สรุปยอดแบบสด (ติดหน้าจอบนจอใหญ่) */}
                     <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4 xl:sticky xl:top-6">
                         <div className="flex justify-between items-baseline gap-3">
                             <h2 className="font-medium text-primary-dark">สรุปยอด</h2>
@@ -559,11 +603,13 @@ function AdminInvoices() {
                                 total: calc.total || 0,
                             }}
                         />
+                        {/* เตือนเมื่อแก้ใบที่ส่งสลิปหรือจ่ายแล้ว */}
                         {editing && editing.status !== 'pending' && (
                             <p className="text-sm text-amber-800 bg-amber-50 ring-1 ring-amber-200 rounded-xl px-4 py-2">
                                 ใบแจ้งหนี้นี้{editing.status === 'review' ? 'มีสลิปรอตรวจสอบ' : 'ชำระแล้ว'} หากเปลี่ยนยอดรวม ยอดอาจไม่ตรงกับสลิปที่ผู้เช่าโอนมา
                             </p>
                         )}
+                        {/* ข้อความ error และปุ่มยกเลิก/สร้าง/บันทึก */}
                         {formError && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{formError}</p>}
                         <div className="flex gap-3">
                             {editingId && (
@@ -577,6 +623,7 @@ function AdminInvoices() {
                 </form>
 
                 <div className="bg-white rounded-2xl shadow-card p-5">
+                    {/* หัวกล่องรายการ: จำนวน + ตัวกรองเดือน + ช่องค้นหา */}
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                         <h2 className="font-medium text-primary-dark">
                             รายการใบแจ้งหนี้
@@ -608,6 +655,7 @@ function AdminInvoices() {
                         </div>
                         </div>
                     </div>
+                    {/* แท็บสถานะพร้อมจำนวน */}
                     <div role="tablist" aria-label="หมวดหมู่ใบแจ้งหนี้" className="flex gap-1 overflow-x-auto overflow-y-hidden mb-4 border-b border-line">
                         {summaryCards.map((c) => {
                             const active = filter === c.value
@@ -630,6 +678,7 @@ function AdminInvoices() {
                         })}
                     </div>
                     <div className="xl:overflow-auto xl:max-h-[32rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
+                        {/* จอใหญ่: ตารางใบแจ้งหนี้ (ใบที่รอตรวจพื้นสีฟ้า) กดแถวเพื่อดูรายละเอียด */}
                         <table className="hidden xl:table w-full min-w-[60rem] border-collapse text-sm">
                             <thead className="sticky top-0 z-10">
                                 <tr className="bg-primary-dark text-white">
@@ -685,6 +734,7 @@ function AdminInvoices() {
                                     )
                                 })}
                             </tbody>
+                            {/* แถวรวมท้ายตาราง */}
                             {visible.length > 0 && (
                                 <tfoot className="sticky bottom-0">
                                     <tr className="bg-mist/60 text-primary-dark font-semibold">
@@ -699,6 +749,7 @@ function AdminInvoices() {
                                 </tfoot>
                             )}
                         </table>
+                        {/* จอเล็ก/กลาง: ยอดรวม + การ์ดใบแจ้งหนี้ */}
                         {visible.length > 0 && (
                             <div className="xl:hidden flex items-center justify-between rounded-xl bg-mist/50 px-4 py-2.5 mb-3 text-sm font-semibold text-primary-dark">
                                 <span>รวม {visible.length} รายการ</span>
@@ -741,6 +792,7 @@ function AdminInvoices() {
                                 )
                             })}
                         </div>
+                        {/* ข้อความกำลังโหลด / error / ไม่พบรายการ */}
                         {(loading || loadError || visible.length === 0) && (
                             <div className={`py-10 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
                                 {loading ? (
@@ -759,6 +811,7 @@ function AdminInvoices() {
                 </div>
             </div>
 
+            {/* หน้าต่างยืนยันลบใบแจ้งหนี้ */}
             {deleting && <DeleteModal invoice={deleting} onConfirm={handleDelete} onCancel={() => setDeleting(null)} />}
         </>
     )

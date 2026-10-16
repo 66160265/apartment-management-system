@@ -6,6 +6,7 @@ import { useCurrentUser } from '../lib/useCurrentUser'
 function InvoicesPage() {
     const me = useCurrentUser()
 
+    // รอข้อมูลผู้ใช้ก่อน แล้วเลือกหน้าตามสิทธิ์: แอดมิน = จัดการใบแจ้งหนี้, ผู้เช่า = ใบแจ้งหนี้ของตัวเอง
     if (!me) return <p className="p-6 text-muted">กำลังโหลด...</p>
     return me.role === 'admin' ? <AdminInvoices /> : <TenantInvoices userId={me.id} />
 }

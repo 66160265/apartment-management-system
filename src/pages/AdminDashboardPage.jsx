@@ -14,6 +14,7 @@ const toRate = (value, fallback) =>
 
 // ดึงข้อมูลจากฐานข้อมูล (ไม่มีการ setState เพื่อให้เรียกซ้ำได้อย่างปลอดภัย)
 async function fetchDashboardData() {
+    // ดึงใบแจ้งหนี้ (ใหม่สุดก่อน), ห้อง และผู้เช่าพร้อมกัน ตารางไหนพลาดให้โยน error
     const [invoicesRes, roomsRes, tenantsRes] = await Promise.all([
         supabase.from('invoices').select('*').order('created_at', { ascending: false }),
         supabase.from('rooms').select('*').order('number', { ascending: true }),
@@ -33,7 +34,9 @@ async function fetchDashboardData() {
     }
 }
 
+// หน้าภาพรวมของแอดมิน: รายได้ ยอดค้างชำระ สถานะห้อง และสถิติการใช้น้ำ-ไฟรายเดือน
 function AdminDashboardPage() {
+    // การตั้งค่า (ใช้อัตราน้ำ/ไฟสำรอง), สถานะโหลด, error และเดือนที่เลือกดู
     const settings = useSettings()
     const navigate = useNavigate()
     const [loading, setLoading] = useState(true)
@@ -48,6 +51,7 @@ function AdminDashboardPage() {
     // เลือกเดือนอัตโนมัติเพียงครั้งแรกที่โหลดสำเร็จ ไม่ให้ทับเดือนที่ผู้ใช้เลือกเอง
     const hasAutoSelectedMonth = useRef(false)
 
+    // นำข้อมูลที่โหลดได้ไปตั้งค่า state
     const applyData = useCallback(({ invList, roomList, tenantList }) => {
         setInvoices(invList)
         setRooms(roomList)
@@ -64,6 +68,7 @@ function AdminDashboardPage() {
         }
     }, [])
 
+    // โหลดไม่สำเร็จ: บันทึกลง console และแสดงข้อความ error
     const applyError = useCallback((err) => {
         console.error('Error loading dashboard data:', err)
         setLoadError(`เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message || 'ไม่สามารถติดต่อฐานข้อมูลได้'}`)
@@ -81,6 +86,7 @@ function AdminDashboardPage() {
         }
     }, [applyData, applyError])
 
+    // กดลองใหม่เมื่อโหลดข้อมูลไม่สำเร็จ
     const retryLoad = () => {
         setLoading(true)
         setLoadError('')
@@ -143,9 +149,11 @@ function AdminDashboardPage() {
         let waterCost = 0
         let elecCost = 0
 
+        // อัตราตั้งต้นจากใบแรกของเดือน (ไม่มีใช้ค่าจากหน้าตั้งค่า)
         const waterRate = toRate(invoicesForMonth[0]?.water_rate, settings.rateWater)
         const elecRate = toRate(invoicesForMonth[0]?.elec_rate, settings.rateElectric)
 
+        // รวมหน่วยและค่าน้ำ/ไฟของทุกห้องในเดือนนั้น
         invoicesForMonth.forEach((inv) => {
             const w = Math.max(0, (inv.water_curr || 0) - (inv.water_prev || 0))
             const e = Math.max(0, (inv.elec_curr || 0) - (inv.elec_prev || 0))
@@ -365,6 +373,7 @@ function AdminDashboardPage() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
+                                        {/* ไม่มีข้อมูล: ลิงก์ไปออกใบแจ้งหนี้ / มีข้อมูล: แถวละห้อง */}
                                         {roomUsage.length === 0 ? (
                                             <tr>
                                                 <td
@@ -414,6 +423,7 @@ function AdminDashboardPage() {
 
             {/* แถวที่ 3: ห้องที่ค้างชำระทั้งหมด จากข้อมูลจริง */}
             <div className="bg-white rounded-2xl p-6 md:p-8 shadow-card border border-line">
+                {/* หัวกล่อง: จำนวนรายการค้าง + ลิงก์ไปหน้าใบแจ้งหนี้ */}
                 <div className="flex justify-between items-center mb-4">
                     <div className="flex items-center gap-2">
                         <h2 className="text-lg font-bold text-gray-900">
@@ -446,6 +456,7 @@ function AdminDashboardPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
+                            {/* กำลังโหลด / ไม่มีค้างชำระ / แถวละใบ (กดเพื่อไปหน้าใบแจ้งหนี้) */}
                             {loading ? (
                                 <tr>
                                     <td colSpan={5} className="py-8 text-center text-gray-400 text-sm">

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 import { USERNAME_EMAIL_DOMAIN } from './tenantAccount'
 
+// ชื่อสิทธิ์ภาษาไทยสำหรับแสดงผล
 export const roleLabels = { admin: 'ผู้ดูแลระบบ', user: 'ผู้เช่า' }
 
 // อีเมลภายในระบบ (t311@โดเมน) -> ชื่อผู้ใช้ T311
@@ -21,11 +22,13 @@ supabase.auth.onAuthStateChange((event) => {
     }
 })
 
+// ดึงข้อมูลผู้ใช้ที่ login: บัญชี สิทธิ์จาก profiles และข้อมูลผู้เช่า (ถ้ามี)
 async function fetchCurrentUser() {
     // getSession อ่านจากเครื่อง ไม่ต้องยิงเซิร์ฟเวอร์เหมือน getUser
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
     if (!user) return null
+    // ดึงสิทธิ์ (profiles) และข้อมูลผู้เช่าของบัญชีนี้พร้อมกัน
     const [{ data: profile }, { data: tenant }] = await Promise.all([
         supabase.from('profiles').select('role').eq('id', user.id).single(),
         supabase.from('tenants').select('name, room, phone, start_date, end_date').eq('user_id', user.id).maybeSingle(),
@@ -42,8 +45,10 @@ async function fetchCurrentUser() {
 // ข้อมูลผู้ใช้ที่ login อยู่: บัญชี, role และข้อมูลผู้เช่า (ถ้าเป็นผู้เช่า)
 // คืนค่า null ระหว่างโหลด
 export function useCurrentUser() {
+    // เริ่มด้วยค่าที่แคชไว้ (ถ้ามี) จะได้ไม่ต้องรอโหลดซ้ำ
     const [info, setInfo] = useState(cached)
 
+    // ยังไม่มีแคช: โหลดข้อมูลผู้ใช้ (ใช้คำขอเดียวร่วมกันทุกคอมโพเนนต์)
     useEffect(() => {
         if (cached) return
         let active = true

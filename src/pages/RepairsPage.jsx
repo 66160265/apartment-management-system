@@ -6,6 +6,7 @@ import { useCurrentUser } from '../lib/useCurrentUser'
 function RepairsPage() {
     const me = useCurrentUser()
 
+    // รอข้อมูลผู้ใช้ก่อน แล้วเลือกหน้าตามสิทธิ์: แอดมิน = จัดการแจ้งซ่อม, ผู้เช่า = แจ้งซ่อมของตัวเอง
     if (!me) return <p className="p-6 text-muted">กำลังโหลด...</p>
     return me.role === 'admin' ? <AdminRepairs adminId={me.id} /> : <UserRepairsPage />
 }

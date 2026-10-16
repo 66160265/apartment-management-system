@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { formatNotificationTime, readDotClass, typeLabels, unreadDotClass } from '../data/notifications'
 import { markAllRead, markRead, useNotifications } from '../lib/useNotifications'
 
+// จำนวนแจ้งเตือนล่าสุดที่แสดงในป็อปอัป
 const PREVIEW_COUNT = 8
 
 // กระดิ่งแจ้งเตือนภายในเว็บ: ตัวเลขที่ยังไม่อ่าน + รายการล่าสุดแบบป็อปอัป
 // ใช้ร่วมกันระหว่าง NotificationBell (แอดมิน) และ UserNotificationBell (ผู้เช่า)
 function NotificationDropdown({ emptyText }) {
+    // ref ของกล่อง (ตรวจคลิกนอกกล่อง), สถานะเปิด/ปิด และข้อมูลแจ้งเตือนจาก store กลาง
     const navigate = useNavigate()
     const ref = useRef(null)
     const [open, setOpen] = useState(false)
@@ -16,9 +18,11 @@ function NotificationDropdown({ emptyText }) {
     // ปิดป็อปอัปเมื่อคลิกข้างนอกหรือกด Escape
     useEffect(() => {
         if (!open) return
+        // คลิกนอกกล่องแจ้งเตือนให้ปิด
         const onClick = (e) => {
             if (ref.current && !ref.current.contains(e.target)) setOpen(false)
         }
+        // กด Esc ให้ปิดกล่องแจ้งเตือน
         const onKey = (e) => e.key === 'Escape' && setOpen(false)
         document.addEventListener('mousedown', onClick)
         document.addEventListener('keydown', onKey)
@@ -28,6 +32,7 @@ function NotificationDropdown({ emptyText }) {
         }
     }, [open])
 
+    // กดที่แจ้งเตือน: ทำเครื่องหมายอ่านแล้ว ปิดกล่อง แล้วไปหน้ารายละเอียดของแจ้งเตือนนั้น
     const handleSelect = (item) => {
         markRead(item.id)
         setOpen(false)
@@ -36,6 +41,7 @@ function NotificationDropdown({ emptyText }) {
 
     return (
         <div ref={ref} className="relative inline-block text-left">
+            {/* ปุ่มกระดิ่ง + ป้ายจำนวนที่ยังไม่อ่าน (เกิน 99 แสดง 99+) */}
             <button
                 type="button"
                 onClick={() => setOpen(!open)}
@@ -54,8 +60,10 @@ function NotificationDropdown({ emptyText }) {
                 )}
             </button>
 
+            {/* ป็อปอัปรายการแจ้งเตือน */}
             {open && (
                 <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-xl border border-line z-50 overflow-hidden text-left">
+                    {/* หัวป็อปอัป: จำนวนใหม่ + ปุ่มอ่านทั้งหมด */}
                     <div className="px-4 py-3 bg-sand/30 border-b border-line flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <span className="text-base font-bold text-ink">การแจ้งเตือน</span>
@@ -70,6 +78,7 @@ function NotificationDropdown({ emptyText }) {
                         )}
                     </div>
 
+                    {/* รายการ: กำลังโหลด / error / ว่าง / แจ้งเตือนล่าสุด (ยังไม่อ่านพื้นสีแดงอ่อน ตัวหนา) */}
                     <div className="max-h-84 overflow-y-auto divide-y divide-line">
                         {loading ? (
                             <p className="py-8 text-center text-sm text-muted">กำลังโหลด...</p>
@@ -104,6 +113,7 @@ function NotificationDropdown({ emptyText }) {
                         )}
                     </div>
 
+                    {/* ลิงก์ไปหน้าแจ้งเตือนทั้งหมด */}
                     <div className="p-2.5 bg-sand/20 border-t border-line text-center">
                         <button
                             type="button"

@@ -7,14 +7,18 @@ import { callAdminUsers } from '../lib/adminUsers'
 import { makeDefaultPassword } from '../lib/tenantAccount'
 import { emailToUsername, roleLabels, useCurrentUser } from '../lib/useCurrentUser'
 
+// คลาส Tailwind ของช่องกรอกในฟอร์ม
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
 
+// แสดงวันเวลาที่เข้าสู่ระบบล่าสุด (ถ้าไม่เคยแสดงว่ายังไม่เคยเข้าสู่ระบบ)
 const formatDateTime = (iso) =>
     iso
         ? new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
         : 'ยังไม่เคยเข้าสู่ระบบ'
 
+// หน้าต่างแก้ไขบัญชีผู้ใช้ (และข้อมูลผู้เช่า ถ้าบัญชีนั้นเป็นผู้เช่า)
 function EditModal({ user, onSave, onCancel }) {
+    // t = ข้อมูลผู้เช่าที่ผูกกับบัญชี (null = บัญชีแอดมิน), form เริ่มจากข้อมูลเดิม รหัสผ่านเว้นว่าง
     const t = user.tenant
     const [form, setForm] = useState({
         name: t?.name ?? '',
@@ -26,10 +30,13 @@ function EditModal({ user, onSave, onCancel }) {
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
 
+    // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key
     const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
 
+    // ตรวจข้อมูลที่กรอกแล้วส่งไปบันทึก
     const handleSubmit = async (e) => {
         e.preventDefault()
+        // ตรวจ: ข้อมูลผู้เช่าครบ, วันสิ้นสุดไม่ก่อนวันเริ่ม, รหัสผ่านใหม่ (ถ้ากรอก) ยาวพอ
         if (t && (!form.name.trim() || !form.phone.trim() || !form.startDate || !form.endDate)) {
             setError('กรุณากรอกข้อมูลผู้เช่าให้ครบ')
             return
@@ -43,6 +50,7 @@ function EditModal({ user, onSave, onCancel }) {
             return
         }
         setSaving(true)
+        // ส่งเฉพาะค่าที่เกี่ยวข้อง: รหัสผ่าน (ถ้ากรอก) และข้อมูลผู้เช่า (ถ้าเป็นบัญชีผู้เช่า)
         const err = await onSave({
             userId: user.id,
             ...(form.password && { password: form.password }),
@@ -61,6 +69,7 @@ function EditModal({ user, onSave, onCancel }) {
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
             <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-xl w-[420px] max-w-[92vw] max-h-[95vh] overflow-y-auto flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-primary-dark">แก้ไขบัญชี {emailToUsername(user.email)}</h2>
+                {/* ข้อมูลผู้เช่า (เฉพาะบัญชีผู้เช่า): ชื่อ เบอร์โทร ห้อง และวันเริ่ม/สิ้นสุดสัญญา */}
                 {t && (
                     <>
                         <label className="text-sm text-muted">
@@ -84,6 +93,7 @@ function EditModal({ user, onSave, onCancel }) {
                         </div>
                     </>
                 )}
+                {/* รหัสผ่านใหม่ (เว้นว่าง = ไม่เปลี่ยน) */}
                 <label className="text-sm text-muted">
                     รหัสผ่านใหม่
                     <input
@@ -94,6 +104,7 @@ function EditModal({ user, onSave, onCancel }) {
                         autoComplete="off"
                     />
                 </label>
+                {/* ปุ่มเติมรหัสผ่านเริ่มต้น TP+เลขห้อง+เบอร์ 4 ตัวท้าย (ใช้รีเซ็ตรหัสให้ผู้เช่า) */}
                 {t && (
                     <button
                         type="button"
@@ -103,6 +114,7 @@ function EditModal({ user, onSave, onCancel }) {
                         ใช้รหัสผ่านเริ่มต้น
                     </button>
                 )}
+                {/* ข้อความ error และปุ่มยกเลิก/บันทึก */}
                 {error && <p className="text-sm text-red-600">{error}</p>}
                 <div className="flex justify-end gap-2">
                     <button type="button" onClick={onCancel} className="border border-line text-muted hover:bg-sand px-4 py-1.5 rounded-lg">ยกเลิก</button>
@@ -115,10 +127,12 @@ function EditModal({ user, onSave, onCancel }) {
     )
 }
 
+// หน้าต่างยืนยันการลบบัญชีผู้ใช้
 function DeleteModal({ user, onConfirm, onCancel }) {
     const [error, setError] = useState('')
     const [deleting, setDeleting] = useState(false)
 
+    // กดยืนยันลบ: เรียก onConfirm แล้วแสดงข้อความ error ถ้าลบไม่สำเร็จ
     const handleDelete = async () => {
         setDeleting(true)
         const err = await onConfirm(user)
@@ -130,6 +144,7 @@ function DeleteModal({ user, onConfirm, onCancel }) {
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-white rounded-2xl p-6 shadow-xl w-[400px] max-w-[92vw] flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-primary-dark">ลบบัญชี {emailToUsername(user.email)}</h2>
+                {/* อธิบายผลของการลบ (บัญชีผู้เช่าจะลบข้อมูลผู้เช่าและคืนห้องเป็นว่างด้วย) */}
                 <p className="text-sm text-ink">
                     {user.tenant
                         ? `ระบบจะลบบัญชีและข้อมูลผู้เช่า ${user.tenant.name} (ห้อง ${user.tenant.room}) และเปลี่ยนสถานะห้องเป็นว่าง`
@@ -148,10 +163,13 @@ function DeleteModal({ user, onConfirm, onCancel }) {
     )
 }
 
+// ดึงรายชื่อบัญชีทั้งหมดผ่าน Edge Function admin-users
 const fetchUsers = () => callAdminUsers({ action: 'list' })
 
+// หน้าจัดการบัญชีผู้ใช้ของแอดมิน: ดูรายชื่อ แก้ไข รีเซ็ตรหัสผ่าน และลบบัญชี
 function AdminUsersPage() {
     const me = useCurrentUser()
+    // รายชื่อบัญชี, id ของแอดมินที่ login อยู่ (ห้ามลบตัวเอง), สถานะโหลด, error และคำค้นหา
     const [users, setUsers] = useState([])
     const [currentUserId, setCurrentUserId] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -160,8 +178,10 @@ function AdminUsersPage() {
     // { type: 'edit' | 'delete', user }
     const [modal, setModal] = useState(null)
 
+    // ผู้ใช้ปัจจุบันเป็นแอดมินหรือไม่
     const isAdmin = me?.role === 'admin'
 
+    // นำผลการโหลดไปตั้งค่า state: เรียงตามชื่อผู้ใช้แบบตัวเลข (T101 < T201)
     const applyResult = useCallback(({ data, error }) => {
         if (error) {
             setLoadError(`โหลดข้อมูลไม่สำเร็จ: ${error}`)
@@ -174,8 +194,10 @@ function AdminUsersPage() {
         setLoading(false)
     }, [])
 
+    // โหลดรายชื่อผู้ใช้ใหม่ (ใช้หลังแก้ไข/ลบ)
     const load = async () => applyResult(await fetchUsers())
 
+    // โหลดรายชื่อผู้ใช้ครั้งแรกเมื่อเปิดหน้า
     useEffect(() => {
         // ไม่ต้องรอข้อมูลผู้ใช้ก่อน ฟังก์ชันฝั่งเซิร์ฟเวอร์ตรวจสิทธิ์แอดมินเองอยู่แล้ว
         let active = true
@@ -187,6 +209,7 @@ function AdminUsersPage() {
         }
     }, [applyResult])
 
+    // กรองรายชื่อตามคำค้นหา: ชื่อผู้ใช้ ชื่อผู้เช่า หรือเลขห้อง
     const keyword = search.trim().toLowerCase()
     const visible = users.filter((u) =>
         !keyword ||
@@ -194,6 +217,7 @@ function AdminUsersPage() {
         u.tenant?.name.toLowerCase().includes(keyword) ||
         u.tenant?.room.includes(keyword))
 
+    // บันทึกการแก้ไขบัญชี แล้วโหลดรายชื่อใหม่และปิดหน้าต่าง
     const handleSave = async (payload) => {
         const { error } = await callAdminUsers({ action: 'update', ...payload })
         if (error) return error
@@ -201,6 +225,7 @@ function AdminUsersPage() {
         setModal(null)
     }
 
+    // ลบบัญชี แล้วโหลดรายชื่อใหม่และปิดหน้าต่าง
     const handleDelete = async (user) => {
         const { error } = await callAdminUsers({ action: 'delete', userId: user.id })
         if (error) return error
@@ -212,11 +237,13 @@ function AdminUsersPage() {
         <>
             <PageHeader title="จัดการบัญชีผู้ใช้ทั้งหมด" subtitle="ดูบัญชีของผู้ดูแลระบบและผู้เช่า รีเซ็ตรหัสผ่าน แก้ไขข้อมูล หรือลบบัญชี" />
 
+            {/* กันไม่ให้ผู้ที่ไม่ใช่แอดมินเห็นหน้านี้ */}
             {me && !isAdmin ? (
                 <p className="px-6 text-red-600">หน้านี้สำหรับผู้ดูแลระบบเท่านั้น</p>
             ) : (
                 <div className="px-4 sm:px-6 pb-10">
                     <div className="bg-white rounded-2xl shadow-card p-5">
+                        {/* หัวกล่อง: จำนวนบัญชี + ช่องค้นหา */}
                         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                             <h2 className="font-medium text-primary-dark">
                                 บัญชีทั้งหมด
@@ -235,6 +262,7 @@ function AdminUsersPage() {
                         </div>
 
                         <div className="xl:overflow-auto xl:max-h-[36rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
+                            {/* จอใหญ่: ตารางบัญชี (ชื่อ ห้อง สิทธิ์ เข้าสู่ระบบล่าสุด ปุ่มจัดการ) ไม่มีปุ่มลบสำหรับบัญชีตัวเอง */}
                             <table className="hidden xl:table w-full min-w-[48rem] border-collapse text-sm">
                                 <thead className="sticky top-0 z-10">
                                     <tr className="bg-primary-dark text-white">
@@ -286,6 +314,7 @@ function AdminUsersPage() {
                                     ))}
                                 </tbody>
                             </table>
+                            {/* จอเล็ก/กลาง: แสดงเป็นการ์ดแทนตาราง */}
                             <div className="xl:hidden grid gap-3 md:grid-cols-2">
                                 {visible.map((u) => (
                                     <div key={u.id} className="rounded-2xl border border-line bg-white p-4 flex flex-col gap-3">
@@ -320,6 +349,7 @@ function AdminUsersPage() {
                                     </div>
                                 ))}
                             </div>
+                            {/* ข้อความกำลังโหลด / error / ไม่พบบัญชี */}
                             {(loading || loadError || visible.length === 0) && (
                                 <div className={`py-12 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
                                     {loading ? 'กำลังโหลด...' : loadError || 'ไม่พบบัญชีผู้ใช้'}
@@ -330,6 +360,7 @@ function AdminUsersPage() {
                 </div>
             )}
 
+            {/* หน้าต่างแก้ไข / ยืนยันลบบัญชี */}
             {modal?.type === 'edit' && (
                 <EditModal key={modal.user.id} user={modal.user} onSave={handleSave} onCancel={() => setModal(null)} />
             )}

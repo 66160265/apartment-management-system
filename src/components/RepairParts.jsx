@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
-import { repairStatuses } from '../data/repairs'
-import { formatSize, getRepairImageUrl, validateImage } from '../lib/repairs'
+import DatePicker from './DatePicker'
+import { DEFAULT_PERIOD, MAX_SLOTS, repairStatuses, repairUrgencies } from '../data/repairs'
+import { formatSize, formatSlot, getRepairImageUrl, parsePeriod, repairTimeOptions, todayIso, validateImage } from '../lib/repairs'
 
+// ป้ายสถานะงานซ่อม (รอดำเนินการ / กำลังดำเนินการ / เสร็จสิ้น) สีตามสถานะ ถ้าไม่รู้จักสถานะจะแสดงเป็นสีเทา
 export function RepairStatusBadge({ status }) {
     const s = repairStatuses[status] ?? { label: status, color: 'bg-gray-100 text-gray-800', dot: 'bg-gray-400' }
     return (
@@ -18,6 +20,7 @@ export function RepairImage({ path, className = 'max-h-80' }) {
     const [url, setUrl] = useState(null)
     const [failed, setFailed] = useState(false)
 
+    // ขอลิงก์รูปใหม่ทุกครั้งที่ path เปลี่ยน (active กันไม่ให้ตั้งค่าหลังคอมโพเนนต์ถูกปิดไปแล้ว)
     useEffect(() => {
         let active = true
         getRepairImageUrl(path).then((u) => {
@@ -49,6 +52,7 @@ export function RepairImagePicker({ file, existingPath, onPick, onClear, disable
     // คืนหน่วยความจำของรูปตัวอย่างเมื่อเปลี่ยนรูปหรือปิดหน้า
     useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview])
 
+    // ตรวจไฟล์ที่เลือก (ชนิด/ขนาด) ถ้าผ่านให้สร้างรูปตัวอย่างแล้วส่งไฟล์ออกไป จากนั้นล้างช่อง input ให้เลือกไฟล์เดิมซ้ำได้
     const pick = (f) => {
         if (!f) return
         const message = validateImage(f)
@@ -60,16 +64,19 @@ export function RepairImagePicker({ file, existingPath, onPick, onClear, disable
         if (inputRef.current) inputRef.current.value = ''
     }
 
+    // นำรูปออก: ล้างข้อความ error และรูปตัวอย่าง แล้วแจ้งให้หน้าที่เรียกใช้รู้
     const clear = () => {
         setError('')
         setPreview(null)
         onClear()
     }
 
+    // มีรูปให้แสดงไหม (รูปใหม่ที่เลือก หรือรูปเดิมในระบบ)
     const hasImage = file || existingPath
 
     return (
         <div className="flex flex-col gap-2">
+            {/* ช่องเลือกไฟล์จริงซ่อนไว้ กดผ่านปุ่มอื่นแทน */}
             <input
                 ref={inputRef}
                 type="file"
@@ -78,6 +85,7 @@ export function RepairImagePicker({ file, existingPath, onPick, onClear, disable
                 disabled={disabled}
                 className="hidden"
             />
+            {/* มีรูป: แสดงรูป + ปุ่มเปลี่ยน/นำออก, ไม่มีรูป: กล่องคลิกหรือลากไฟล์มาวาง */}
             {hasImage ? (
                 <div className="flex flex-col items-center gap-3 rounded-2xl bg-sand/70 border border-line p-4">
                     {file && preview ? (
@@ -112,6 +120,7 @@ export function RepairImagePicker({ file, existingPath, onPick, onClear, disable
                     <span className="text-xs">JPG, PNG หรือ WEBP ไม่เกิน 5 MB</span>
                 </button>
             )}
+            {/* ข้อความ error ของไฟล์ */}
             {error && <p className="text-sm text-red-600">{error}</p>}
         </div>
     )
@@ -122,6 +131,7 @@ export function ConfirmDialog({ title, children, confirmLabel, busy, onCancel, o
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
             <div role="alertdialog" aria-modal="true" className="bg-white rounded-2xl p-6 shadow-xl w-[380px] max-w-full flex flex-col gap-3">
+                {/* หัวข้อ, ข้อความ (children) และปุ่ม ไม่ใช่ / ยืนยัน */}
                 <h3 className="text-lg font-semibold text-primary-dark">{title}</h3>
                 <div className="text-sm text-muted">{children}</div>
                 <div className="flex justify-end gap-2 mt-2">
@@ -133,6 +143,201 @@ export function ConfirmDialog({ title, children, confirmLabel, busy, onCancel, o
                     </button>
                 </div>
             </div>
+        </div>
+    )
+}
+
+// ป้ายความเร่งด่วน (ไม่แสดงอะไรถ้าเป็นระดับปกติ เว้นแต่ showNormal)
+export function UrgencyBadge({ urgency, showNormal = false }) {
+    if (!urgency || (urgency === 'normal' && !showNormal)) return null
+    const u = repairUrgencies[urgency] ?? repairUrgencies.normal
+    return (
+        <span className={`inline-flex items-center gap-1 whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium ${u.color}`}>
+            {urgency === 'emergency' && <Icon name="alert" className="w-3.5 h-3.5" />}
+            {u.label}
+        </span>
+    )
+}
+
+// ปุ่มเลือกเวลา กดแล้วเปิดตารางเวลาแบบกะทัดรัด (แทน select ของเบราว์เซอร์ที่รายการยาวเกินไป)
+function TimeSelect({ value, options, isBlocked, onChange, disabled, label, align, className }) {
+    const ref = useRef(null)
+    const [open, setOpen] = useState(false)
+
+    // ขณะเปิด: คลิกด้านนอกหรือกด Esc ให้ปิด
+    useEffect(() => {
+        if (!open) return
+        const onClick = (e) => {
+            if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+        }
+        const onKey = (e) => e.key === 'Escape' && setOpen(false)
+        document.addEventListener('mousedown', onClick)
+        document.addEventListener('keydown', onKey)
+        return () => {
+            document.removeEventListener('mousedown', onClick)
+            document.removeEventListener('keydown', onKey)
+        }
+    }, [open])
+
+    return (
+        <div ref={ref} className="relative flex-1 min-w-0">
+            <button
+                type="button"
+                onClick={() => setOpen(!open)}
+                disabled={disabled}
+                aria-label={label}
+                aria-expanded={open}
+                className={`${className} flex items-center justify-between gap-1 text-left ${open ? 'border-secondary' : ''}`}
+            >
+                <span>{value}</span>
+                <Icon name="clock" className="w-4 h-4 text-primary shrink-0" />
+            </button>
+            {open && (
+                <div className={`absolute z-40 mt-1 w-56 grid grid-cols-4 gap-1 bg-white rounded-2xl shadow-xl border border-line p-2 ${align === 'right' ? 'right-0' : 'left-0'}`}>
+                    {options.map((t) => {
+                        const blocked = isBlocked?.(t)
+                        return (
+                            <button
+                                key={t}
+                                type="button"
+                                disabled={blocked}
+                                onClick={() => {
+                                    onChange(t)
+                                    setOpen(false)
+                                }}
+                                className={`py-1.5 rounded-lg text-xs transition-colors ${
+                                    t === value ? 'bg-primary text-white font-medium' : blocked ? 'text-line cursor-not-allowed' : 'text-ink hover:bg-mist/50'
+                                }`}
+                            >
+                                {t}
+                            </button>
+                        )
+                    })}
+                </div>
+            )}
+        </div>
+    )
+}
+
+// เลือกช่วงเวลาเอง (เริ่ม - สิ้นสุด) ระหว่าง 09:00-20:00 ค่าเป็น "HH:MM-HH:MM"
+export function TimeRangePicker({ value, onChange, disabled = false, selectClassName = 'w-full border border-line rounded-xl px-3 py-2 text-sm bg-white outline-none focus:border-secondary' }) {
+    const { start, end } = parsePeriod(value)
+    // เปลี่ยนเวลาเริ่มแล้วเลยเวลาสิ้นสุด: เลื่อนเวลาสิ้นสุดไปเป็นช่องถัดไป
+    const changeStart = (s) => onChange(`${s}-${end > s ? end : repairTimeOptions[repairTimeOptions.indexOf(s) + 1]}`)
+    return (
+        <div className="flex-1 min-w-48 flex items-center gap-1.5">
+            <TimeSelect value={start} options={repairTimeOptions.slice(0, -1)} onChange={changeStart} disabled={disabled} label="เวลาเริ่ม" className={selectClassName} />
+            <span className="text-muted text-sm">ถึง</span>
+            <TimeSelect
+                value={end}
+                options={repairTimeOptions.slice(1)}
+                isBlocked={(t) => t <= start}
+                onChange={(t) => onChange(`${start}-${t}`)}
+                disabled={disabled}
+                label="เวลาสิ้นสุด"
+                align="right"
+                className={selectClassName}
+            />
+            <span className="text-muted text-sm">น.</span>
+        </div>
+    )
+}
+
+// ตัวเลือกช่วงเวลาที่สะดวกให้ช่างเข้า (สูงสุด MAX_SLOTS ช่วง) ค่าเป็น [{ date: 'YYYY-MM-DD', period: '13:00-15:30' }]
+export function SlotPicker({ slots, onChange, disabled = false }) {
+    // แสดงช่องตัวเลือกที่ 1 ไว้เสมอ ถ้ายังไม่ได้เลือกวันจะยังไม่นับเป็นข้อมูล (ส่ง [] ออกไป แต่จำเวลาที่ตั้งไว้)
+    const [draftPeriod, setDraftPeriod] = useState(DEFAULT_PERIOD)
+    const rows = slots.length > 0 ? slots : [{ date: '', period: draftPeriod }]
+    const emit = (next) => {
+        if (next.length === 1 && !next[0].date) {
+            setDraftPeriod(next[0].period)
+            onChange([])
+        } else onChange(next)
+    }
+
+    // แก้ค่าของช่วงที่ index
+    const update = (index, key, value) => emit(rows.map((s, i) => (i === index ? { ...s, [key]: value } : s)))
+    const remove = (index) => emit(rows.filter((_, i) => i !== index))
+    const add = () => emit([...rows, { date: '', period: DEFAULT_PERIOD }])
+
+    return (
+        <div className="flex flex-col gap-2">
+            {rows.map((s, i) => (
+                <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-2 rounded-xl border border-line bg-sand/40 p-2">
+                    <span className="text-xs text-muted w-14 shrink-0">ตัวเลือก {i + 1}</span>
+                    <div className="flex-1 min-w-40">
+                        <DatePicker value={s.date} onChange={(v) => update(i, 'date', v)} min={todayIso()} disabled={disabled} placeholder="เลือกวัน" />
+                    </div>
+                    <TimeRangePicker value={s.period} onChange={(v) => update(i, 'period', v)} disabled={disabled} />
+                    {/* ช่องแรกลบไม่ได้ ลบได้เฉพาะช่องที่เพิ่มเอง */}
+                    {i > 0 && (
+                        <button type="button" onClick={() => remove(i)} disabled={disabled} aria-label="ลบช่วงเวลานี้" className="p-2 text-muted hover:text-red-600">
+                            <Icon name="trash" className="w-4 h-4" />
+                        </button>
+                    )}
+                </div>
+            ))}
+            {rows.length < MAX_SLOTS && (
+                <button type="button" onClick={add} disabled={disabled} className="self-start flex items-center gap-1.5 text-sm text-primary hover:underline">
+                    <Icon name="plus" className="w-4 h-4" />
+                    เพิ่มช่วงเวลาที่สะดวก (เลือกได้อีก {MAX_SLOTS - rows.length})
+                </button>
+            )}
+        </div>
+    )
+}
+
+// รายการช่วงเวลาที่ผู้เช่าสะดวก (อ่านอย่างเดียว) ถ้าส่ง onPick มา จะมีปุ่มเลือกช่วงนั้นเป็นวันนัด (ใช้ฝั่งแอดมิน)
+export function SlotList({ slots, allowEntry, note, onPick, picked }) {
+    const today = todayIso()
+    return (
+        <div className="flex flex-col gap-1.5 text-sm">
+            {(slots ?? []).length === 0 && !allowEntry && <p className="text-muted">ผู้เช่าไม่ได้ระบุช่วงเวลา</p>}
+            {(slots ?? []).map((s) => {
+                const past = s.date < today
+                const isPicked = picked && picked.date === s.date && picked.period === s.period
+                return (
+                    <div key={`${s.date}-${s.period}`} className={`flex items-center gap-2 ${past ? 'text-muted line-through' : 'text-ink'}`}>
+                        <Icon name="calendar" className="w-4 h-4 text-secondary shrink-0" />
+                        <span className="flex-1">{formatSlot(s.date, s.period)}</span>
+                        {onPick && !past && (
+                            <button
+                                type="button"
+                                onClick={() => onPick(s)}
+                                className={`px-3 py-0.5 rounded-lg text-xs ${isPicked ? 'bg-primary text-white' : 'bg-mist/60 text-primary-dark hover:bg-mist'}`}
+                            >
+                                {isPicked ? 'เลือกแล้ว' : 'นัดช่วงนี้'}
+                            </button>
+                        )}
+                    </div>
+                )
+            })}
+            {allowEntry && (
+                <div className="flex items-center gap-2 text-emerald-700">
+                    <Icon name="key" className="w-4 h-4 shrink-0" />
+                    อนุญาตให้ช่างเข้าห้องได้แม้ผู้เช่าไม่อยู่
+                </div>
+            )}
+            {note && <p className="text-muted whitespace-pre-line">หมายเหตุ: {note}</p>}
+        </div>
+    )
+}
+
+// กล่องแสดงวันนัดเข้าซ่อม (สถานะ proposed = รอผู้เช่ายืนยัน, confirmed = ยืนยันแล้ว)
+export function AppointmentBox({ repair, children }) {
+    if (!repair.appointment_date) return null
+    const proposed = repair.appointment_state === 'proposed'
+    return (
+        <div className={`rounded-xl border-l-4 px-4 py-3 ${proposed ? 'bg-amber-50 border-amber-400' : 'bg-violet-50 border-violet-400'}`}>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+                <Icon name="calendar" className="w-4 h-4" />
+                <span className={proposed ? 'text-amber-800' : 'text-violet-800'}>
+                    {proposed ? 'ผู้ดูแลเสนอวันเข้าซ่อม (รอผู้เช่ายืนยัน)' : 'นัดเข้าซ่อม (ยืนยันแล้ว)'}
+                </span>
+            </div>
+            <div className="mt-1 text-base font-semibold text-ink">{formatSlot(repair.appointment_date, repair.appointment_period)}</div>
+            {repair.technician && <div className="text-sm text-muted mt-0.5">ช่าง: {repair.technician}</div>}
+            {children}
         </div>
     )
 }

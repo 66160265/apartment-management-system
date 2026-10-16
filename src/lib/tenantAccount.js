@@ -4,8 +4,10 @@ import { supabase } from './supabaseClient'
 // ต้องตรงกับ USERNAME_EMAIL_DOMAIN ของ Edge Function create-tenant
 export const USERNAME_EMAIL_DOMAIN = import.meta.env.VITE_USERNAME_EMAIL_DOMAIN || 'apartment.app'
 
+// แปลงชื่อผู้ใช้เป็นอีเมลภายใน เช่น T101 -> t101@apartment.app
 export const usernameToEmail = (username) => `${username.trim().toLowerCase()}@${USERNAME_EMAIL_DOMAIN}`
 
+// ชื่อผู้ใช้ของผู้เช่า: T ตามด้วยเลขห้อง
 export const makeUsername = (room) => `T${room}`
 
 // เพิ่มผู้เช่า + สร้างบัญชี (ชื่อผู้ใช้ T+เลขห้อง, รหัสผ่าน TP+เลขห้อง+เลขท้ายเบอร์ 4 ตัว)

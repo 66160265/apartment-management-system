@@ -6,9 +6,11 @@ import { supabase } from "../lib/supabaseClient";
 import { roleLabels, useCurrentUser } from "../lib/useCurrentUser";
 import { useNotifications } from "../lib/useNotifications";
 
+// หน้าแรกของแต่ละสิทธิ์ (เมนู "ภาพรวม" ใช้ร่วมกัน)
 const ADMIN_DASHBOARD = "/admin/dashboard";
 const USER_DASHBOARD = "/user/dashboard";
 
+// เมนูด้านข้าง: แสดงเมนูตามสิทธิ์ (แอดมิน/ผู้เช่า) จำนวนแจ้งเตือนที่ยังไม่อ่าน และปุ่มออกจากระบบ (บนจอเล็กเป็นเมนูเลื่อนออกมา)
 function Sidebar({ open = false, onClose = () => {} }) {
   const navigate = useNavigate();
   const me = useCurrentUser();
@@ -21,23 +23,28 @@ function Sidebar({ open = false, onClose = () => {} }) {
   const resolvePath = (item) =>
     item.path === ADMIN_DASHBOARD && role === "user" ? USER_DASHBOARD : item.path;
 
+  // ออกจากระบบแล้วกลับไปหน้า login
   const handleLogout = async () => {
     setLoggingOut(true);
     await supabase.auth.signOut();
     navigate("/");
   };
 
+  // ซ่อนเมนูเฉพาะแอดมินเมื่อผู้ใช้เป็นผู้เช่า
   const visibleItems = menuItems.filter((item) => !item.adminOnly || role === "admin");
 
+  // ชื่อและตัวอักษรในวงกลมที่ด้านล่างเมนู
   const displayName = me?.tenant?.name || roleLabels[role] || "";
   const initial = role === "user" && me?.tenant?.name ? me.tenant.name.trim().charAt(0) : "AD";
 
+  // จอใหญ่: เมนูติดด้านซ้ายตลอด / จอเล็ก: เลื่อนเข้าออกตาม open
   return (
     <aside
       className={`fixed inset-y-0 left-0 z-40 w-64 h-screen shrink-0 bg-linear-to-b from-primary-dark to-primary-deep text-white flex flex-col transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:translate-x-0 ${
         open ? "translate-x-0" : "-translate-x-full"
       }`}
     >
+      {/* โลโก้และชื่อระบบ + ปุ่มปิดเมนู (เฉพาะจอเล็ก) */}
       <div className="flex items-center gap-3 px-5 pt-6 pb-5">
         <span className="grid place-items-center w-11 h-11 rounded-2xl bg-white/12 ring-1 ring-white/15">
           <Icon name="building" className="w-6 h-6" />
@@ -55,14 +62,17 @@ function Sidebar({ open = false, onClose = () => {} }) {
         </button>
       </div>
 
+      {/* รายการเมนู */}
       <nav className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-1" aria-label="เมนูหลัก">
         {visibleItems.map((item, index) => (
           <Fragment key={item.path}>
+            {/* หัวข้อ "จัดการระบบ" คั่นก่อนเมนูกลุ่ม system ตัวแรก */}
             {item.group === "system" && visibleItems[index - 1]?.group !== "system" && (
               <div className="mt-4 mb-1 px-3.5 pt-3 border-t border-white/10 text-[11px] font-medium tracking-wide text-white/45">
                 {systemGroupLabel}
               </div>
             )}
+            {/* ลิงก์เมนู: หน้าปัจจุบันไฮไลต์และมีแถบด้านซ้าย เมนูแจ้งเตือนมีป้ายจำนวนที่ยังไม่อ่าน */}
             <NavLink
               to={resolvePath(item)}
               className={({ isActive }) =>
@@ -90,6 +100,7 @@ function Sidebar({ open = false, onClose = () => {} }) {
         ))}
       </nav>
 
+      {/* ด้านล่าง: ชื่อผู้ใช้ ห้อง/ชื่อผู้ใช้ และปุ่มออกจากระบบ */}
       <div className="p-3 border-t border-white/10">
         <div className="flex items-center gap-3 rounded-xl bg-white/8 px-3 py-2.5">
           <span className="grid place-items-center w-9 h-9 rounded-full bg-mist text-primary-dark text-sm font-semibold shrink-0">

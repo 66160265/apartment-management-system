@@ -16,16 +16,19 @@ const C = {
     red: '#B91C1C',
 }
 
+// ป้ายและสีของสถานะใบแจ้งหนี้ในเอกสาร
 const statusMeta = {
     pending: { label: 'รอชำระ', bg: '#FEF3C7', fg: '#92400E' },
     review: { label: 'รอตรวจสอบสลิป', bg: '#E0F2FE', fg: '#075985' },
     paid: { label: 'ชำระแล้ว', bg: '#D1FAE5', fg: '#065F46' },
 }
 
+// สไตล์ช่องหัวตาราง ช่องข้อมูล และตัวเลขให้กว้างเท่ากัน (ตรงแนว)
 const th = { padding: '10px 10px', fontWeight: 600, fontSize: 12, color: C.dark, background: C.sand, borderBottom: `1px solid ${C.line}` }
 const td = { padding: '11px 10px', borderBottom: `1px solid ${C.line}`, fontSize: 13 }
 const num = { fontVariantNumeric: 'tabular-nums' }
 
+// แถวข้อมูลในเอกสาร: หัวข้อตัวเล็กและค่าตัวหนา
 function Field({ label, children }) {
     return (
         <div style={{ marginBottom: 6 }}>
@@ -35,18 +38,22 @@ function Field({ label, children }) {
     )
 }
 
+// หน้าตาเอกสารใบแจ้งหนี้สำหรับแปลงเป็น PDF: ข้อมูลหอพัก ผู้เช่า รายการค่าใช้จ่าย ยอดรวม และ QR ชำระเงิน
 function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
+    // คำนวณหน่วยและค่าน้ำ/ไฟ และค่าส่วนกลาง
     const waterUnits = Math.max(0, (invoice.water_curr || 0) - (invoice.water_prev || 0))
     const elecUnits = Math.max(0, (invoice.elec_curr || 0) - (invoice.elec_prev || 0))
     const waterCost = waterUnits * Number(invoice.water_rate || 0)
     const elecCost = elecUnits * Number(invoice.elec_rate || 0)
     const commonFee = Number(invoice.common_fee || 0)
 
+    // สถานะ, วันออกใบแจ้งหนี้, วันครบกำหนด และจ่ายแล้วหรือยัง
     const status = statusMeta[invoice.status] ?? statusMeta.pending
     const issueDate = formatShortDate(invoice.created_at ?? `${invoice.month}-01`)
     const dueDate = formatShortDate(dueDateOf(invoice.month, settings.dueDay))
     const isPaid = invoice.status === 'paid'
 
+    // รายการในตาราง (ค่าส่วนกลางแสดงเฉพาะเมื่อมากกว่า 0)
     const rows = [
         { name: 'ค่าเช่าห้องพัก', sub: `ประจำเดือน ${formatMonth(invoice.month)}`, prev: '-', curr: '-', qty: '1 งวด', rate: baht(invoice.rent), amount: baht(invoice.rent) },
         { name: 'ค่าน้ำประปา', sub: '', prev: invoice.water_prev, curr: invoice.water_curr, qty: `${waterUnits} หน่วย`, rate: baht(invoice.water_rate), amount: baht(waterCost) },
@@ -73,6 +80,7 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
         >
             {/* หัวเอกสาร */}
             <div style={{ background: `linear-gradient(135deg, ${C.deep}, ${C.primary})`, color: '#FFFFFF', padding: '30px 44px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                {/* ซ้าย: โลโก้ ชื่อหอพัก ที่อยู่ และช่องทางติดต่อ */}
                 <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
                     <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(255,255,255,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -90,6 +98,7 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
                         </div>
                     </div>
                 </div>
+                {/* ขวา: คำว่าใบแจ้งหนี้ และเลขที่ใบแจ้งหนี้ */}
                 <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.1 }}>ใบแจ้งหนี้</div>
                     <div style={{ fontSize: 12, letterSpacing: 3, opacity: 0.8, marginTop: 2 }}>INVOICE</div>
@@ -116,6 +125,7 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
                     </div>
                 </div>
 
+                {/* ป้ายสถานะ */}
                 <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 12, color: C.muted }}>สถานะ</span>
                     <span style={{ background: status.bg, color: status.fg, borderRadius: 999, padding: '2px 12px', fontSize: 12, fontWeight: 600 }}>{status.label}</span>

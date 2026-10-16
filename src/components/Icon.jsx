@@ -49,6 +49,7 @@ const paths = {
     key: 'M15 7a5 5 0 1 0-4.6 5L3 19.4V21h3v-2h2v-2h2l2.2-2.2A5 5 0 0 0 15 7zM16.5 7.5h.01',
 }
 
+// แสดงไอคอน SVG ตามชื่อ (name) ที่กำหนดในรายการด้านบน
 function Icon({ name, className = 'w-5 h-5' }) {
     return (
         <svg
@@ -61,6 +62,7 @@ function Icon({ name, className = 'w-5 h-5' }) {
             className={`shrink-0 ${className}`}
             aria-hidden="true"
         >
+            {/* วาดเส้นตามรูปทรงของไอคอนที่เลือก (สีตามสีตัวอักษรของตัวแม่) */}
             <path d={paths[name]} />
         </svg>
     )

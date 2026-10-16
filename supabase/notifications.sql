@@ -115,7 +115,58 @@ returns text
 language sql
 immutable
 as $$
-  select case s when 'pending' then 'รอดำเนินการ' when 'in_progress' then 'กำลังดำเนินการ' else 'เสร็จสิ้น' end;
+  select case s
+    when 'pending' then 'รอนัดหมาย'
+    when 'scheduled' then 'นัดหมายแล้ว'
+    when 'in_progress' then 'กำลังซ่อม'
+    when 'done' then 'เสร็จสิ้น'
+    when 'cancelled' then 'ยกเลิก'
+    else s end;
+$$;
+
+-- 13:00-15:30 -> 13:00-15:30 น. (ค่าแบบเดิม morning -> 09:00-12:00 น.)
+create or replace function public.repair_period_label(p text)
+returns text
+language sql
+immutable
+as $$
+  select case p
+    when 'morning' then '09:00-12:00 น.'
+    when 'afternoon' then '13:00-17:00 น.'
+    when 'evening' then '17:00-20:00 น.'
+    else coalesce(p || ' น.', '') end;
+$$;
+
+-- 2026-10-20 -> จ. 20 ต.ค. 69
+create or replace function public.thai_date(d date)
+returns text
+language sql
+immutable
+as $$
+  select (array['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'])[extract(dow from d)::int + 1]
+         || ' ' || extract(day from d)::int || ' ' || public.thai_month(to_char(d, 'YYYY-MM'));
+$$;
+
+-- ข้อความวันนัด เช่น "จ. 20 ต.ค. 69 13:00-15:30 น."
+create or replace function public.repair_appointment_text(d date, p text)
+returns text
+language sql
+immutable
+as $$
+  select public.thai_date(d) || ' ' || public.repair_period_label(p);
+$$;
+
+-- ข้อความช่วงเวลาที่ผู้เช่าสะดวก (บรรทัดละช่วง)
+create or replace function public.repair_slots_text(p_slots jsonb, p_allow_entry boolean, p_note text)
+returns text
+language sql
+immutable
+as $$
+  select concat_ws(E'\n',
+    nullif(string_agg('• ' || public.repair_appointment_text((e->>'date')::date, e->>'period'), E'\n'), ''),
+    case when p_allow_entry then '• เข้าห้องได้แม้ผู้เช่าไม่อยู่' end,
+    case when coalesce(p_note, '') <> '' then '• หมายเหตุ: ' || p_note end)
+  from jsonb_array_elements(coalesce(p_slots, '[]'::jsonb)) e;
 $$;
 
 -- ---------------------------------------------------------------------------
@@ -129,7 +180,10 @@ security definer set search_path = public
 as $$
 declare
   v_admin boolean;
+  v_head text;
   v_text text;
+  v_title text;
+  v_appt_changed boolean;
 begin
   -- แก้ข้อมูลจาก SQL Editor / service role (ไม่มีผู้ใช้) ไม่ต้องแจ้งเตือน
   if auth.uid() is null then
@@ -141,43 +195,109 @@ begin
   if tg_op = 'INSERT' then
     if v_admin then
       perform public.notify(
-        new.user_id, 'repair', 'ผู้ดูแลบันทึกเรื่องแจ้งซ่อมให้คุณ',
+        new.user_id, 'repair',
+        case when new.status = 'scheduled' and new.appointment_state = 'proposed'
+             then 'ผู้ดูแลบันทึกเรื่องแจ้งซ่อมและเสนอวันเข้าซ่อม กรุณายืนยัน'
+             else 'ผู้ดูแลบันทึกเรื่องแจ้งซ่อมให้คุณ' end,
         'ห้อง ' || new.room || ' · ' || new.problem,
-        'รายการ: ' || new.problem || case when new.detail <> '' then E'\n' || new.detail else '' end,
+        'รายการ: ' || new.problem || case when new.detail <> '' then E'\n' || new.detail else '' end
+          || case when new.status = 'scheduled'
+                  then E'\nวันนัด: ' || public.repair_appointment_text(new.appointment_date, new.appointment_period)
+                  else '' end,
         '/repairs', 'ดูรายการแจ้งซ่อม');
     else
       perform public.notify_admins(
-        'repair', 'แจ้งซ่อมใหม่',
+        'repair',
+        case new.urgency when 'emergency' then 'แจ้งซ่อมฉุกเฉิน!' when 'urgent' then 'แจ้งซ่อมด่วน' else 'แจ้งซ่อมใหม่' end,
         'ห้อง ' || new.room || ' · ' || new.problem,
         'ผู้เช่า' || case when new.tenant_name <> '' then ' ' || new.tenant_name else '' end
           || ' ห้อง ' || new.room || ' แจ้งซ่อม: ' || new.problem
-          || case when new.detail <> '' then E'\n\n' || new.detail else '' end,
+          || case when new.detail <> '' then E'\n\n' || new.detail else '' end
+          || E'\n\nช่วงเวลาที่สะดวกให้ช่างเข้า:\n'
+          || coalesce(nullif(public.repair_slots_text(new.available_slots, new.allow_entry, new.availability_note), ''), '• ไม่ได้ระบุ')
+          || case when new.contact_phone <> '' then E'\nเบอร์ติดต่อ: ' || new.contact_phone else '' end,
         '/repairs', 'ไปที่ระบบแจ้งซ่อม');
     end if;
 
   elsif tg_op = 'UPDATE' then
+    v_head := 'ห้อง ' || new.room || ' · ' || new.problem;
+    v_appt_changed := new.appointment_date is distinct from old.appointment_date
+                   or new.appointment_period is distinct from old.appointment_period;
+
     if v_admin then
-      if new.status is distinct from old.status or new.admin_note is distinct from old.admin_note then
-        v_text := 'รายการ: ' || new.problem || E'\nสถานะ: ' || public.repair_status_label(new.status);
-        if new.admin_note <> '' then
-          v_text := v_text || E'\n\nข้อความจากผู้ดูแล: ' || new.admin_note;
-        end if;
-        perform public.notify(
-          new.user_id, 'repair',
-          case when new.status is distinct from old.status
-               then 'สถานะแจ้งซ่อมเปลี่ยนเป็น "' || public.repair_status_label(new.status) || '"'
-               else 'ผู้ดูแลส่งข้อความเกี่ยวกับงานซ่อม' end,
-          'ห้อง ' || new.room || ' · ' || new.problem,
-          v_text, '/repairs', 'ดูรายการแจ้งซ่อม');
+      v_text := 'รายการ: ' || new.problem || E'\nสถานะ: ' || public.repair_status_label(new.status);
+      if new.status = 'scheduled' then
+        v_text := v_text || E'\nวันนัด: ' || public.repair_appointment_text(new.appointment_date, new.appointment_period)
+          || case when new.technician <> '' then E'\nช่าง: ' || new.technician else '' end
+          || E'\nช่างจะโทรไปคอนเฟิร์มอีกครั้งก่อนถึงเวลานัด 30 นาที';
       end if;
+      if new.status in ('in_progress', 'done') and new.cost > 0 then
+        v_text := v_text || E'\nค่าใช้จ่าย: ' || public.fmt_baht(new.cost)
+          || case when new.cost_payer = 'tenant' then ' (ผู้เช่าเป็นผู้ชำระ)' else ' (หอพักรับผิดชอบ)' end;
+      end if;
+      if new.admin_note <> '' then
+        v_text := v_text || E'\n\nข้อความจากผู้ดูแล: ' || new.admin_note;
+      end if;
+
+      if new.status = 'scheduled' and new.appointment_state = 'proposed'
+         and (v_appt_changed or old.status is distinct from 'scheduled' or old.appointment_state is distinct from 'proposed') then
+        v_title := 'ผู้ดูแลเสนอวันเข้าซ่อม กรุณายืนยัน';
+        v_text := v_text || E'\n\nหากไม่สะดวก กด "ขอเปลี่ยนเวลา" ในหน้าแจ้งซ่อมเพื่อเลือกวันใหม่';
+      elsif new.status = 'scheduled' and (v_appt_changed or old.status is distinct from 'scheduled'
+            or old.appointment_state is distinct from new.appointment_state) then
+        v_title := 'นัดเข้าซ่อม ' || public.repair_appointment_text(new.appointment_date, new.appointment_period);
+      elsif new.status is distinct from old.status then
+        v_title := case new.status
+          when 'done' then 'ซ่อมเสร็จแล้ว กรุณาตรวจสอบและยืนยัน'
+          when 'cancelled' then 'เรื่องแจ้งซ่อมถูกยกเลิก'
+          when 'pending' then 'ต้องนัดวันเข้าซ่อมใหม่'
+          else 'สถานะแจ้งซ่อมเปลี่ยนเป็น "' || public.repair_status_label(new.status) || '"' end;
+      elsif new.admin_note is distinct from old.admin_note or new.technician is distinct from old.technician then
+        v_title := 'ผู้ดูแลส่งข้อความเกี่ยวกับงานซ่อม';
+      end if;
+
+      if v_title is not null then
+        perform public.notify(new.user_id, 'repair', v_title, v_head, v_text, '/repairs', 'ดูรายการแจ้งซ่อม');
+      end if;
+
+    -- ===== การกระทำของผู้เช่า =====
+    elsif old.appointment_state = 'proposed' and new.appointment_state = 'confirmed' then
+      perform public.notify_admins(
+        'repair', 'ผู้เช่ายืนยันวันนัดซ่อมแล้ว', v_head,
+        'ผู้เช่าห้อง ' || new.room || ' ยืนยันนัด ' || public.repair_appointment_text(new.appointment_date, new.appointment_period)
+          || E'\nรายการ: ' || new.problem,
+        '/repairs', 'ไปที่ระบบแจ้งซ่อม');
+    elsif old.status = 'scheduled' and new.status = 'pending' then
+      perform public.notify_admins(
+        'repair', 'ผู้เช่าขอเปลี่ยนวันนัดซ่อม', v_head,
+        'ผู้เช่าห้อง ' || new.room || ' ไม่สะดวกวันนัด ' || public.repair_appointment_text(old.appointment_date, old.appointment_period)
+          || case when new.tenant_message <> '' then E'\nเหตุผล: ' || new.tenant_message else '' end
+          || E'\n\nช่วงเวลาที่สะดวกใหม่:\n'
+          || coalesce(nullif(public.repair_slots_text(new.available_slots, new.allow_entry, new.availability_note), ''), '• ไม่ได้ระบุ'),
+        '/repairs', 'นัดวันใหม่');
+    elsif old.status = 'done' and new.status = 'pending' then
+      perform public.notify_admins(
+        'repair', 'ผู้เช่าแจ้งว่ายังซ่อมไม่หาย', v_head,
+        'ผู้เช่าห้อง ' || new.room || ' แจ้งว่างานซ่อม "' || new.problem || '" ยังมีปัญหา'
+          || E'\nรายละเอียด: ' || new.tenant_message || E'\n\nกรุณานัดวันเข้าซ่อมใหม่',
+        '/repairs', 'ไปที่ระบบแจ้งซ่อม');
+    elsif old.tenant_confirmed_at is null and new.tenant_confirmed_at is not null then
+      perform public.notify_admins(
+        'repair', 'ผู้เช่ายืนยันว่าซ่อมเรียบร้อย', v_head,
+        'ผู้เช่าห้อง ' || new.room || ' ตรวจสอบแล้ว งานซ่อม "' || new.problem || '" เรียบร้อยดี',
+        '/repairs', 'ไปที่ระบบแจ้งซ่อม');
     elsif new.problem is distinct from old.problem
        or new.detail is distinct from old.detail
-       or new.image_path is distinct from old.image_path then
+       or new.image_path is distinct from old.image_path
+       or new.available_slots is distinct from old.available_slots
+       or new.allow_entry is distinct from old.allow_entry
+       or new.urgency is distinct from old.urgency then
       perform public.notify_admins(
-        'repair', 'ผู้เช่าแก้ไขเรื่องแจ้งซ่อม',
-        'ห้อง ' || new.room || ' · ' || new.problem,
+        'repair', 'ผู้เช่าแก้ไขเรื่องแจ้งซ่อม', v_head,
         'ผู้เช่าห้อง ' || new.room || ' แก้ไขรายละเอียดเรื่องแจ้งซ่อม: ' || new.problem
-          || case when new.detail <> '' then E'\n\n' || new.detail else '' end,
+          || case when new.detail <> '' then E'\n\n' || new.detail else '' end
+          || E'\n\nช่วงเวลาที่สะดวก:\n'
+          || coalesce(nullif(public.repair_slots_text(new.available_slots, new.allow_entry, new.availability_note), ''), '• ไม่ได้ระบุ'),
         '/repairs', 'ไปที่ระบบแจ้งซ่อม');
     end if;
 
@@ -200,6 +320,49 @@ $$;
 drop trigger if exists repairs_notify on public.repairs;
 create trigger repairs_notify after insert or update or delete on public.repairs
   for each row execute function public.repairs_notify();
+
+-- เตือนนัดซ่อมของวันนี้ (ผู้เช่า + แอดมิน) เรียกวันละครั้งตอนเช้าโดย pg_cron ด้านล่าง
+create or replace function public.repairs_send_reminders()
+returns void
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  r record;
+begin
+  for r in
+    select * from public.repairs
+    where status = 'scheduled' and appointment_state = 'confirmed' and appointment_date = public.today_th()
+  loop
+    perform public.notify(
+      r.user_id, 'repair', 'วันนี้มีนัดเข้าซ่อม ' || public.repair_period_label(r.appointment_period),
+      'ห้อง ' || r.room || ' · ' || r.problem,
+      'ช่างจะเข้าซ่อม "' || r.problem || '" ' || public.repair_appointment_text(r.appointment_date, r.appointment_period)
+        || case when r.technician <> '' then E'\nช่าง: ' || r.technician else '' end
+        || case when r.allow_entry then E'\nคุณอนุญาตให้เข้าห้องได้แม้ไม่อยู่' else E'\nกรุณาอยู่ห้องตามเวลานัด' end,
+      '/repairs', 'ดูรายการแจ้งซ่อม');
+    perform public.notify_admins(
+      'repair', 'วันนี้มีนัดซ่อมห้อง ' || r.room,
+      public.repair_period_label(r.appointment_period) || ' · ' || r.problem,
+      'นัดซ่อมห้อง ' || r.room || ' ' || public.repair_appointment_text(r.appointment_date, r.appointment_period)
+        || E'\nรายการ: ' || r.problem
+        || case when r.technician <> '' then E'\nช่าง: ' || r.technician else '' end
+        || case when r.contact_phone <> '' then E'\nเบอร์ผู้เช่า: ' || r.contact_phone else '' end,
+      '/repairs', 'ไปที่ระบบแจ้งซ่อม');
+  end loop;
+end;
+$$;
+
+revoke all on function public.repairs_send_reminders() from public, anon, authenticated;
+
+-- ตั้งเวลาเรียกทุกวัน 07:00 เวลาไทย (00:00 UTC) ต้องเปิด extension pg_cron ก่อน
+-- (Supabase: Database > Extensions > pg_cron) ถ้ายังไม่เปิด ส่วนนี้จะถูกข้าม ระบบส่วนอื่นยังใช้งานได้ตามปกติ
+do $$
+begin
+  if exists (select 1 from pg_extension where extname = 'pg_cron') then
+    perform cron.schedule('repair-reminders', '0 0 * * *', 'select public.repairs_send_reminders()');
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- ใบแจ้งหนี้

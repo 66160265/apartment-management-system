@@ -6,10 +6,13 @@ import { supabase } from '../lib/supabaseClient'
 import { formatDate } from '../lib/tenants'
 import { roleLabels, useCurrentUser } from '../lib/useCurrentUser'
 
+// ความยาวรหัสผ่านขั้นต่ำ
 const MIN_PASSWORD = 6
 
+// คลาส Tailwind ของช่องกรอกรหัสผ่าน
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2.5 outline-none focus:border-secondary focus:bg-white focus:ring-4 focus:ring-secondary/15'
 
+// แถวแสดงข้อมูลบัญชีหนึ่งรายการ: ไอคอน หัวข้อ และค่า
 function InfoRow({ icon, label, value }) {
     return (
         <div className="flex items-center gap-3 rounded-xl bg-sand/60 px-4 py-3">
@@ -24,6 +27,7 @@ function InfoRow({ icon, label, value }) {
     )
 }
 
+// ช่องกรอกรหัสผ่านพร้อมปุ่มแสดง/ซ่อนรหัส
 function PasswordField({ label, value, onChange, autoComplete }) {
     const [show, setShow] = useState(false)
     return (
@@ -50,20 +54,24 @@ function PasswordField({ label, value, onChange, autoComplete }) {
     )
 }
 
+// ฟอร์มเปลี่ยนรหัสผ่าน: ตรวจรหัสเดิมก่อน แล้วตั้งรหัสใหม่
 function ChangePasswordForm({ email }) {
     const [form, setForm] = useState({ current: '', next: '', confirm: '' })
     const [error, setError] = useState('')
     const [success, setSuccess] = useState(false)
     const [saving, setSaving] = useState(false)
 
+    // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key และล้างข้อความ error/สำเร็จ
     const set = (key) => (e) => {
         setForm({ ...form, [key]: e.target.value })
         setError('')
         setSuccess(false)
     }
 
+    // ตรวจข้อมูลที่กรอก ยืนยันรหัสผ่านเดิม แล้วบันทึกรหัสผ่านใหม่
     const handleSubmit = async (e) => {
         e.preventDefault()
+        // ตรวจข้อมูลก่อนส่ง: กรอกครบ, ยาวพอ, ยืนยันตรงกัน, ไม่ซ้ำรหัสเดิม
         if (!form.current || !form.next || !form.confirm) {
             setError('กรุณากรอกข้อมูลให้ครบ')
             return
@@ -89,6 +97,7 @@ function ChangePasswordForm({ email }) {
             setError('รหัสผ่านปัจจุบันไม่ถูกต้อง')
             return
         }
+        // รหัสเดิมถูกต้อง: ตั้งรหัสผ่านใหม่ แล้วล้างฟอร์มและแสดงข้อความสำเร็จ
         const { error: updateError } = await supabase.auth.updateUser({ password: form.next })
         setSaving(false)
         if (updateError) {
@@ -104,6 +113,7 @@ function ChangePasswordForm({ email }) {
             <PasswordField label="รหัสผ่านปัจจุบัน" value={form.current} onChange={set('current')} autoComplete="current-password" />
             <PasswordField label="รหัสผ่านใหม่" value={form.next} onChange={set('next')} autoComplete="new-password" />
             <PasswordField label="ยืนยันรหัสผ่านใหม่" value={form.confirm} onChange={set('confirm')} autoComplete="new-password" />
+            {/* ข้อความ error / สำเร็จ */}
             {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
             {success && (
                 <p className="flex items-center gap-2 text-sm text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-xl px-4 py-2">
@@ -124,6 +134,7 @@ function ChangePasswordForm({ email }) {
     )
 }
 
+// หน้าบัญชีของฉัน: ข้อมูลผู้ใช้/ห้อง/สัญญา และฟอร์มเปลี่ยนรหัสผ่าน
 function AccountPage() {
     const info = useCurrentUser()
     const t = info?.tenant
@@ -132,10 +143,12 @@ function AccountPage() {
         <>
             <PageHeader title="บัญชีของฉัน" subtitle="ดูข้อมูลบัญชีและเปลี่ยนรหัสผ่านของคุณ" />
 
+            {/* รอโหลดข้อมูลผู้ใช้ก่อน */}
             {!info ? (
                 <p className="px-6 text-muted">กำลังโหลด...</p>
             ) : (
                 <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6">
+                    {/* การ์ดโปรไฟล์: รูปตัวอักษร ชื่อ ป้ายสิทธิ์ สถานะสัญญา และชื่อผู้ใช้ */}
                     <div className="bg-white rounded-2xl shadow-card p-5 flex flex-wrap items-center gap-4">
                         <Avatar name={t?.name || 'A'} className="w-16 h-16 text-2xl" />
                         <div className="flex-1 min-w-48">
@@ -156,6 +169,7 @@ function AccountPage() {
                     </div>
 
                     <div className="grid gap-6 lg:grid-cols-2 items-start">
+                        {/* การ์ดข้อมูลบัญชี (ผู้เช่าจะเห็นข้อมูลห้องและสัญญาเพิ่ม) */}
                         <section className="bg-white rounded-2xl shadow-card p-5">
                             <h2 className="font-medium text-primary-dark mb-4">ข้อมูลบัญชี</h2>
                             <dl className="grid gap-3 sm:grid-cols-2">
@@ -173,6 +187,7 @@ function AccountPage() {
                             {t && <p className="mt-4 text-xs text-muted">หากข้อมูลไม่ถูกต้อง กรุณาติดต่อผู้ดูแลระบบ</p>}
                         </section>
 
+                        {/* การ์ดเปลี่ยนรหัสผ่าน */}
                         <section className="bg-white rounded-2xl shadow-card p-5">
                             <h2 className="font-medium text-primary-dark">เปลี่ยนรหัสผ่าน</h2>
                             <p className="mt-1 mb-4 text-xs text-muted">

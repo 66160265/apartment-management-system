@@ -8,6 +8,7 @@ function DownloadInvoiceButton({ invoice, className = '', label = 'ดาวน�
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
 
+    // สร้างและดาวน์โหลด PDF แสดงสถานะกำลังทำงานและข้อความ error ถ้าไม่สำเร็จ
     const handleClick = async () => {
         setBusy(true)
         setError('')
@@ -24,6 +25,7 @@ function DownloadInvoiceButton({ invoice, className = '', label = 'ดาวน�
     return (
         <div className="flex flex-col gap-1.5">
             <button type="button" onClick={handleClick} disabled={busy} className={`flex items-center justify-center gap-2 ${className}`}>
+                {/* ระหว่างสร้างไฟล์แสดงวงหมุน ไม่งั้นแสดงไอคอนดาวน์โหลด */}
                 {busy ? (
                     <span className="w-4 h-4 rounded-full border-2 border-current/30 border-t-current animate-spin" />
                 ) : (
@@ -31,6 +33,7 @@ function DownloadInvoiceButton({ invoice, className = '', label = 'ดาวน�
                 )}
                 {busy ? 'กำลังสร้างไฟล์...' : label}
             </button>
+            {/* ข้อความ error ใต้ปุ่ม */}
             {error && <p className="text-xs text-red-600">{error}</p>}
         </div>
     )

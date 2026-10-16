@@ -10,11 +10,13 @@ export const currentMonth = () => {
 export const formatMonth = (month) =>
     new Date(`${month}-01T00:00:00`).toLocaleDateString('th-TH', { month: 'short', year: '2-digit' })
 
+// แสดงวันที่และเวลาแบบไทย เช่น 1 ต.ค. 69 14:30
 export const formatDateTime = (iso) =>
     iso
         ? new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
         : '-'
 
+// แสดงจำนวนเงินพร้อมสัญลักษณ์บาท เช่น ฿4,500
 export const baht = (n) => `฿${Number(n).toLocaleString('th-TH')}`
 
 // คำนวณยอดใบแจ้งหนี้จากค่าเช่า มิเตอร์ และอัตราค่าบริการ
@@ -51,13 +53,17 @@ export const formatShortDate = (value) => {
 // แปลงตัวเลขเป็นข้อความบาทภาษาไทย เช่น 4531 -> สี่พันห้าร้อยสามสิบเอ็ดบาทถ้วน
 export function thaiBahtText(num) {
     if (!num || isNaN(num)) return 'ศูนย์บาทถ้วน'
+    // คำอ่านตัวเลขและหลัก (หน่วย สิบ ร้อย ...)
     const numbers = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า']
     const positions = ['', 'สิบ', 'ร้อย', 'พัน', 'หมื่น', 'แสน', 'ล้าน']
+    // แยกส่วนบาทและสตางค์ (ปัดทศนิยม 2 ตำแหน่ง)
     const [intPart, decPart = ''] = Number(num).toFixed(2).split('.')
 
+    // อ่านตัวเลขหนึ่งช่วง (ไม่เกินหลักล้าน) เป็นคำภาษาไทย
     function readSection(str) {
         let result = ''
         const len = str.length
+        // อ่านทีละหลักจากซ้ายไปขวา: หลักหน่วยที่เป็น 1 อ่าน "เอ็ด", หลักสิบที่เป็น 2 อ่าน "ยี่", หลักสิบที่เป็น 1 อ่านแค่ "สิบ"
         for (let i = 0; i < len; i++) {
             const digit = Number(str[i])
             const pos = len - i - 1
@@ -70,6 +76,7 @@ export function thaiBahtText(num) {
         return result
     }
 
+    // ประกอบข้อความ: ไม่มีสตางค์ลงท้ายด้วย "ถ้วน" มีสตางค์อ่านต่อท้าย
     let result = readSection(intPart) + 'บาท'
     if (!decPart || decPart === '00') result += 'ถ้วน'
     else result += readSection(decPart) + 'สตางค์'
