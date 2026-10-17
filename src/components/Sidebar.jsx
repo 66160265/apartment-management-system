@@ -5,6 +5,7 @@ import { menuItems, systemGroupLabel } from "../data/menu";
 import { supabase } from "../lib/supabaseClient";
 import { roleLabels, useCurrentUser } from "../lib/useCurrentUser";
 import { useNotifications } from "../lib/useNotifications";
+import { useChatUnread } from "../lib/chat";
 
 // หน้าแรกของแต่ละสิทธิ์ (เมนู "ภาพรวม" ใช้ร่วมกัน)
 const ADMIN_DASHBOARD = "/admin/dashboard";
@@ -17,6 +18,9 @@ function Sidebar({ open = false, onClose = () => {} }) {
   const role = me?.role;
   // จำนวนแจ้งเตือนที่ยังไม่อ่าน แสดงเป็นป้ายแดงที่เมนู "แจ้งเตือน"
   const { unreadCount } = useNotifications();
+  // จำนวนข้อความแชทที่ยังไม่อ่าน แสดงเป็นป้ายแดงที่เมนู "แชท"
+  const chatUnread = useChatUnread();
+  const badges = { "/notifications": unreadCount, "/chat": chatUnread };
   const [loggingOut, setLoggingOut] = useState(false);
 
   // เมนูภาพรวมพาไปหน้าที่ตรงกับสิทธิ์
@@ -88,9 +92,9 @@ function Sidebar({ open = false, onClose = () => {} }) {
                   {isActive && <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-mist" />}
                   <Icon name={item.icon} className="w-5 h-5" />
                   {item.label}
-                  {item.path === "/notifications" && unreadCount > 0 && (
+                  {badges[item.path] > 0 && (
                     <span className="ml-auto bg-red-500 text-white text-[11px] font-bold min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center">
-                      {unreadCount > 99 ? "99+" : unreadCount}
+                      {badges[item.path] > 99 ? "99+" : badges[item.path]}
                     </span>
                   )}
                 </>
