@@ -11,4 +11,5 @@ export const menuItems = [
     { label: 'ตั้งค่า', path: '/settings', icon: 'settings', group: 'system', adminOnly: true },
 ]
 
+// หัวข้อของกลุ่มเมนู system ใน Sidebar
 export const systemGroupLabel = 'จัดการระบบ'

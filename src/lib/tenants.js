@@ -4,10 +4,12 @@ export const formatDate = (iso) =>
         ? new Date(iso.length === 10 ? `${iso}T00:00:00` : iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
         : '-'
 
+// เหลือไม่เกินกี่วันถึงนับว่า "ใกล้หมดสัญญา"
 const EXPIRING_DAYS = 30
 
 // สถานะสัญญาเช่าจากวันสิ้นสุดสัญญา: ปกติ / ใกล้หมด (ภายใน 30 วัน) / หมดสัญญา
 export function contractStatus(endDate) {
+    // นับจำนวนวันที่เหลือจากวันนี้ (ตัดเวลาออก เทียบเฉพาะวันที่)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const days = Math.round((new Date(`${endDate}T00:00:00`) - today) / 86400000)
@@ -16,6 +18,7 @@ export function contractStatus(endDate) {
     return { key: 'active', label: 'สัญญาปกติ', hint: `อีก ${days} วัน`, days }
 }
 
+// สีของป้ายสถานะสัญญาแต่ละแบบ
 export const contractStyles = {
     active: { color: 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200', dot: 'bg-emerald-500' },
     expiring: { color: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200', dot: 'bg-amber-500' },

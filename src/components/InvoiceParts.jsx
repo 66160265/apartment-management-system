@@ -5,6 +5,7 @@ import { baht, calcInvoice, getSlipUrl } from '../lib/billing'
 import { formatPromptPayId, generatePromptPayQR } from '../lib/promptpay'
 import { useSettings } from '../lib/useSettings'
 
+// ป้ายสถานะใบแจ้งหนี้ (รอชำระ / รอตรวจสอบ / ชำระแล้ว)
 export function StatusBadge({ status }) {
     const s = invoiceStatuses[status]
     return (
@@ -15,6 +16,7 @@ export function StatusBadge({ status }) {
     )
 }
 
+// ขั้นตอนของใบแจ้งหนี้ และสถานะ -> ขั้นที่กำลังอยู่ (ชำระแล้ว = ผ่านครบทุกขั้น)
 const STEPS = ['ออกใบแจ้งหนี้', 'ส่งสลิป', 'ตรวจสอบ', 'ชำระแล้ว']
 const STEP_OF = { pending: 1, review: 2, paid: 4 }
 
@@ -24,6 +26,7 @@ export function InvoiceStepper({ status }) {
     return (
         <ol className="flex items-center">
             {STEPS.map((label, i) => {
+                // ขั้นที่ผ่านแล้วแสดงเครื่องหมายถูก ขั้นปัจจุบันมีกรอบ ขั้นที่ยังไม่ถึงเป็นสีเทา
                 const done = i < current
                 const active = i === current
                 return (
@@ -44,6 +47,7 @@ export function InvoiceStepper({ status }) {
                                 {label}
                             </span>
                         </div>
+                        {/* เส้นเชื่อมไปขั้นถัดไป (เป็นสีเมื่อผ่านขั้นนี้แล้ว) */}
                         {i < STEPS.length - 1 && (
                             <span className={`flex-1 h-0.5 mx-2 mb-5 rounded ${done ? 'bg-primary' : 'bg-line'}`} />
                         )}
@@ -56,6 +60,7 @@ export function InvoiceStepper({ status }) {
 
 // รายละเอียดการคำนวณยอดของใบแจ้งหนี้ (ใช้ร่วมกันทั้งฝั่งแอดมินและผู้เช่า)
 export function InvoiceBreakdown({ invoice }) {
+    // คำนวณหน่วยและค่าน้ำ/ไฟจากเลขมิเตอร์ในใบแจ้งหนี้
     const c = calcInvoice({
         rent: Number(invoice.rent),
         waterPrev: invoice.water_prev,
@@ -66,6 +71,7 @@ export function InvoiceBreakdown({ invoice }) {
         elecRate: Number(invoice.elec_rate),
         commonFee: Number(invoice.common_fee),
     })
+    // รายการค่าใช้จ่ายที่แสดงทีละแถว
     const rows = [
         { icon: 'home', tone: 'bg-sky-50 text-sky-700', label: 'ค่าเช่าห้อง', detail: '', value: Number(invoice.rent) },
         { icon: 'droplet', tone: 'bg-cyan-50 text-cyan-700', label: 'ค่าน้ำ', detail: `${c.waterUnits} หน่วย × ${baht(invoice.water_rate)}`, value: c.water },
@@ -86,6 +92,7 @@ export function InvoiceBreakdown({ invoice }) {
                     </li>
                 ))}
             </ul>
+            {/* แถบยอดรวมสุทธิด้านล่าง */}
             <div className="flex items-center justify-between px-4 py-3.5 bg-linear-to-r from-primary-dark to-primary text-white">
                 <span className="text-sm font-medium">ยอดรวมสุทธิ</span>
                 <span className="text-xl font-semibold tabular-nums">{baht(invoice.total)}</span>
@@ -98,6 +105,7 @@ export function InvoiceBreakdown({ invoice }) {
 export function CopyButton({ text, label = 'คัดลอก' }) {
     const [copied, setCopied] = useState(false)
 
+    // คัดลอกข้อความลงคลิปบอร์ด แล้วแสดง "คัดลอกแล้ว" ชั่วคราว
     const copy = async () => {
         try {
             await navigator.clipboard.writeText(text)
@@ -124,6 +132,7 @@ export function PromptPayCard({ invoice }) {
     const settings = useSettings()
     const [qr, setQr] = useState({ url: null, error: '' })
 
+    // สร้างรูป QR พร้อมเพย์ใหม่เมื่อรหัสพร้อมเพย์หรือยอดเปลี่ยน
     useEffect(() => {
         let active = true
         generatePromptPayQR(settings.promptpayId, invoice.total, { width: 360 })
@@ -137,6 +146,7 @@ export function PromptPayCard({ invoice }) {
     return (
         <div className="bg-white rounded-2xl shadow-card p-4 flex flex-col items-center gap-3 text-center">
             <div className="font-medium text-primary-dark">สแกนจ่ายด้วยพร้อมเพย์</div>
+            {/* แสดง QR / ข้อความเมื่อรหัสพร้อมเพย์ผิด / กล่องกำลังโหลด */}
             {qr.url ? (
                 <img src={qr.url} alt="QR พร้อมเพย์" className="w-48 h-48 rounded-xl border border-line" />
             ) : qr.error ? (
@@ -146,6 +156,7 @@ export function PromptPayCard({ invoice }) {
             ) : (
                 <div className="w-48 h-48 rounded-xl bg-line/60 animate-pulse" aria-label="กำลังสร้าง QR" />
             )}
+            {/* ยอดที่ต้องจ่ายและเลขพร้อมเพย์ + ปุ่มคัดลอกเลข */}
             <div className="text-sm text-muted">
                 ยอด <span className="font-semibold text-ink">{baht(invoice.total)}</span> · พร้อมเพย์{' '}
                 <span className="tabular-nums">{formatPromptPayId(settings.promptpayId)}</span>
@@ -155,10 +166,12 @@ export function PromptPayCard({ invoice }) {
     )
 }
 
+// แสดงรูปสลิปจาก storage (bucket private จึงต้องขอลิงก์ชั่วคราว)
 export function SlipImage({ path }) {
     const [url, setUrl] = useState(null)
     const [failed, setFailed] = useState(false)
 
+    // ขอลิงก์รูปสลิปใหม่ทุกครั้งที่ path เปลี่ยน
     useEffect(() => {
         let active = true
         getSlipUrl(path).then((u) => {
@@ -171,6 +184,7 @@ export function SlipImage({ path }) {
         }
     }, [path])
 
+    // โหลดไม่สำเร็จแสดงข้อความ, ระหว่างโหลดแสดงกล่องว่าง, โหลดแล้วแสดงรูป (คลิกเปิดรูปเต็ม)
     if (failed) return <p className="text-sm text-red-600">โหลดรูปสลิปไม่สำเร็จ</p>
     if (!url) {
         return <div className="w-48 h-64 rounded-xl bg-line/60 animate-pulse" aria-label="กำลังโหลดรูปสลิป" />

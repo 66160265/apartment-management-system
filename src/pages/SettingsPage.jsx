@@ -4,8 +4,10 @@ import PageHeader from '../components/PageHeader'
 import { formatPromptPayId, generatePromptPayQR, isValidPromptPayId } from '../lib/promptpay'
 import { loadSettings, saveSettings } from '../lib/useSettings'
 
+// คลาส Tailwind ของช่องกรอกในหน้าตั้งค่า
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2.5 mt-1 outline-none focus:border-secondary focus:bg-white focus:ring-4 focus:ring-secondary/15'
 
+// กล่องหัวข้อในหน้าตั้งค่า: ไอคอน ชื่อหัวข้อ คำอธิบาย และเนื้อหา
 function Section({ icon, title, hint, children }) {
     return (
         <section className="bg-white rounded-2xl shadow-card p-5">
@@ -23,6 +25,7 @@ function Section({ icon, title, hint, children }) {
     )
 }
 
+// ช่องกรอกพร้อมหัวข้อและคำแนะนำใต้ช่อง
 function Field({ label, hint, children }) {
     return (
         <label className="text-sm text-muted block">
@@ -37,6 +40,7 @@ function Field({ label, hint, children }) {
 function TestQr({ promptpayId }) {
     const [qr, setQr] = useState({ url: null, error: '' })
 
+    // สร้าง QR ทดสอบ (ยอด 1 บาท) ใหม่ทุกครั้งที่รหัสพร้อมเพย์เปลี่ยน
     useEffect(() => {
         let active = true
         generatePromptPayQR(promptpayId, 1, { width: 360 })
@@ -62,13 +66,16 @@ function TestQr({ promptpayId }) {
     )
 }
 
+// หน้าตั้งค่าหอพัก: ข้อมูลหอพัก บัญชีรับชำระ/พร้อมเพย์ วันครบกำหนด และอัตราค่าบริการ
 function SettingsPage() {
+    // ค่าในฟอร์ม (null = ยังโหลดไม่เสร็จ), error ตอนโหลด/บันทึก, สถานะบันทึกแล้ว/กำลังบันทึก
     const [form, setForm] = useState(null)
     const [loadError, setLoadError] = useState('')
     const [error, setError] = useState('')
     const [saved, setSaved] = useState(false)
     const [saving, setSaving] = useState(false)
 
+    // โหลดค่าตั้งค่าล่าสุดจากฐานข้อมูลมาใส่ฟอร์ม
     useEffect(() => {
         let active = true
         loadSettings(true)
@@ -79,18 +86,21 @@ function SettingsPage() {
         }
     }, [])
 
+    // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key และล้างข้อความ error/บันทึกแล้ว
     const set = (key) => (e) => {
         setForm({ ...form, [key]: e.target.value })
         setError('')
         setSaved(false)
     }
 
+    // ตรวจข้อมูล (ชื่อหอพัก รหัสพร้อมเพย์ ฯลฯ) แล้วบันทึกการตั้งค่า
     const handleSubmit = async (e) => {
         e.preventDefault()
         if (!form.apartmentName.trim()) return setError('กรุณากรอกชื่อหอพัก')
         if (!isValidPromptPayId(form.promptpayId)) {
             return setError('รหัสพร้อมเพย์ไม่ถูกต้อง ต้องเป็นเบอร์มือถือ 10 หลัก (ขึ้นต้นด้วย 0) หรือเลขบัตรประชาชน/เลขผู้เสียภาษี 13 หลัก')
         }
+        // วันครบกำหนดต้องอยู่ระหว่าง 1–28 (ทุกเดือนมีวันนั้น) และอัตราค่าบริการต้องเป็นตัวเลขไม่ติดลบ
         const dueDay = Number(form.dueDay)
         if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28) return setError('วันครบกำหนดชำระต้องเป็นวันที่ 1 – 28')
         for (const [key, label] of [['rateWater', 'ค่าน้ำ'], ['rateElectric', 'ค่าไฟ'], ['commonFee', 'ค่าส่วนกลาง']]) {
@@ -98,6 +108,7 @@ function SettingsPage() {
             if (form[key] === '' || Number.isNaN(n) || n < 0) return setError(`${label}ต้องเป็นตัวเลขที่ไม่ติดลบ`)
         }
 
+        // บันทึก โดยจัดรูปแบบรหัสพร้อมเพย์ให้มีขีดคั่นก่อน
         setSaving(true)
         const err = await saveSettings({
             ...form,
@@ -114,12 +125,14 @@ function SettingsPage() {
         <>
             <PageHeader title="ตั้งค่าหอพัก" subtitle="ข้อมูลหอพัก บัญชีรับชำระเงิน และอัตราค่าบริการ ที่ใช้ในใบแจ้งหนี้และ QR พร้อมเพย์" />
 
+            {/* โหลดไม่สำเร็จ / กำลังโหลด / ฟอร์มตั้งค่า */}
             {loadError ? (
                 <p className="px-6 text-red-600">{loadError}</p>
             ) : !form ? (
                 <p className="px-6 text-muted">กำลังโหลด...</p>
             ) : (
                 <form onSubmit={handleSubmit} className="px-4 sm:px-6 pb-28 flex flex-col gap-6 max-w-5xl">
+                    {/* ส่วนที่ 1: ข้อมูลหอพัก */}
                     <Section icon="building" title="ข้อมูลหอพัก" hint="แสดงที่หัวใบแจ้งหนี้ (PDF)">
                         <div className="grid gap-4 sm:grid-cols-2">
                             <Field label="ชื่อหอพัก">
@@ -142,6 +155,7 @@ function SettingsPage() {
                         </div>
                     </Section>
 
+                    {/* ส่วนที่ 2: บัญชีธนาคารและพร้อมเพย์ + QR ทดสอบ (ช่องพร้อมเพย์ขอบแดงเมื่อรูปแบบไม่ถูก) */}
                     <Section icon="bank" title="บัญชีรับชำระเงิน" hint="ผู้เช่าเห็นข้อมูลนี้ในหน้าชำระเงินและในไฟล์ PDF">
                         <div className="grid gap-6 lg:grid-cols-[1fr_16rem] items-start">
                             <div className="grid gap-4 sm:grid-cols-2">
@@ -170,6 +184,7 @@ function SettingsPage() {
                         </div>
                     </Section>
 
+                    {/* ส่วนที่ 3: วันครบกำหนดและอัตราค่าบริการเริ่มต้น */}
                     <Section icon="receipt" title="ใบแจ้งหนี้" hint="ค่าเริ่มต้นตอนสร้างใบแจ้งหนี้ใหม่ (แก้เฉพาะใบได้ตอนสร้าง) ใบเดิมไม่เปลี่ยนตาม">
                         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                             <Field label="ครบกำหนดชำระ (วันที่ของเดือนถัดไป)">
@@ -187,6 +202,7 @@ function SettingsPage() {
                         </div>
                     </Section>
 
+                    {/* แถบด้านล่าง: ข้อความ error/บันทึกแล้ว + ปุ่มบันทึก */}
                     <div className="fixed bottom-0 right-0 left-0 lg:left-64 z-20 bg-white/90 backdrop-blur border-t border-line px-6 py-3 flex flex-wrap items-center justify-between gap-3">
                         <div className="min-h-6 text-sm">
                             {error && <span className="text-red-600">{error}</span>}

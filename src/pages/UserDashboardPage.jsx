@@ -10,9 +10,11 @@ import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
 import { useSettings } from '../lib/useSettings'
 
+// ข้อจำกัดรูปสลิป: ไม่เกิน 5 MB และชนิดไฟล์ที่รับ (MIME -> นามสกุล)
 const MAX_SIZE = 5 * 1024 * 1024
 const TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
 
+// แสดงขนาดไฟล์เป็น KB หรือ MB
 const formatSize = (bytes) =>
     bytes >= 1024 * 1024
         ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -35,6 +37,7 @@ const formatDueDate = (monthStr) => {
 // ปุ่มคัดลอกข้อความ
 function CopyBtn({ text, label = 'คัดลอก' }) {
     const [copied, setCopied] = useState(false)
+    // คัดลอกข้อความลงคลิปบอร์ด แล้วแสดง "คัดลอกแล้ว" ชั่วคราว
     const copy = async () => {
         try {
             await navigator.clipboard.writeText(text)
@@ -55,12 +58,14 @@ function CopyBtn({ text, label = 'คัดลอก' }) {
     )
 }
 
+// หน้าแรกของผู้เช่า: ภาพรวมห้องและค่าใช้จ่ายเดือนนี้ และหน้าชำระเงินด้วย QR พร้อมเพย์/แนบสลิป
 function UserDashboardPage() {
     const me = useCurrentUser()
 
     // มุมมอง: 'overview' (หน้าแรกของ Dashboard) หรือ 'payment' (หน้าชำระเงินตามรูปที่สอง)
     const [currentView, setCurrentView] = useState('overview')
 
+    // สถานะโหลดและ error
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
 
@@ -76,6 +81,7 @@ function UserDashboardPage() {
     // บัญชีรับชำระ/พร้อมเพย์ มาจากหน้า "ตั้งค่า" ของผู้ดูแล
     const settings = useSettings()
     const BANK = { name: settings.bankName, account: settings.bankAccount, holder: settings.bankHolder, promptpay: settings.promptpayId }
+    // ไฟล์สลิปที่เลือก, รูปตัวอย่าง, กำลังลากไฟล์, error, กำลังส่ง, ส่งสำเร็จ และ ref ของช่องเลือกไฟล์
     const [uploadFile, setUploadFile] = useState(null)
     const [uploadPreview, setUploadPreview] = useState(null)
     const [isDragging, setIsDragging] = useState(false)
@@ -94,6 +100,7 @@ function UserDashboardPage() {
         setLoadError('')
 
         try {
+            // บัญชีที่ยังไม่ผูกกับห้อง: ล้างข้อมูลแล้วจบ (หน้าจะแสดงข้อความให้ติดต่อผู้ดูแล)
             const activeTenant = me.tenant
 
             if (!activeTenant) {
@@ -141,6 +148,7 @@ function UserDashboardPage() {
         }
     }
 
+    // โหลดข้อมูลเมื่อได้ข้อมูลผู้ใช้ที่ login แล้ว
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         loadData()
@@ -200,6 +208,7 @@ function UserDashboardPage() {
         setUploadPreview(URL.createObjectURL(file))
     }
 
+    // ล้างไฟล์สลิปที่เลือก รูปตัวอย่าง และข้อความ error
     const clearFile = () => {
         setUploadFile(null)
         setUploadPreview(null)
@@ -214,6 +223,7 @@ function UserDashboardPage() {
         setUploadError('')
 
         try {
+            // ตั้งชื่อไฟล์ในโฟลเดอร์ของผู้ใช้: {userId}/{invoiceId}-{เวลา}.{นามสกุล}
             const ext = TYPES[uploadFile.type] || 'jpg'
             const userId = me?.id || activeInvoice.user_id
             const path = `${userId}/${activeInvoice.id}-${Date.now()}.${ext}`
@@ -238,6 +248,7 @@ function UserDashboardPage() {
                 throw new Error(`ส่งสลิปไม่สำเร็จ: ${rpcError.message}`)
             }
 
+            // ส่งสำเร็จ: โหลดข้อมูลใหม่ ล้างไฟล์ แสดงข้อความสำเร็จ และกลับหน้าภาพรวม
             await loadData()
             clearFile()
             setUploadSuccess(true)
@@ -271,6 +282,7 @@ function UserDashboardPage() {
         }
     }, [activeInvoice])
 
+    // โหลดครั้งแรก: แสดงโครงหน้าแบบกล่องเทากระพริบ
     if (loading && !tenantInfo) {
         return (
             <div className="p-4 sm:p-6 flex flex-col gap-6">
@@ -287,6 +299,7 @@ function UserDashboardPage() {
         )
     }
 
+    // บัญชียังไม่ผูกกับห้อง: แสดงข้อความให้ติดต่อผู้ดูแล
     if (!tenantInfo) {
         return (
             <div className="p-4 sm:p-6 flex flex-col gap-6">
@@ -347,6 +360,7 @@ function UserDashboardPage() {
 
                     {/* การ์ดต้อนรับและข้อมูลสัญญาเช่า (Desktop Banner ตามข้อมูลในรูปแรก) */}
                     <div className="bg-linear-to-r from-primary-dark via-primary to-primary-deep text-white rounded-2xl p-6 md:p-8 shadow-card flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                        {/* ห้อง/ชั้น วันที่วันนี้ คำทักทาย และเบอร์โทร */}
                         <div className="flex flex-col gap-2">
                             <div className="flex items-center gap-2 text-xs md:text-sm text-mist font-medium">
                                 <span className="bg-white/15 px-3 py-1 rounded-full backdrop-blur-xs">
@@ -482,6 +496,7 @@ function UserDashboardPage() {
                                 )}
                             </div>
 
+                            {/* มีใบแจ้งหนี้: แสดงรายการทีละแถว / ไม่มี: ข้อความว่าง */}
                             {invoiceBreakdown ? (
                                 <div className="flex flex-col divide-y divide-line/70">
                                     {/* ค่าห้อง */}
@@ -570,6 +585,7 @@ function UserDashboardPage() {
                             <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col gap-4">
                                 <h3 className="text-base font-bold text-gray-900">การดำเนินการ</h3>
 
+                                {/* เนื้อหาตามสถานะ: รอชำระ = ปุ่มไปหน้าชำระเงิน, รอตรวจ = ปุ่มดูรายละเอียด, ชำระแล้ว = ข้อความยืนยัน */}
                                 {activeInvoice?.status === 'pending' ? (
                                     <>
                                         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3.5 rounded-xl leading-relaxed">
@@ -614,6 +630,7 @@ function UserDashboardPage() {
                                     <p className="text-xs text-gray-500">ไม่มีรายการที่ต้องดำเนินการ</p>
                                 )}
 
+                                {/* ปุ่มดาวน์โหลดใบแจ้งหนี้ PDF */}
                                 {activeInvoice && (
                                     <DownloadInvoiceButton invoice={activeInvoice} className="w-full border border-line bg-sand/30 hover:bg-mist/40 text-primary-dark font-medium py-2.5 px-4 rounded-xl text-sm flex items-center justify-center gap-2 transition cursor-pointer" />
                                 )}
@@ -641,6 +658,7 @@ function UserDashboardPage() {
                                 ชำระเงิน
                             </h1>
                         </div>
+                        {/* เมนูบัญชีมุมขวา (หน้านี้ไม่ได้ใช้ PageHeader) */}
                         <div className="flex items-center gap-3">
                             <AvatarMenu />
                         </div>
@@ -800,6 +818,7 @@ function UserDashboardPage() {
                                 </div>
                             )}
 
+                            {/* ข้อความ error ของการแนบ/ส่งสลิป */}
                             {uploadError && (
                                 <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-2">
                                     {uploadError}

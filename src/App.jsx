@@ -13,11 +13,13 @@ import AdminUsersPage from './pages/AdminUsersPage.jsx'
 import NotificationsPage from './pages/NotificationsPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
 
+// กำหนดเส้นทาง (route) ทั้งหมดของแอป: หน้า login, หน้าของแอดมิน, หน้าของผู้เช่า และหน้าที่ใช้ร่วมกัน
 function App() {
   return (
     <>
       <Routes>
 
+        {/* หน้า login (ถ้า login อยู่แล้วจะพาไปหน้าแรกของสิทธิ์นั้น) */}
         <Route path="/" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />
 
         {/* ต้อง login ก่อนจึงเข้าหน้าในกลุ่มนี้ได้ */}

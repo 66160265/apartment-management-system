@@ -3,7 +3,9 @@ import { Outlet, useLocation } from 'react-router-dom'
 import Icon from './Icon.jsx'
 import Sidebar from './Sidebar.jsx'
 
+// โครงหน้าหลักหลัง login: เมนูข้าง (Sidebar) + เนื้อหาของแต่ละหน้า (Outlet) และปุ่มเปิดเมนูบนจอเล็ก
 function Layout() {
+    // เมนูข้างบนจอเล็กเปิดอยู่หรือไม่ และ path ปัจจุบัน
     const [menuOpen, setMenuOpen] = useState(false)
     const { pathname } = useLocation()
 
@@ -16,6 +18,7 @@ function Layout() {
     // ตอนเมนูเปิด ไม่ให้หน้าด้านหลังเลื่อน และกด Esc เพื่อปิดได้
     useEffect(() => {
         if (!menuOpen) return
+        // กด Esc ให้ปิดเมนูบนจอเล็ก
         const onKey = (e) => e.key === 'Escape' && setMenuOpen(false)
         document.body.style.overflow = 'hidden'
         window.addEventListener('keydown', onKey)
@@ -27,11 +30,15 @@ function Layout() {
 
     return (
         <div className="flex min-h-screen bg-sand">
+            {/* เมนูข้าง */}
             <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
+            {/* ฉากมืดด้านหลังเมนูบนจอเล็ก กดเพื่อปิดเมนู */}
             {menuOpen && (
                 <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setMenuOpen(false)} aria-hidden="true" />
             )}
+            {/* พื้นที่เนื้อหา */}
             <main className="flex-1 min-w-0">
+                {/* แถบด้านบนบนจอเล็ก: ปุ่มเปิดเมนู + ชื่อระบบ */}
                 <div className="lg:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 bg-sand/90 backdrop-blur border-b border-line">
                     <button
                         onClick={() => setMenuOpen(true)}

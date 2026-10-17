@@ -20,8 +20,10 @@ const columns = {
     rateElectric: 'rate_electric',
     commonFee: 'common_fee',
 }
+// ค่าที่เป็นตัวเลข (ต้องแปลงเป็น Number ทั้งตอนอ่านและบันทึก)
 const numeric = new Set(['dueDay', 'rateWater', 'rateElectric', 'commonFee'])
 
+// แปลงแถวจากตาราง app_settings เป็นออบเจ็กต์ตั้งค่า (ช่องที่ว่างใช้ค่าเริ่มต้น)
 function fromRow(row) {
     const result = { ...DEFAULT_SETTINGS }
     if (!row) return result
@@ -35,6 +37,7 @@ function fromRow(row) {
     return result
 }
 
+// แปลงออบเจ็กต์ตั้งค่ากลับเป็นแถวสำหรับบันทึก (ตัวเลขแปลงเป็น Number ข้อความตัดช่องว่าง)
 function toRow(values) {
     const row = {}
     for (const [key, column] of Object.entries(columns)) {
@@ -43,6 +46,7 @@ function toRow(values) {
     return row
 }
 
+// แคชระดับโมดูล: ค่าที่โหลดแล้ว, คำขอที่กำลังโหลด และคอมโพเนนต์ที่รอฟังค่าใหม่
 let cached = null
 let pending = null
 const listeners = new Set()
@@ -69,6 +73,7 @@ export function loadSettings(force = false) {
 export async function saveSettings(values) {
     const { error } = await supabase.from('app_settings').upsert({ id: 1, ...toRow(values), updated_at: new Date().toISOString() })
     if (error) return `บันทึกไม่สำเร็จ: ${error.message}`
+    // บันทึกสำเร็จ: อัปเดตแคชและแจ้งทุกหน้าที่ใช้ useSettings ให้แสดงค่าใหม่ทันที
     cached = { ...DEFAULT_SETTINGS, ...values }
     pending = Promise.resolve(cached)
     listeners.forEach((l) => l(cached))
@@ -83,9 +88,11 @@ supabase.auth.onAuthStateChange((event) => {
     }
 })
 
+// hook อ่านค่าตั้งค่าหอพัก และอัปเดตอัตโนมัติเมื่อมีการบันทึกใหม่
 export function useSettings() {
     const [settings, setSettings] = useState(cached ?? DEFAULT_SETTINGS)
 
+    // โหลดค่าตั้งค่า และฟังการเปลี่ยนแปลงหลังบันทึก
     useEffect(() => {
         let active = true
         loadSettings().then((result) => {

@@ -1,22 +1,26 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+// อนุญาตให้หน้าเว็บ (คนละโดเมน) เรียกฟังก์ชันนี้ได้
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// สร้าง response แบบ JSON พร้อม header CORS
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 
+// ความยาวรหัสผ่านขั้นต่ำตอนแอดมินตั้งรหัสใหม่ให้
 const MIN_PASSWORD = 6
 
 // จัดการบัญชีผู้ใช้ทั้งหมด (เฉพาะแอดมิน): list / update / delete
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
+  // client สิทธิ์ service role (ข้าม RLS ได้) ใช้เฉพาะในฟังก์ชันนี้
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   // ตรวจว่าผู้เรียกเป็นแอดมินที่ login อยู่
@@ -29,6 +33,7 @@ Deno.serve(async (req) => {
 
   const body = await req.json()
 
+  // list: รายชื่อบัญชีทั้งหมด พร้อมสิทธิ์และข้อมูลผู้เช่าที่ผูกอยู่
   if (body.action === 'list') {
     const { data: users, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
     if (error) return json({ error: error.message }, 500)
@@ -52,9 +57,11 @@ Deno.serve(async (req) => {
     return json({ users: rows, currentUserId: caller.user.id })
   }
 
+  // คำสั่งที่เหลือต้องระบุบัญชีเป้าหมาย
   const userId = String(body.userId ?? '')
   if (!userId) return json({ error: 'ไม่พบบัญชีที่ต้องการ' }, 400)
 
+  // update: ตั้งรหัสผ่านใหม่ (ถ้าส่งมา) และแก้ข้อมูลผู้เช่า
   if (body.action === 'update') {
     const { password, name, phone, startDate, endDate } = body
 
@@ -80,6 +87,7 @@ Deno.serve(async (req) => {
     return json({ ok: true })
   }
 
+  // delete: ลบบัญชี (ลบบัญชีตัวเองไม่ได้)
   if (body.action === 'delete') {
     if (userId === caller.user.id) return json({ error: 'ไม่สามารถลบบัญชีของตัวเองได้' }, 400)
 
@@ -90,6 +98,7 @@ Deno.serve(async (req) => {
       if (error) return json({ error: `ลบข้อมูลผู้เช่าไม่สำเร็จ: ${error.message}` }, 500)
       await admin.from('rooms').update({ status: 'vacant' }).eq('number', tenant.room)
     }
+    // ลบสิทธิ์และบัญชี login
     await admin.from('profiles').delete().eq('id', userId)
     const { error } = await admin.auth.admin.deleteUser(userId)
     if (error) return json({ error: `ลบบัญชีไม่สำเร็จ: ${error.message}` }, 500)

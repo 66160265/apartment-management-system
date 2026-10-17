@@ -16,6 +16,7 @@ function crc16(data) {
     return crc.toString(16).toUpperCase().padStart(4, '0')
 }
 
+// ดึงเฉพาะตัวเลขออกจากข้อความ (ตัดขีดและช่องว่าง)
 const digitsOf = (value) => String(value ?? '').replace(/\D/g, '')
 
 // เบอร์มือถือ 10 หลักขึ้นต้น 0 หรือเลขบัตรประชาชน/เลขผู้เสียภาษี 13 หลัก
