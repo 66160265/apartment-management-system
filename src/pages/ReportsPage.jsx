@@ -1,0 +1,214 @@
+import { useEffect, useMemo, useState } from 'react'
+import Icon from '../components/Icon'
+import MonthPicker from '../components/MonthPicker'
+import PageHeader from '../components/PageHeader'
+import { baht, currentMonth, formatMonth } from '../lib/billing'
+import { downloadCsv } from '../lib/downloadCsv'
+import {
+    csvFileName, invoiceColumns, monthlyColumns, monthlyRows, monthlySummary, monthOf, occupancy, outstandingColumns, outstandingRows,
+    paymentColumns, recentMonths, toCsv,
+} from '../lib/reports'
+import { supabase } from '../lib/supabaseClient'
+
+// รายงานสำหรับแอดมิน: อัตราเข้าพัก รายรับ-ยอดค้างรายเดือน และส่งออก CSV (เปิดใน Excel/ส่งให้นักบัญชีได้)
+// รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ไม่ใช่เดือนของใบแจ้งหนี้
+
+const emptyData = { rooms: [], invoices: [], invoicePayments: [], repairPayments: [] }
+
+function Stat({ label, value, hint, tone = 'text-primary-dark' }) {
+    return (
+        <div className="bg-white rounded-2xl shadow-card p-4">
+            <div className="text-sm text-muted">{label}</div>
+            <div className={`text-2xl font-semibold mt-1 tabular-nums ${tone}`}>{value}</div>
+            {hint && <div className="text-xs text-muted mt-0.5">{hint}</div>}
+        </div>
+    )
+}
+
+function ExportButton({ onClick, children }) {
+    return (
+        <button type="button" onClick={onClick} className="flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm">
+            <Icon name="download" className="w-4 h-4" />
+            {children}
+        </button>
+    )
+}
+
+function ReportsPage() {
+    const [month, setMonth] = useState(currentMonth())
+    const [data, setData] = useState(emptyData)
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState('')
+    // เวลาที่ใช้คิดค่าปรับของยอดค้าง จำไว้ตอนโหลด (ไม่ให้ตัวเลขเปลี่ยนเองระหว่างดู)
+    const [now, setNow] = useState(() => new Date())
+
+    useEffect(() => {
+        let active = true
+        Promise.all([
+            supabase.from('rooms').select('number, status'),
+            supabase.from('invoices').select('*'),
+            supabase.from('invoice_payments').select('*'),
+            // ตารางนี้มีเมื่อรัน repair-payments.sql แล้ว ถ้ายังไม่มีให้ถือว่าไม่มีรายรับค่าซ่อม
+            supabase.from('repair_payments').select('*').eq('status', 'paid'),
+        ]).then(([rooms, invoices, payments, repairPayments]) => {
+            if (!active) return
+            const err = rooms.error || invoices.error
+            if (err) {
+                setError(`โหลดข้อมูลไม่สำเร็จ: ${err.message}`)
+            } else {
+                setData({
+                    rooms: rooms.data,
+                    invoices: invoices.data,
+                    // ตารางรับเงินยังไม่มี (ยังไม่ได้รัน payments.sql) ให้รายงานแสดงเท่าที่มี
+                    invoicePayments: payments.error ? [] : payments.data,
+                    repairPayments: repairPayments.error ? [] : repairPayments.data,
+                })
+                setNow(new Date())
+                setError('')
+            }
+            setLoading(false)
+        })
+        return () => {
+            active = false
+        }
+    }, [])
+
+    const months = useMemo(() => recentMonths(currentMonth(), 12), [])
+    const summary = useMemo(() => monthlySummary(data, month, now), [data, month, now])
+    const rows12 = useMemo(() => monthlyRows(data, months, now), [data, months, now])
+    const occ = useMemo(() => occupancy(data.rooms), [data.rooms])
+    const outstanding = useMemo(() => outstandingRows(data.invoices, now), [data.invoices, now])
+    const outstandingTotal = outstanding.reduce((acc, r) => acc + r.balance, 0)
+    const pendingRefund = data.invoices.filter((i) => i.refund_status === 'pending').reduce((acc, i) => acc + Number(i.refund_amount), 0)
+    const invoiceById = useMemo(() => Object.fromEntries(data.invoices.map((i) => [i.id, i])), [data.invoices])
+
+    const exportInvoices = () =>
+        downloadCsv(csvFileName('ใบแจ้งหนี้', month), toCsv(data.invoices.filter((i) => i.month === month).sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true })), invoiceColumns))
+    const exportPayments = () =>
+        downloadCsv(
+            csvFileName('การรับเงิน', month),
+            toCsv(data.invoicePayments.filter((p) => monthOf(p.confirmed_at) === month).sort((a, b) => a.confirmed_at.localeCompare(b.confirmed_at)), paymentColumns(invoiceById)),
+        )
+    const exportOutstanding = () => downloadCsv(csvFileName('ยอดค้างชำระ', now.toISOString().slice(0, 10)), toCsv(outstanding, outstandingColumns))
+    const exportMonthly = () => downloadCsv(csvFileName('สรุปรายเดือน', `${months.at(-1)}_${months[0]}`), toCsv([...rows12].reverse(), monthlyColumns))
+
+    return (
+        <>
+            <PageHeader title="รายงาน" subtitle="อัตราเข้าพัก รายรับ ยอดค้างชำระ และส่งออก CSV สำหรับทำบัญชี" />
+
+            <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
+                {error ? (
+                    <p className="text-center py-10 text-red-600">{error}</p>
+                ) : loading ? (
+                    <p className="text-center py-10 text-muted">กำลังโหลด...</p>
+                ) : (
+                    <>
+                        {/* ห้องพัก (ตอนนี้) */}
+                        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <Stat label="อัตราเข้าพัก" value={`${occ.rate}%`} hint={`มีผู้เช่า ${occ.occupied} จาก ${occ.total - occ.maintenance} ห้อง (ไม่รวมปิดปรับปรุง)`} />
+                            <Stat label="ห้องว่าง" value={occ.vacant} hint={occ.maintenance > 0 ? `ปิดปรับปรุง ${occ.maintenance} ห้อง` : undefined} />
+                            <Stat label="ยอดค้างชำระทั้งหมด (วันนี้)" value={baht(outstandingTotal)} hint={`${outstanding.length} ใบ รวมค่าปรับของวันนี้`} tone={outstandingTotal > 0 ? 'text-amber-700' : 'text-primary-dark'} />
+                            <Stat label="รอโอนคืนผู้เช่า" value={baht(pendingRefund)} hint="ยอดที่ผู้เช่าโอนเกิน" tone={pendingRefund > 0 ? 'text-sky-700' : 'text-primary-dark'} />
+                        </section>
+
+                        {/* สรุปเดือนที่เลือก */}
+                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <h2 className="font-medium text-primary-dark">สรุปเดือน {formatMonth(month)}</h2>
+                                <MonthPicker value={month} onChange={setMonth} />
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <Stat label="ใบแจ้งหนี้ที่ออก" value={summary.issuedCount} hint={`เรียกเก็บ ${baht(summary.billed)}`} />
+                                <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.received + summary.repairReceived)} hint={`ค่าห้อง ${baht(summary.received)} · ค่าซ่อม ${baht(summary.repairReceived)}`} tone="text-emerald-700" />
+                                <Stat label="ค้างชำระของใบเดือนนี้" value={baht(summary.outstanding)} hint={`${summary.unpaidCount} ใบ ณ วันนี้`} tone={summary.outstanding > 0 ? 'text-amber-700' : 'text-primary-dark'} />
+                                <Stat label="โอนคืนยอดเกินในเดือนนี้" value={baht(summary.refunded)} hint={`ค่าปรับของใบเดือนนี้ที่ชำระแล้ว ${baht(summary.lateFees)}`} />
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <ExportButton onClick={exportInvoices}>ใบแจ้งหนี้เดือนนี้ (CSV)</ExportButton>
+                                <ExportButton onClick={exportPayments}>การรับเงินเดือนนี้ (CSV)</ExportButton>
+                            </div>
+                        </section>
+
+                        {/* รายเดือนย้อนหลัง 12 เดือน */}
+                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <h2 className="font-medium text-primary-dark">รายเดือนย้อนหลัง 12 เดือน</h2>
+                                <ExportButton onClick={exportMonthly}>สรุปรายเดือน (CSV)</ExportButton>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm min-w-[720px]">
+                                    <thead>
+                                        <tr className="text-left text-muted border-b border-line">
+                                            <th className="py-2 pr-3">เดือน</th>
+                                            <th className="py-2 px-3 text-right">ใบที่ออก</th>
+                                            <th className="py-2 px-3 text-right">เรียกเก็บ</th>
+                                            <th className="py-2 px-3 text-right">รับเงินค่าห้อง</th>
+                                            <th className="py-2 px-3 text-right">รับเงินค่าซ่อม</th>
+                                            <th className="py-2 px-3 text-right">โอนคืน</th>
+                                            <th className="py-2 pl-3 text-right">ยังค้าง</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {rows12.map((r) => (
+                                            <tr key={r.month} className="border-b border-line/60">
+                                                <td className="py-2 pr-3 font-medium text-ink">{formatMonth(r.month)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums">{r.issuedCount}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.billed)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums text-emerald-700">{baht(r.received)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.repairReceived)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.refunded)}</td>
+                                                <td className={`py-2 pl-3 text-right tabular-nums ${r.outstanding > 0 ? 'text-amber-700 font-medium' : ''}`}>{baht(r.outstanding)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p className="text-xs text-muted">รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ใบเดือนก่อนที่เพิ่งได้รับเงินจะไปอยู่ในเดือนที่รับ ส่วนยอดค้างคือยอดของใบเดือนนั้นที่ยังไม่ชำระ ณ วันนี้</p>
+                        </section>
+
+                        {/* ยอดค้างชำระ */}
+                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <h2 className="font-medium text-primary-dark">ยอดค้างชำระ ({outstanding.length} ใบ)</h2>
+                                <ExportButton onClick={exportOutstanding}>ยอดค้างชำระ (CSV)</ExportButton>
+                            </div>
+                            {outstanding.length === 0 ? (
+                                <p className="text-sm text-muted py-4 text-center">ไม่มียอดค้างชำระ</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm min-w-[600px]">
+                                        <thead>
+                                            <tr className="text-left text-muted border-b border-line">
+                                                <th className="py-2 pr-3">ห้อง / ผู้เช่า</th>
+                                                <th className="py-2 px-3">เดือน</th>
+                                                <th className="py-2 px-3 text-right">ยอดบิล</th>
+                                                <th className="py-2 px-3 text-right">รับแล้ว</th>
+                                                <th className="py-2 px-3 text-right">ค้างชำระ</th>
+                                                <th className="py-2 pl-3 text-right">เกินกำหนด</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {outstanding.slice(0, 50).map((r) => (
+                                                <tr key={`${r.room}-${r.month}`} className="border-b border-line/60">
+                                                    <td className="py-2 pr-3 text-ink">{r.room} <span className="text-muted">· {r.tenant}</span></td>
+                                                    <td className="py-2 px-3">{formatMonth(r.month)}</td>
+                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(r.total)}</td>
+                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(r.paid)}</td>
+                                                    <td className="py-2 px-3 text-right tabular-nums font-medium text-amber-700">{baht(r.balance)}</td>
+                                                    <td className={`py-2 pl-3 text-right tabular-nums ${r.daysLate > 0 ? 'text-red-600 font-medium' : 'text-muted'}`}>{r.daysLate > 0 ? `${r.daysLate} วัน` : '-'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    {outstanding.length > 50 && <p className="text-xs text-muted pt-2">แสดง 50 รายการแรก ดูทั้งหมดในไฟล์ CSV</p>}
+                                </div>
+                            )}
+                        </section>
+                    </>
+                )}
+            </div>
+        </>
+    )
+}
+
+export default ReportsPage
