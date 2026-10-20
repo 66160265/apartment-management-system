@@ -202,6 +202,19 @@ function SettingsPage() {
                         </div>
                     </Section>
 
+                    {/* ส่วนที่ 4: ตรวจสลิปอัตโนมัติ (EasySlip) */}
+                    <Section icon="review" title="ตรวจสลิปอัตโนมัติ" hint="ช่วยอ่านยอดและเตือนข้อสังเกตจากสลิปที่ผู้เช่าแนบ แอดมินยังเป็นผู้กดยืนยันรับเงินเอง">
+                        <Field label="โหมด">
+                            <select className={inputClass} value={form.slipVerifyMode} onChange={set('slipVerifyMode')}>
+                                <option value="off">ปิด (แอดมินตรวจสลิปด้วยตา)</option>
+                                <option value="suggest">แนะนำ (ตรวจกับ EasySlip แล้วแสดงผลให้แอดมินดู)</option>
+                            </select>
+                        </Field>
+                        <p className="text-xs text-muted mt-3">
+                            โหมด &quot;แนะนำ&quot; ใช้โควตาของบริการ EasySlip ทุกครั้งที่ผู้เช่าส่งสลิป (สูงสุด 3 ครั้งต่อใบแจ้งหนี้) ต้องตั้งค่า API key เป็น secret ของ Edge Function verify-slip ก่อน ถ้ายังไม่ได้ตั้ง ระบบจะแสดงว่า &quot;ตรวจอัตโนมัติไม่สำเร็จ&quot; และให้ตรวจด้วยตา
+                        </p>
+                    </Section>
+
                     {/* แถบด้านล่าง: ข้อความ error/บันทึกแล้ว + ปุ่มบันทึก */}
                     <div className="fixed bottom-0 right-0 left-0 lg:left-64 z-20 bg-white/90 backdrop-blur border-t border-line px-6 py-3 flex flex-wrap items-center justify-between gap-3">
                         <div className="min-h-6 text-sm">

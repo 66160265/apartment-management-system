@@ -3,9 +3,10 @@ import DownloadInvoiceButton from './DownloadInvoiceButton'
 import Icon from './Icon'
 import PageHeader from './PageHeader'
 import MonthPicker from './MonthPicker'
-import { CopyButton, InvoiceBreakdown, InvoiceStepper, PaymentHistory, SlipImage, StatusBadge } from './InvoiceParts'
+import { CopyButton, InvoiceBreakdown, InvoiceStepper, PaymentHistory, SlipImage, StatusBadge, VerifyBox } from './InvoiceParts'
 import { invoiceStatuses } from '../data/billing'
 import { balanceOf, baht, calcInvoice, currentMonth, formatDateTime, formatMonth, paidOf } from '../lib/billing'
+import { requestSlipVerify, suggestedAmountOf } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
@@ -43,7 +44,8 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
     // ยอดที่ได้รับจริงตามสลิป (ค่าเริ่มต้นคือยอดคงเหลือ แก้ได้เมื่อผู้เช่าโอนไม่ครบหรือเกิน)
-    const [amount, setAmount] = useState(String(balanceOf(invoice)))
+    const [amount, setAmount] = useState(null)
+    const amountText = amount ?? String(suggestedAmountOf(invoice) ?? balanceOf(invoice))
     const [refundNote, setRefundNote] = useState('')
 
     // ตรวจสลิป: approve = true ยืนยันสลิปพร้อมยอดที่ได้รับ (ครบ = ชำระแล้ว, ไม่ครบ = กลับเป็นรอชำระพร้อมยอดคงเหลือ, เกิน = ชำระแล้วและเก็บยอดรอโอนคืน)
@@ -53,8 +55,8 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
             setError('กรุณาระบุเหตุผลที่ปฏิเสธ')
             return
         }
-        const received = Number(amount)
-        if (approve && (amount.trim() === '' || !(received > 0))) {
+        const received = Number(amountText)
+        if (approve && (amountText.trim() === '' || !(received > 0))) {
             setError('กรุณากรอกยอดที่ได้รับตามสลิป (มากกว่า 0)')
             return
         }
@@ -154,6 +156,10 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                             )}
                         </div>
 
+                        {invoice.status === 'review' && (
+                            <VerifyBox invoice={invoice} mode={settings.slipVerifyMode} onVerify={requestSlipVerify} onRefresh={onChanged} />
+                        )}
+
                         {/* รอตรวจสอบ: ปุ่มอนุมัติ / ปฏิเสธ (กดปฏิเสธแล้วต้องกรอกเหตุผลก่อนยืนยัน) */}
                         {invoice.status === 'review' && (
                             <>
@@ -179,13 +185,13 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                                             step="0.01"
                                             inputMode="decimal"
                                             className={inputClass}
-                                            value={amount}
+                                            value={amountText}
                                             onChange={(e) => { setAmount(e.target.value); setError('') }}
                                         />
                                         <span className="block text-xs mt-1">
                                             {paidOf(invoice) > 0 ? `ได้รับมาแล้ว ${baht(paidOf(invoice))} · ` : ''}ยอดคงเหลือ {baht(balanceOf(invoice))}
-                                            {Number(amount) > 0 && Number(amount) < balanceOf(invoice) && ' · ยอดไม่ครบ ผู้เช่าจะโอนส่วนที่เหลือเพิ่ม'}
-                                            {Number(amount) > balanceOf(invoice) && ` · เกิน ${baht(Math.round((Number(amount) - balanceOf(invoice)) * 100) / 100)} บันทึกไว้รอโอนคืน`}
+                                            {Number(amountText) > 0 && Number(amountText) < balanceOf(invoice) && ' · ยอดไม่ครบ ผู้เช่าจะโอนส่วนที่เหลือเพิ่ม'}
+                                            {Number(amountText) > balanceOf(invoice) && ` · เกิน ${baht(Math.round((Number(amountText) - balanceOf(invoice)) * 100) / 100)} บันทึกไว้รอโอนคืน`}
                                         </span>
                                     </label>
                                 )}
@@ -200,7 +206,7 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                                         <>
                                             <button onClick={() => setRejecting(true)} disabled={busy} className="flex-1 border border-red-200 text-red-600 hover:bg-red-50 py-2.5 rounded-xl">ปฏิเสธ</button>
                                             <button onClick={() => review(true)} disabled={busy} className="flex-[2] bg-primary hover:bg-primary-dark disabled:opacity-60 text-white py-2.5 rounded-xl font-medium shadow-card">
-                                                {busy ? 'กำลังบันทึก...' : `ยืนยันรับ ${baht(Number(amount) > 0 ? Number(amount) : 0)}`}
+                                                {busy ? 'กำลังบันทึก...' : `ยืนยันรับ ${baht(Number(amountText) > 0 ? Number(amountText) : 0)}`}
                                             </button>
                                         </>
                                     )}

@@ -39,6 +39,11 @@ create table if not exists public.invoice_payments (
   confirmed_by uuid references auth.users (id) on delete set null
 );
 
+-- เลขอ้างอิงของสลิปจากธนาคาร (ได้จากระบบตรวจสลิป ดู slip-verify.sql) ว่างได้เมื่อแอดมินยืนยันโดยไม่ผ่านการตรวจ
+alter table public.invoice_payments add column if not exists trans_ref text;
+-- สลิปหนึ่งใบ (เลขอ้างอิงเดียวกัน) ยืนยันรับเงินได้ครั้งเดียวทั้งระบบ กันเอาสลิปเดียวไปจ่ายหลายบิล
+create unique index if not exists invoice_payments_trans_ref_key on public.invoice_payments (trans_ref) where trans_ref is not null;
+
 create index if not exists invoice_payments_invoice_idx on public.invoice_payments (invoice_id, confirmed_at);
 
 alter table public.invoice_payments enable row level security;
@@ -84,6 +89,7 @@ as $$
 declare
   inv public.invoices;
   new_paid numeric(12, 2);
+  ref text;
 begin
   if not public.is_admin() then
     raise exception 'ไม่มีสิทธิ์';
@@ -97,8 +103,15 @@ begin
     raise exception 'ใบแจ้งหนี้นี้ไม่ได้อยู่ในสถานะรอตรวจสอบ';
   end if;
 
-  insert into public.invoice_payments (invoice_id, user_id, amount, slip_path, slip_uploaded_at, confirmed_by)
-  values (inv.id, inv.user_id, round(p_amount, 2), inv.slip_path, inv.slip_uploaded_at, auth.uid());
+  -- เลขอ้างอิงสลิปที่ระบบตรวจสลิปอ่านได้ (ถ้ามี) อ่านผ่าน to_jsonb เพื่อให้ไฟล์นี้รันได้แม้ยังไม่ได้รัน slip-verify.sql
+  ref := nullif(to_jsonb(inv) -> 'verify_detail' ->> 'transRef', '');
+
+  begin
+    insert into public.invoice_payments (invoice_id, user_id, amount, slip_path, slip_uploaded_at, confirmed_by, trans_ref)
+    values (inv.id, inv.user_id, round(p_amount, 2), inv.slip_path, inv.slip_uploaded_at, auth.uid(), ref);
+  exception when unique_violation then
+    raise exception 'สลิปนี้ถูกใช้ยืนยันรับเงินกับใบแจ้งหนี้อื่นแล้ว';
+  end;
 
   new_paid := inv.paid_amount + round(p_amount, 2);
 

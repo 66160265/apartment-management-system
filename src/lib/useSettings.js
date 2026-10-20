@@ -19,6 +19,7 @@ const columns = {
     rateWater: 'rate_water',
     rateElectric: 'rate_electric',
     commonFee: 'common_fee',
+    slipVerifyMode: 'slip_verify_mode',
 }
 // ค่าที่เป็นตัวเลข (ต้องแปลงเป็น Number ทั้งตอนอ่านและบันทึก)
 const numeric = new Set(['dueDay', 'rateWater', 'rateElectric', 'commonFee'])
@@ -71,7 +72,17 @@ export function loadSettings(force = false) {
 
 // บันทึกการตั้งค่า (เฉพาะแอดมิน) คืนค่า null เมื่อสำเร็จ หรือข้อความ error
 export async function saveSettings(values) {
-    const { error } = await supabase.from('app_settings').upsert({ id: 1, ...toRow(values), updated_at: new Date().toISOString() })
+    const row = { id: 1, ...toRow(values), updated_at: new Date().toISOString() }
+    let { error } = await supabase.from('app_settings').upsert(row)
+    // ยังไม่ได้รัน supabase/slip-verify.sql (ไม่มีคอลัมน์ slip_verify_mode): ยังบันทึกค่าอื่นได้ ถ้าไม่ได้เปิดโหมดตรวจสลิป
+    if (error && /slip_verify_mode/.test(error.message)) {
+        if (values.slipVerifyMode && values.slipVerifyMode !== 'off') {
+            return 'เปิดโหมดตรวจสลิปไม่ได้ เพราะฐานข้อมูลยังไม่มีคอลัมน์นี้ กรุณารัน supabase/slip-verify.sql ใน SQL Editor ก่อน'
+        }
+        const rest = { ...row }
+        delete rest.slip_verify_mode
+        ;({ error } = await supabase.from('app_settings').upsert(rest))
+    }
     if (error) return `บันทึกไม่สำเร็จ: ${error.message}`
     // บันทึกสำเร็จ: อัปเดตแคชและแจ้งทุกหน้าที่ใช้ useSettings ให้แสดงค่าใหม่ทันที
     cached = { ...DEFAULT_SETTINGS, ...values }

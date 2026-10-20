@@ -52,7 +52,7 @@ npm run dev
 ## ตั้งค่า Supabase
 
 1. รันไฟล์ SQL ใน **SQL Editor** ตามลำดับนี้ (รันซ้ำได้):
-   `supabase/schema.sql` → `supabase/invoices.sql` → `supabase/repairs.sql` → `supabase/tenant-documents.sql` → `supabase/notifications.sql` → `supabase/settings.sql` → `supabase/payments.sql` → `supabase/chat.sql` แล้วรัน `supabase/notifications.sql` อีกครั้ง (trigger แจ้งเตือนใบแจ้งหนี้อ่านคอลัมน์ที่ `payments.sql` เพิ่ม) → `supabase/chat.sql`
+   `supabase/schema.sql` → `supabase/invoices.sql` → `supabase/repairs.sql` → `supabase/tenant-documents.sql` → `supabase/notifications.sql` → `supabase/settings.sql` → `supabase/payments.sql` → `supabase/slip-verify.sql` → `supabase/chat.sql` แล้วรัน `supabase/notifications.sql` อีกครั้ง (trigger แจ้งเตือนใบแจ้งหนี้อ่านคอลัมน์ที่ `payments.sql` เพิ่ม)
    - ถ้าเคยรันไว้แล้ว หลังอัปเดตระบบนัดวันซ่อม ให้รัน `supabase/repairs.sql` แล้วตามด้วย `supabase/notifications.sql` อีกครั้ง (ข้อมูลเดิมไม่หาย)
    - (ไม่บังคับ) เปิด extension **pg_cron** ที่ Database → Extensions ก่อนรัน `notifications.sql` เพื่อให้ระบบส่งแจ้งเตือนนัดซ่อมของวันนั้นทุกเช้า 07:00
 2. สร้างบัญชีแอดมินคนแรกที่ **Authentication → Users** แล้วเพิ่มแถวใน `profiles` (`id` = id ของผู้ใช้, `role` = `admin`)
@@ -64,6 +64,13 @@ npx supabase login
 npx supabase link --project-ref <project-ref>
 npx supabase functions deploy create-tenant
 npx supabase functions deploy admin-users
+npx supabase functions deploy verify-slip
+```
+
+   (ไม่บังคับ) ตรวจสลิปอัตโนมัติด้วย [EasySlip](https://easyslip.com): ตั้ง API key เป็น secret ของ Edge Function (ห้ามใส่ใน `.env` ของเว็บหรือในรีโป) แล้วไปที่เมนู **ตั้งค่า** เลือกโหมดตรวจสลิปเป็น "แนะนำ"
+
+```bash
+npx supabase secrets set EASYSLIP_API_KEY=<API key>
 ```
 
 5. เข้าสู่ระบบด้วยแอดมินแล้วไปที่เมนู **ตั้งค่า** กรอกข้อมูลหอพัก บัญชีธนาคาร **รหัสพร้อมเพย์จริง** (เบอร์มือถือ 10 หลัก หรือเลขบัตร 13 หลัก) วันครบกำหนด และอัตราค่าน้ำ-ไฟ แล้วลองสแกน QR ทดสอบด้วยแอปธนาคารว่าชื่อบัญชีปลายทางถูกต้อง

@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS = {
     rateWater: 18,
     rateElectric: 7,
     commonFee: 0,
+    // โหมดตรวจสลิปด้วย EasySlip: off ปิด, suggest ตรวจแล้วแสดงผลให้แอดมินดู (แอดมินยืนยันรับเงินเอง) ดู supabase/slip-verify.sql
+    slipVerifyMode: 'off',
 }
 
 // สถานะใบแจ้งหนี้ (ค่าที่เก็บในฐานข้อมูล -> ป้ายและสีที่แสดง)

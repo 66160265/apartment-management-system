@@ -4,6 +4,7 @@ import { invoiceStatuses } from '../data/billing'
 import { balanceOf, baht, calcInvoice, formatDateTime, getSlipUrl, paidOf } from '../lib/billing'
 import { formatPromptPayId, generatePromptPayQR } from '../lib/promptpay'
 import { supabase } from '../lib/supabaseClient'
+import { MAX_VERIFY_ATTEMPTS, verifyStatuses } from '../lib/slipVerify'
 import { useSettings } from '../lib/useSettings'
 
 // ป้ายสถานะใบแจ้งหนี้ (รอชำระ / รอตรวจสอบ / ชำระแล้ว)
@@ -109,6 +110,68 @@ export function InvoiceBreakdown({ invoice }) {
                         <div className="flex justify-between"><dt className="text-muted">ชำระเกิน {invoice.refund_status === 'done' ? '(โอนคืนแล้ว)' : '(รอโอนคืน)'}</dt><dd className="tabular-nums font-medium text-sky-700">{baht(invoice.refund_amount)}</dd></div>
                     )}
                 </dl>
+            )}
+        </div>
+    )
+}
+
+// ผลตรวจสลิปอัตโนมัติ (EasySlip) สำหรับแอดมิน: แสดงยอด/วันที่/ผู้โอน/ผู้รับที่อ่านได้ และข้อสังเกต พร้อมปุ่มสั่งตรวจ
+// mode = โหมดในหน้าตั้งค่า (off/suggest) onVerify(invoiceId) สั่งตรวจ onRefresh() โหลดใบแจ้งหนี้ใหม่
+// ระบบนี้ไม่ตัดสินแทนแอดมิน มีไว้ช่วยอ่านและเตือนเท่านั้น
+export function VerifyBox({ invoice, mode, onVerify, onRefresh }) {
+    const [busy, setBusy] = useState(false)
+    const status = invoice.verify_status
+    const attempts = invoice.verify_attempts ?? 0
+
+    // กำลังตรวจอยู่: โหลดใหม่ทุก 4 วินาทีจนกว่าจะได้ผล
+    useEffect(() => {
+        if (status !== 'checking') return
+        const timer = setInterval(onRefresh, 4000)
+        return () => clearInterval(timer)
+    }, [status, onRefresh])
+
+    // โหมดปิดและไม่เคยตรวจ: ไม่แสดงอะไร
+    if (mode !== 'suggest' && !status) return null
+
+    const canRun = mode === 'suggest' && (!status || status === 'error') && attempts < MAX_VERIFY_ATTEMPTS
+    const run = async () => {
+        setBusy(true)
+        await onVerify(invoice.id)
+        await onRefresh()
+        setBusy(false)
+    }
+    const meta = status ? verifyStatuses[status] : null
+    const d = invoice.verify_detail ?? {}
+    const rows = [
+        ['ยอดในสลิป', d.amount != null ? baht(d.amount) : null],
+        ['วันเวลาที่โอน', d.date ? formatDateTime(d.date) : null],
+        ['ผู้โอน', d.sender],
+        ['ผู้รับ', d.receiver],
+    ].filter(([, v]) => v)
+
+    return (
+        <div className="flex flex-col gap-2">
+            {meta && (
+                <div className={`rounded-xl px-4 py-3 text-sm ring-1 flex flex-col gap-1.5 ${meta.color}`}>
+                    <div className="font-medium">{meta.label}</div>
+                    {rows.length > 0 && (
+                        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                            {rows.map(([k, v]) => (
+                                <div key={k} className="contents"><dt className="opacity-70">{k}</dt><dd className="tabular-nums">{v}</dd></div>
+                            ))}
+                        </dl>
+                    )}
+                    {Array.isArray(d.notes) && d.notes.length > 0 && (
+                        <ul className="list-disc pl-4 text-xs flex flex-col gap-0.5">
+                            {d.notes.map((n) => <li key={n}>{n}</li>)}
+                        </ul>
+                    )}
+                </div>
+            )}
+            {canRun && (
+                <button type="button" onClick={run} disabled={busy} className="self-start border border-line bg-white text-primary-dark hover:bg-mist/50 disabled:opacity-60 px-4 py-1.5 rounded-xl text-sm">
+                    {busy ? 'กำลังตรวจ...' : `ตรวจสลิปด้วยระบบ (ครั้งที่ ${attempts + 1}/${MAX_VERIFY_ATTEMPTS})`}
+                </button>
             )}
         </div>
     )

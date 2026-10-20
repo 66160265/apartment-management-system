@@ -4,6 +4,7 @@ import Icon from './Icon'
 import DownloadInvoiceButton from './DownloadInvoiceButton'
 import { CopyButton, InvoiceBreakdown, InvoiceStepper, PaymentHistory, PromptPayCard, SlipImage, StatusBadge } from './InvoiceParts'
 import { balanceOf, baht, formatDateTime, formatMonth, isPartiallyPaid, paidOf } from '../lib/billing'
+import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
@@ -66,6 +67,8 @@ function SlipUpload({ invoice, userId, onUploaded }) {
             setError(`ส่งสลิปไม่สำเร็จ: ${submitError.message}`)
             return
         }
+        // สั่งตรวจสลิปด้วยระบบ ไม่รอผล (โหมดปิดหรือตรวจไม่ได้ แอดมินยังตรวจด้วยตาได้)
+        requestSlipVerify(invoice.id)
         await onUploaded()
     }
 

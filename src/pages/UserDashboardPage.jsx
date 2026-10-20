@@ -6,6 +6,7 @@ import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
 import { invoiceStatuses } from '../data/billing'
 import { balanceOf, baht, formatDateTime, formatMonth, isPartiallyPaid, paidOf } from '../lib/billing'
 import { generatePromptPayQR } from '../lib/promptpay'
+import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
 import { useSettings } from '../lib/useSettings'
@@ -249,6 +250,8 @@ function UserDashboardPage() {
             }
 
             // ส่งสำเร็จ: โหลดข้อมูลใหม่ ล้างไฟล์ แสดงข้อความสำเร็จ และกลับหน้าภาพรวม
+            // สั่งตรวจสลิปด้วยระบบ ไม่รอผล (โหมดปิดหรือตรวจไม่ได้ แอดมินยังตรวจด้วยตาได้)
+            requestSlipVerify(activeInvoice.id)
             await loadData()
             clearFile()
             setUploadSuccess(true)
