@@ -103,10 +103,13 @@ function SettingsPage() {
         // วันครบกำหนดต้องอยู่ระหว่าง 1–28 (ทุกเดือนมีวันนั้น) และอัตราค่าบริการต้องเป็นตัวเลขไม่ติดลบ
         const dueDay = Number(form.dueDay)
         if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28) return setError('วันครบกำหนดชำระต้องเป็นวันที่ 1 – 28')
-        for (const [key, label] of [['rateWater', 'ค่าน้ำ'], ['rateElectric', 'ค่าไฟ'], ['commonFee', 'ค่าส่วนกลาง']]) {
+        for (const [key, label] of [['rateWater', 'ค่าน้ำ'], ['rateElectric', 'ค่าไฟ'], ['commonFee', 'ค่าส่วนกลาง'], ['lateFeePerDay', 'ค่าปรับต่อวัน']]) {
             const n = Number(form[key])
             if (form[key] === '' || Number.isNaN(n) || n < 0) return setError(`${label}ต้องเป็นตัวเลขที่ไม่ติดลบ`)
         }
+        const grace = Number(form.lateFeeGraceDays)
+        if (form.lateFeeGraceDays === '' || !Number.isInteger(grace) || grace < 0 || grace > 60) return setError('วันผ่อนผันต้องเป็นจำนวนเต็ม 0 – 60 วัน')
+        if (form.lateFeeCap !== '' && (Number.isNaN(Number(form.lateFeeCap)) || Number(form.lateFeeCap) < 0)) return setError('เพดานค่าปรับต้องเป็นตัวเลขที่ไม่ติดลบ (เว้นว่าง = ไม่จำกัด)')
 
         // บันทึก โดยจัดรูปแบบรหัสพร้อมเพย์ให้มีขีดคั่นก่อน
         setSaving(true)
@@ -200,6 +203,54 @@ function SettingsPage() {
                                 <input type="number" min="0" step="any" className={inputClass} value={form.commonFee} onChange={set('commonFee')} />
                             </Field>
                         </div>
+                    </Section>
+
+                    {/* ส่วนที่ 3.5: ค่าปรับชำระล่าช้า */}
+                    <Section icon="clock" title="ค่าปรับชำระล่าช้า" hint="คิดเป็นรายวันนับจากวันครบกำหนดชำระ ใช้กับใบแจ้งหนี้ที่ออกหลังจากตั้งค่านี้ ใบเดิมไม่เปลี่ยน">
+                        <div className="grid gap-4 sm:grid-cols-3">
+                            <Field label="ค่าปรับ (บาท/วัน)" hint="0 = ไม่คิดค่าปรับ">
+                                <input type="number" min="0" step="any" className={inputClass} value={form.lateFeePerDay} onChange={set('lateFeePerDay')} />
+                            </Field>
+                            <Field label="วันผ่อนผัน" hint="เกินกำหนดกี่วันแรกที่ยังไม่ปรับ">
+                                <input type="number" min="0" max="60" step="1" className={inputClass} value={form.lateFeeGraceDays} onChange={set('lateFeeGraceDays')} />
+                            </Field>
+                            <Field label="เพดานค่าปรับสูงสุด (บาท)" hint="เว้นว่าง = ไม่จำกัด">
+                                <input type="number" min="0" step="any" className={inputClass} value={form.lateFeeCap} onChange={set('lateFeeCap')} placeholder="ไม่จำกัด" />
+                            </Field>
+                        </div>
+                        {Number(form.lateFeePerDay) > 0 && (
+                            <p className="text-xs text-muted mt-3">
+                                ตัวอย่าง: ครบกำหนดวันที่ {Number(form.dueDay) || 5} เกินกำหนด 10 วัน
+                                {Number(form.lateFeeGraceDays) > 0 ? ` (ผ่อนผัน ${Number(form.lateFeeGraceDays)} วัน)` : ''} ค่าปรับ ={' '}
+                                {(() => {
+                                    const days = Math.max(0, 10 - (Number(form.lateFeeGraceDays) || 0))
+                                    const fee = Number(form.lateFeePerDay) * days
+                                    const capped = form.lateFeeCap !== '' ? Math.min(fee, Number(form.lateFeeCap)) : fee
+                                    return `฿${capped.toLocaleString('th-TH')}`
+                                })()}
+                                . ค่าปรับรวมอยู่ในยอดที่ผู้เช่าต้องโอน (และใน QR) และเพิ่มขึ้นทุกวันจนกว่าจะชำระ คิดถึงวันที่ผู้เช่าโอน ไม่ใช่วันที่แอดมินตรวจสลิป กรุณาตรวจว่าตรงกับสัญญาเช่าของหอพัก
+                            </p>
+                        )}
+                    </Section>
+
+                    {/* ส่วนที่ 4: ตรวจสลิปอัตโนมัติ (EasySlip) */}
+                    <Section icon="review" title="ตรวจสลิปอัตโนมัติ" hint="ช่วยอ่านยอดและเตือนข้อสังเกตจากสลิปที่ผู้เช่าแนบ แอดมินยังเป็นผู้กดยืนยันรับเงินเอง">
+                        <Field label="โหมด">
+                            <select className={inputClass} value={form.slipVerifyMode} onChange={set('slipVerifyMode')}>
+                                <option value="off">ปิด (แอดมินตรวจสลิปด้วยตา)</option>
+                                <option value="suggest">แนะนำ (ตรวจกับ EasySlip แล้วแสดงผลให้แอดมินดู)</option>
+                                <option value="auto">อัตโนมัติ (ผ่านครบทุกเงื่อนไขแล้วยืนยันรับเงินให้เลย)</option>
+                            </select>
+                        </Field>
+                        {form.slipVerifyMode === 'auto' && (
+                            <p className="text-sm text-amber-900 bg-amber-50 ring-1 ring-amber-200 rounded-xl px-4 py-2.5 mt-3">
+                                ระบบจะยืนยันรับเงินให้เองเฉพาะสลิปที่ผ่านครบทุกข้อ: ยอดเท่ากับยอดคงเหลือพอดี, EasySlip ยืนยันว่าผู้รับคือบัญชีของหอพัก, มีเลขอ้างอิงและไม่เคยถูกใช้ ส่วนโอนไม่ครบ โอนเกิน หรือมีข้อสงสัย จะรอแอดมินตรวจเหมือนเดิม
+                                <strong className="block mt-1">ต้องลงทะเบียนบัญชีรับเงินของหอพักในแดชบอร์ด EasySlip ก่อน ไม่งั้นจะไม่มีสลิปไหนอนุมัติอัตโนมัติได้</strong>
+                            </p>
+                        )}
+                        <p className="text-xs text-muted mt-3">
+                            โหมด &quot;แนะนำ&quot; ใช้โควตาของบริการ EasySlip ทุกครั้งที่ผู้เช่าส่งสลิป (สูงสุด 3 ครั้งต่อใบแจ้งหนี้) ต้องตั้งค่า API key เป็น secret ของ Edge Function verify-slip ก่อน ถ้ายังไม่ได้ตั้ง ระบบจะแสดงว่า &quot;ตรวจอัตโนมัติไม่สำเร็จ&quot; และให้ตรวจด้วยตา
+                        </p>
                     </Section>
 
                     {/* แถบด้านล่าง: ข้อความ error/บันทึกแล้ว + ปุ่มบันทึก */}

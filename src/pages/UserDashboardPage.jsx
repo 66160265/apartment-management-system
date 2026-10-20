@@ -4,8 +4,10 @@ import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
 import { invoiceStatuses } from '../data/billing'
-import { baht, formatDateTime, formatMonth } from '../lib/billing'
+import { balanceOf, baht, daysLate, formatDateTime, formatMonth, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
 import { generatePromptPayQR } from '../lib/promptpay'
+import { RepairCostBanner } from '../components/RepairPayment'
+import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
 import { useSettings } from '../lib/useSettings'
@@ -164,7 +166,7 @@ function UserDashboardPage() {
     // สร้าง PromptPay QR เมื่อเลือกใบแจ้งหนี้หรือเข้าสู่หน้าชำระเงิน
     useEffect(() => {
         if (activeInvoice && currentView === 'payment') {
-            generatePromptPayQR(BANK.promptpay, activeInvoice.total, { width: 480 })
+            generatePromptPayQR(BANK.promptpay, balanceOf(activeInvoice), { width: 480 })
                 .then((url) => {
                     setQrCodeUrl(url)
                     setQrError('')
@@ -249,6 +251,8 @@ function UserDashboardPage() {
             }
 
             // ส่งสำเร็จ: โหลดข้อมูลใหม่ ล้างไฟล์ แสดงข้อความสำเร็จ และกลับหน้าภาพรวม
+            // สั่งตรวจสลิปด้วยระบบ ไม่รอผล (โหมดปิดหรือตรวจไม่ได้ แอดมินยังตรวจด้วยตาได้)
+            requestSlipVerify(activeInvoice.id)
             await loadData()
             clearFile()
             setUploadSuccess(true)
@@ -409,6 +413,9 @@ function UserDashboardPage() {
                         </div>
                     </div>
 
+                    {/* ค่าซ่อมที่ยังไม่ได้ชำระ (ไม่แสดงถ้าไม่มี) */}
+                    <RepairCostBanner />
+
                     {/* การ์ดสรุปตัวเลข 2 ใบ ตามรูปแรก (พร้อมการ์ดที่ 3 สำหรับการแสดงผลบน Desktop) */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                         {/* 1. ยอดเดือนนี้ */}
@@ -421,6 +428,16 @@ function UserDashboardPage() {
                                 <div className="text-xs text-muted mt-1.5 font-medium">
                                     {activeInvoice ? `เดือน ${formatMonth(activeInvoice.month)}` : 'ไม่มีใบแจ้งหนี้'}
                                 </div>
+                                {activeInvoice && lateFeeOf(activeInvoice) > 0 && activeInvoice.status !== 'paid' && (
+                                    <div className="text-xs text-red-600 mt-1 font-medium">
+                                        เกินกำหนด {daysLate(activeInvoice)} วัน · ค่าปรับ {baht(lateFeeOf(activeInvoice))}
+                                    </div>
+                                )}
+                                {activeInvoice && isPartiallyPaid(activeInvoice) && (
+                                    <div className="text-xs text-amber-700 mt-1 font-medium">
+                                        ชำระแล้ว {baht(paidOf(activeInvoice))} · เหลือ {baht(balanceOf(activeInvoice))}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -589,8 +606,10 @@ function UserDashboardPage() {
                                 {activeInvoice?.status === 'pending' ? (
                                     <>
                                         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3.5 rounded-xl leading-relaxed">
-                                            <span className="font-semibold mb-0.5 flex items-center gap-1.5"><Icon name="alert" className="w-4 h-4" />มียอดรอชำระเงิน</span>
-                                            กรุณาชำระเงินและแนบหลักฐานการโอนภายในวันที่ {formatDueDate(activeInvoice.month)}
+                                            <span className="font-semibold mb-0.5 flex items-center gap-1.5"><Icon name="alert" className="w-4 h-4" />{isPartiallyPaid(activeInvoice) ? 'ยังมียอดคงเหลือ' : 'มียอดรอชำระเงิน'}</span>
+                                            {isPartiallyPaid(activeInvoice)
+                                                ? `ได้รับชำระแล้ว ${baht(paidOf(activeInvoice))} กรุณาโอนส่วนที่เหลือ ${baht(balanceOf(activeInvoice))} และแนบหลักฐานการโอน`
+                                                : `กรุณาชำระเงินและแนบหลักฐานการโอนภายในวันที่ ${formatDueDate(activeInvoice.month)}`}
                                         </div>
 
                                         {/* ปุ่มชำระเงิน / อัปโหลดสลิป ตามรูปแรก เมื่อกดจะเปิดหน้าในรูปที่สอง */}
@@ -670,8 +689,18 @@ function UserDashboardPage() {
                             ยอดที่ต้องชำระ · ประจำเดือน {activeInvoice ? formatMonth(activeInvoice.month) : '-'} (ห้อง {tenantInfo?.room})
                         </span>
                         <div className="text-3xl sm:text-5xl font-extrabold text-gray-900 mt-2 tracking-tight tabular-nums">
-                            {activeInvoice ? baht(activeInvoice.total) : '฿0'}
+                            {activeInvoice ? baht(balanceOf(activeInvoice)) : '฿0'}
                         </div>
+                        {activeInvoice && lateFeeOf(activeInvoice) > 0 && activeInvoice.status !== 'paid' && (
+                            <span className="text-xs md:text-sm text-red-600 font-medium mt-1">
+                                รวมค่าปรับล่าช้า {baht(lateFeeOf(activeInvoice))} (เกินกำหนด {daysLate(activeInvoice)} วัน)
+                            </span>
+                        )}
+                        {activeInvoice && isPartiallyPaid(activeInvoice) && (
+                            <span className="text-xs md:text-sm text-amber-700 font-medium mt-1">
+                                ยอดบิล {baht(activeInvoice.total)} · ชำระแล้ว {baht(paidOf(activeInvoice))}
+                            </span>
+                        )}
                         <span className="text-xs md:text-sm text-red-600 font-semibold mt-2">
                             ภายในวันที่ {activeInvoice ? formatDueDate(activeInvoice.month) : '-'}
                         </span>
@@ -695,7 +724,9 @@ function UserDashboardPage() {
                                     />
                                 ) : qrError ? (
                                     <div className="w-56 h-56 flex items-center justify-center text-center text-red-600 text-xs px-4">
-                                        ยังสร้าง QR ไม่ได้ เพราะรหัสพร้อมเพย์ของหอพักไม่ถูกต้อง กรุณาติดต่อผู้ดูแลหอพัก หรือโอนเข้าบัญชีธนาคารแทน
+                                        {BANK.promptpay
+                                            ? 'ยังสร้าง QR ไม่ได้ เพราะรหัสพร้อมเพย์ของหอพักไม่ถูกต้อง กรุณาติดต่อผู้ดูแลหอพัก หรือโอนเข้าบัญชีธนาคารแทน'
+                                            : 'ผู้ดูแลหอพักยังไม่ได้ตั้งค่าช่องทางรับชำระเงิน กรุณาติดต่อผู้ดูแลหอพักก่อนโอนเงิน'}
                                     </div>
                                 ) : (
                                     <div className="w-56 h-56 flex items-center justify-center text-muted text-xs">
@@ -705,27 +736,31 @@ function UserDashboardPage() {
                             </div>
 
                             {/* เลขพร้อมเพย์ */}
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm font-semibold text-gray-800">
-                                    พร้อมเพย์ {BANK.promptpay}
-                                </span>
-                                <CopyBtn text={BANK.promptpay.replace(/-/g, '')} label="คัดลอก" />
-                            </div>
+                            {BANK.promptpay && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-semibold text-gray-800">
+                                        พร้อมเพย์ {BANK.promptpay}
+                                    </span>
+                                    <CopyBtn text={BANK.promptpay.replace(/-/g, '')} label="คัดลอก" />
+                                </div>
+                            )}
 
                             {/* บัญชีธนาคารเพิ่มเติม */}
-                            <div className="w-full pt-4 border-t border-line text-xs text-gray-600 flex flex-col gap-1.5 text-left bg-sand/30 p-3.5 rounded-xl">
-                                <span className="font-bold text-primary-dark">หรือโอนเข้าบัญชีธนาคาร:</span>
-                                <div className="flex justify-between items-center">
-                                    <span>ธนาคาร: <strong className="text-gray-900">{BANK.name}</strong></span>
+                            {BANK.account && (
+                                <div className="w-full pt-4 border-t border-line text-xs text-gray-600 flex flex-col gap-1.5 text-left bg-sand/30 p-3.5 rounded-xl">
+                                    <span className="font-bold text-primary-dark">หรือโอนเข้าบัญชีธนาคาร:</span>
+                                    <div className="flex justify-between items-center">
+                                        <span>ธนาคาร: <strong className="text-gray-900">{BANK.name}</strong></span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span>เลขที่บัญชี: <strong className="font-mono text-gray-900">{BANK.account}</strong></span>
+                                        <CopyBtn text={BANK.account.replace(/-/g, '')} label="คัดลอก" />
+                                    </div>
+                                    <div>
+                                        <span>ชื่อบัญชี: <strong className="text-gray-900">{BANK.holder}</strong></span>
+                                    </div>
                                 </div>
-                                <div className="flex justify-between items-center">
-                                    <span>เลขที่บัญชี: <strong className="font-mono text-gray-900">{BANK.account}</strong></span>
-                                    <CopyBtn text={BANK.account.replace(/-/g, '')} label="คัดลอก" />
-                                </div>
-                                <div>
-                                    <span>ชื่อบัญชี: <strong className="text-gray-900">{BANK.holder}</strong></span>
-                                </div>
-                            </div>
+                            )}
                         </div>
 
                         {/* ฝั่งขวา: แนบสลิปโอนเงิน + ปุ่มส่งหลักฐาน + ปุ่มดาวน์โหลด PDF (ตามรูปที่สอง) */}
@@ -918,6 +953,9 @@ function UserDashboardPage() {
                                                 <div className="text-base font-bold text-gray-900 tabular-nums">
                                                     {baht(inv.total)}
                                                 </div>
+                                                {isPartiallyPaid(inv) && (
+                                                    <div className="text-[11px] text-amber-700">ชำระแล้ว {baht(paidOf(inv))} · เหลือ {baht(balanceOf(inv))}</div>
+                                                )}
                                                 <span
                                                     className={`inline-block text-[11px] px-2.5 py-0.5 rounded-full font-medium mt-0.5 ${
                                                         inv.status === 'paid'

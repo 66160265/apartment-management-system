@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
+import { RepairCostBanner, TenantRepairPayment } from '../components/RepairPayment'
+import { useRepairCosts } from '../lib/useRepairCosts'
 import { AppointmentBox, ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge, SlotList, SlotPicker, UrgencyBadge } from '../components/RepairParts'
 import { repairCategories, repairProgressKeys, repairStatuses, repairStatusKeys } from '../data/repairs'
 import { baht, formatDateTime } from '../lib/billing'
@@ -81,6 +83,8 @@ function UserRepairsPage() {
     // กรองตามประเภทงาน และเรียงจากเก่าสุดไปใหม่สุดไหม
     const [categoryFilter, setCategoryFilter] = useState('all')
     const [oldestFirst, setOldestFirst] = useState(false)
+    // เรื่องที่มีค่าซ่อมค้างชำระ (ทำป้าย "ค้างชำระ" ในรายการ)
+    const unpaidIds = new Set(useRepairCosts().map((r) => r.id))
 
     // editing: null = หน้ารายการ, 'new' = แจ้งซ่อมใหม่, ออบเจ็กต์ = แก้ไขรายการนั้น
     const [editing, setEditing] = useState(null)
@@ -316,6 +320,11 @@ function UserRepairsPage() {
                     </div>
                 )}
 
+                {/* ค่าซ่อมที่ยังไม่ได้ชำระ (กดรายการเพื่อเปิดเรื่องนั้น) */}
+                {!editing && room && (
+                    <RepairCostBanner onOpen={(id) => { const r = repairs.find((x) => x.id === id); if (r) openEdit(r) }} />
+                )}
+
                 {/* ไม่มีห้อง: แจ้งให้ติดต่อผู้ดูแล / กำลังเปิดฟอร์ม: ฟอร์มแจ้งซ่อม / ไม่งั้น: หน้ารายการ */}
                 {!room ? (
                     <p className="text-center py-10 text-muted">บัญชีนี้ยังไม่ได้ผูกกับห้องพัก จึงยังไม่สามารถแจ้งซ่อมได้ กรุณาติดต่อผู้ดูแล</p>
@@ -515,6 +524,9 @@ function UserRepairsPage() {
                             </p>
                         )}
 
+                        {/* ชำระค่าซ่อม (ซ่อมเสร็จและผู้ดูแลระบุให้ผู้เช่าเป็นผู้ชำระ) */}
+                        {!isNew && <TenantRepairPayment repair={editing} userId={userId} />}
+
                         {/* ผู้เช่ายืนยันผลการซ่อมแล้ว */}
                         {!isNew && editing.tenant_confirmed_at && (
                             <p className="text-sm text-emerald-700">คุณยืนยันว่าใช้งานได้ปกติเมื่อ {formatDateTime(editing.tenant_confirmed_at)}</p>
@@ -671,6 +683,7 @@ function UserRepairsPage() {
                                                         <td className="px-3 py-3 border-x border-line/60 text-center">
                                                             <RepairStatusBadge status={r.status} />
                                                             {needsAction(r) && <div className="text-xs font-semibold text-red-600 mt-1">รอคุณยืนยัน</div>}
+                                                            {unpaidIds.has(r.id) && <div className="text-xs font-semibold text-amber-700 mt-1">ค้างชำระ {baht(r.cost)}</div>}
                                                         </td>
                                                         <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                                                             <button onClick={() => openEdit(r)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist whitespace-nowrap">
@@ -705,6 +718,7 @@ function UserRepairsPage() {
                                                         </div>
                                                     </div>
                                                     {needsAction(r) && <div className="text-xs font-semibold text-red-600">รอคุณยืนยัน</div>}
+                                                    {unpaidIds.has(r.id) && <div className="text-xs font-semibold text-amber-700">ค้างชำระ {baht(r.cost)}</div>}
                                                     <button onClick={() => openEdit(r)} className="py-2 rounded-xl text-sm bg-mist/60 text-primary-dark hover:bg-mist">
                                                         {r.status === 'pending' ? 'แก้ไขเรื่องนี้' : needsAction(r) ? 'ตรวจสอบและยืนยัน' : 'ดูรายละเอียด'}
                                                     </button>

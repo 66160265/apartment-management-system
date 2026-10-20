@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import PageHeader from './PageHeader'
 import Icon from './Icon'
 import DownloadInvoiceButton from './DownloadInvoiceButton'
-import { CopyButton, InvoiceBreakdown, InvoiceStepper, PromptPayCard, SlipImage, StatusBadge } from './InvoiceParts'
-import { baht, formatDateTime, formatMonth } from '../lib/billing'
+import { CopyButton, InvoiceBreakdown, InvoiceStepper, PaymentHistory, PromptPayCard, SlipImage, StatusBadge } from './InvoiceParts'
+import { balanceOf, baht, daysLate, formatDateTime, formatMonth, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
+import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
@@ -66,6 +67,8 @@ function SlipUpload({ invoice, userId, onUploaded }) {
             setError(`ส่งสลิปไม่สำเร็จ: ${submitError.message}`)
             return
         }
+        // สั่งตรวจสลิปด้วยระบบ ไม่รอผล (โหมดปิดหรือตรวจไม่ได้ แอดมินยังตรวจด้วยตาได้)
+        requestSlipVerify(invoice.id)
         await onUploaded()
     }
 
@@ -113,7 +116,7 @@ function SlipUpload({ invoice, userId, onUploaded }) {
                 disabled={!file || uploading}
                 className="bg-primary hover:bg-primary-dark disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-xl font-medium shadow-card"
             >
-                {uploading ? 'กำลังส่งสลิป...' : `ส่งสลิปให้ตรวจสอบ · ${baht(invoice.total)}`}
+                {uploading ? 'กำลังส่งสลิป...' : `ส่งสลิปให้ตรวจสอบ · ${baht(balanceOf(invoice))}`}
             </button>
         </div>
     )
@@ -169,7 +172,12 @@ function InvoiceDetail({ invoice, userId, onBack, onChanged }) {
                     {/* รอชำระ: แสดงเหตุผลถ้าสลิปก่อนหน้าถูกปฏิเสธ + กล่องแนบสลิป */}
                     {invoice.status === 'pending' && (
                         <>
-                            <h3 className="font-medium text-primary-dark">ชำระเงินและแนบสลิป</h3>
+                            <h3 className="font-medium text-primary-dark">{isPartiallyPaid(invoice) ? 'ชำระส่วนที่เหลือและแนบสลิป' : 'ชำระเงินและแนบสลิป'}</h3>
+                            {isPartiallyPaid(invoice) && (
+                                <p className="text-sm text-amber-900 bg-amber-50 ring-1 ring-amber-200 rounded-xl px-4 py-2.5">
+                                    ได้รับชำระแล้ว {baht(paidOf(invoice))} ยังเหลืออีก <strong>{baht(balanceOf(invoice))}</strong> กรุณาโอนส่วนที่เหลือและแนบสลิปเพิ่ม
+                                </p>
+                            )}
                             {invoice.reject_reason && (
                                 <p className="text-sm text-red-700 bg-red-50 ring-1 ring-red-200 rounded-xl px-4 py-2.5">
                                     สลิปก่อนหน้าถูกปฏิเสธ: {invoice.reject_reason} — กรุณาแนบสลิปใหม่
@@ -196,15 +204,24 @@ function InvoiceDetail({ invoice, userId, onBack, onChanged }) {
                             <p className="text-sm text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-xl px-4 py-2.5">
                                 ได้รับชำระ {baht(invoice.total)} เมื่อ {formatDateTime(invoice.reviewed_at)}
                             </p>
+                            {Number(invoice.refund_amount) > 0 && (
+                                <p className="text-sm text-sky-900 bg-sky-50 ring-1 ring-sky-200 rounded-xl px-4 py-2.5">
+                                    {invoice.refund_status === 'done'
+                                        ? `ยอดที่โอนเกิน ${baht(invoice.refund_amount)} หอพักโอนคืนแล้วเมื่อ ${formatDateTime(invoice.refunded_at)}`
+                                        : `คุณโอนเกินมา ${baht(invoice.refund_amount)} หอพักจะโอนคืนให้`}
+                                </p>
+                            )}
                         </>
                     )}
 
                     {/* รูปสลิปที่ส่งไปแล้ว */}
-                    {invoice.status !== 'pending' && invoice.slip_path && (
+                    {invoice.status === 'review' && invoice.slip_path && (
                         <div className="flex justify-center rounded-xl bg-sand/70 border border-dashed border-line p-4">
                             <SlipImage path={invoice.slip_path} />
                         </div>
                     )}
+
+                    <PaymentHistory invoiceId={invoice.id} refreshKey={invoice.paid_amount} />
                 </div>
             </div>
         </div>
@@ -270,9 +287,12 @@ function TenantInvoices({ userId }) {
                                 <div className="rounded-2xl bg-linear-to-br from-primary-dark to-primary text-white p-6 shadow-card flex flex-wrap items-center justify-between gap-5">
                                     <div>
                                         <div className="text-sm text-white/75">
-                                            {focus.status === 'pending' ? `ยอดที่ต้องชำระ · เดือน ${formatMonth(focus.month)}` : `รอตรวจสอบสลิป · เดือน ${formatMonth(focus.month)}`}
+                                            {focus.status === 'pending' ? `ยอดที่ต้องชำระ${isPartiallyPaid(focus) ? 'คงเหลือ' : ''} · เดือน ${formatMonth(focus.month)}` : `รอตรวจสอบสลิป · เดือน ${formatMonth(focus.month)}`}
                                         </div>
-                                        <div className="text-4xl font-semibold mt-1 tabular-nums">{baht(focus.total)}</div>
+                                        <div className="text-4xl font-semibold mt-1 tabular-nums">{baht(balanceOf(focus))}</div>
+                                        {lateFeeOf(focus) > 0 && focus.status === 'pending' && (
+                                            <div className="text-sm text-amber-200 mt-1">รวมค่าปรับล่าช้า {baht(lateFeeOf(focus))} (เกินกำหนด {daysLate(focus)} วัน) ค่าปรับเพิ่มขึ้นทุกวันจนกว่าจะชำระ</div>
+                                        )}
                                         {unpaid.length > 1 && <div className="text-sm text-white/75 mt-1">มีใบแจ้งหนี้ค้างชำระ {unpaid.length} เดือน</div>}
                                     </div>
                                     <button
@@ -311,6 +331,8 @@ function TenantInvoices({ userId }) {
                                                 <div>
                                                     <div className="font-medium text-primary-dark">เดือน {formatMonth(i.month)}</div>
                                                     <div className="text-xl font-semibold text-ink mt-0.5 tabular-nums">{baht(i.total)}</div>
+                                                    {isPartiallyPaid(i) && <div className="text-xs text-amber-700 mt-0.5">ชำระแล้ว {baht(paidOf(i))} · เหลือ {baht(balanceOf(i))}</div>}
+                                                    {daysLate(i) > 0 && <div className="text-xs font-semibold text-red-600 mt-0.5">เกินกำหนด {daysLate(i)} วัน · ค่าปรับ {baht(lateFeeOf(i))}</div>}
                                                 </div>
                                                 <div className="flex flex-col items-end gap-2">
                                                     <StatusBadge status={i.status} />

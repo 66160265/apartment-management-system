@@ -6,6 +6,7 @@ import DatePicker from './DatePicker'
 import { AppointmentBox, ConfirmDialog, RepairImagePicker, RepairStatusBadge, SlotList, TimeRangePicker, UrgencyBadge } from './RepairParts'
 import { DEFAULT_PERIOD, repairCategories, repairStatuses, repairStatusKeys } from '../data/repairs'
 import { formatDateTime } from '../lib/billing'
+import { AdminRepairPayment } from './RepairPayment'
 import { formatSlot, formatThaiDate, isInSlots, normalizePeriod, periodsOverlap, removeRepairImage, todayIso, uploadRepairImage } from '../lib/repairs'
 import { supabase } from '../lib/supabaseClient'
 
@@ -282,6 +283,8 @@ function AdminRepairs({ adminId }) {
     // ลบรายการแจ้งซ่อมที่กำลังแก้ไข
     const handleDelete = async () => {
         setSaving(true)
+        // สลิปค่าซ่อมที่เคยส่ง (ประวัติการชำระถูกลบตามเรื่องอัตโนมัติ แต่ไฟล์ใน storage ต้องลบเอง)
+        const { data: slips } = await supabase.from('repair_payments').select('slip_path').eq('repair_id', editing.id)
         const { error } = await supabase.from('repairs').delete().eq('id', editing.id)
         if (error) {
             setSaving(false)
@@ -290,6 +293,8 @@ function AdminRepairs({ adminId }) {
         }
         // ลบแถวสำเร็จแล้วค่อยลบรูปใน storage จากนั้นโหลดใหม่และกลับหน้ารายการ
         await removeRepairImage(editing.image_path)
+        const slipPaths = (slips ?? []).map((p) => p.slip_path).filter(Boolean)
+        if (slipPaths.length > 0) await supabase.storage.from('slips').remove(slipPaths)
         await load()
         setSaving(false)
         setConfirmDelete(false)
@@ -491,6 +496,9 @@ function AdminRepairs({ adminId }) {
                             <input maxLength={100} value={form.technician} onChange={set('technician')} disabled={saving} placeholder="ชื่อช่าง (ถ้ามี)" className={inputClass} />
                         </div>
                     )}
+
+                    {/* ค่าซ่อมที่ผู้เช่าต้องชำระ: ตรวจสลิป ยืนยัน/ปฏิเสธ (มีสลิปรอตรวจหรือชำระแล้ว แก้ยอดค่าใช้จ่ายไม่ได้) */}
+                    {!isNew && <AdminRepairPayment repair={editing} />}
 
                     {/* คำแนะนำเมื่อเลือกสถานะที่ล้างนัดเดิม */}
                     {!isNew && editing.appointment_date && (form.status === 'pending' || form.status === 'cancelled') && editing.status === 'scheduled' && (

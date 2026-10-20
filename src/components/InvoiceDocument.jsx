@@ -1,5 +1,5 @@
 import { formatPromptPayId } from '../lib/promptpay'
-import { baht, dueDateOf, formatMonth, formatShortDate, invoiceCode, thaiBahtText } from '../lib/billing'
+import { balanceOf, baht, daysLate, dueDateOf, formatMonth, formatShortDate, invoiceCode, isPartiallyPaid, lateFeeOf, paidOf, thaiBahtText } from '../lib/billing'
 
 // เอกสารใบแจ้งหนี้ขนาด A4 (กว้าง 794px) ใช้สร้างไฟล์ PDF
 // ใช้ inline style และสีแบบ hex ทั้งหมด เพื่อให้แปลงเป็นรูปได้ตรงกับที่เห็นและไม่ขึ้นกับธีมของเว็บ
@@ -92,9 +92,9 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
                         <div style={{ fontSize: 12, opacity: 0.8 }}>{settings.apartmentNameEn}</div>
                         <div style={{ fontSize: 11, opacity: 0.85, marginTop: 8, maxWidth: 360 }}>
                             {settings.address}
-                            <br />
-                            โทร {settings.phone}
-                            {settings.email ? ` · ${settings.email}` : ''}
+                            {settings.address && (settings.phone || settings.email) && <br />}
+                            {settings.phone && `โทร ${settings.phone}`}
+                            {settings.email ? `${settings.phone ? ' · ' : ''}${settings.email}` : ''}
                         </div>
                     </div>
                 </div>
@@ -171,6 +171,16 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
                     <div style={{ width: 270, background: C.dark, color: '#FFFFFF', borderRadius: 12, padding: '12px 18px', textAlign: 'right' }}>
                         <div style={{ fontSize: 12, opacity: 0.85 }}>ยอดรวมสุทธิ</div>
                         <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.2, ...num }}>{baht(invoice.total)}</div>
+                        {lateFeeOf(invoice) > 0 && (
+                            <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4, ...num }}>
+                                ค่าปรับชำระล่าช้า {baht(lateFeeOf(invoice))}{daysLate(invoice) > 0 ? ` (เกินกำหนด ${daysLate(invoice)} วัน)` : ''}
+                            </div>
+                        )}
+                        {isPartiallyPaid(invoice) && (
+                            <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4, ...num }}>
+                                ชำระแล้ว {baht(paidOf(invoice))} · คงเหลือ {baht(balanceOf(invoice))}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -188,20 +198,31 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
                             <div style={{ textAlign: 'center', flexShrink: 0 }}>
                                 <img src={qr} alt="QR PromptPay" width={150} height={150} style={{ display: 'block', borderRadius: 8, border: `1px solid ${C.line}` }} />
                                 <div style={{ fontSize: 11, fontWeight: 600, color: C.dark, marginTop: 6 }}>สแกนจ่ายด้วยพร้อมเพย์</div>
-                                <div style={{ fontSize: 11, color: C.muted }}>ยอด {baht(invoice.total)}</div>
+                                <div style={{ fontSize: 11, color: C.muted }}>ยอด {baht(balanceOf(invoice))}</div>
                             </div>
                         )}
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 14, fontWeight: 700, color: C.dark, marginBottom: 8 }}>ช่องทางการชำระเงิน</div>
                             <div style={{ display: 'grid', gridTemplateColumns: '92px 1fr', rowGap: 4, fontSize: 13 }}>
-                                <span style={{ color: C.muted }}>ธนาคาร</span>
-                                <span style={{ fontWeight: 600 }}>{settings.bankName}</span>
-                                <span style={{ color: C.muted }}>เลขที่บัญชี</span>
-                                <span style={{ fontWeight: 600, ...num }}>{settings.bankAccount}</span>
-                                <span style={{ color: C.muted }}>ชื่อบัญชี</span>
-                                <span style={{ fontWeight: 600 }}>{settings.bankHolder}</span>
-                                <span style={{ color: C.muted }}>พร้อมเพย์</span>
-                                <span style={{ fontWeight: 600, ...num }}>{formatPromptPayId(settings.promptpayId)}</span>
+                                {settings.bankAccount && (
+                                    <>
+                                        <span style={{ color: C.muted }}>ธนาคาร</span>
+                                        <span style={{ fontWeight: 600 }}>{settings.bankName}</span>
+                                        <span style={{ color: C.muted }}>เลขที่บัญชี</span>
+                                        <span style={{ fontWeight: 600, ...num }}>{settings.bankAccount}</span>
+                                        <span style={{ color: C.muted }}>ชื่อบัญชี</span>
+                                        <span style={{ fontWeight: 600 }}>{settings.bankHolder}</span>
+                                    </>
+                                )}
+                                {settings.promptpayId && (
+                                    <>
+                                        <span style={{ color: C.muted }}>พร้อมเพย์</span>
+                                        <span style={{ fontWeight: 600, ...num }}>{formatPromptPayId(settings.promptpayId)}</span>
+                                    </>
+                                )}
+                                {!settings.bankAccount && !settings.promptpayId && (
+                                    <span style={{ gridColumn: '1 / -1', color: C.muted }}>กรุณาติดต่อผู้ดูแลหอพักเพื่อสอบถามช่องทางชำระเงิน</span>
+                                )}
                             </div>
                             <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>
                                 กรุณาชำระภายในวันที่ {dueDate} และแนบสลิปการโอนเงินผ่านระบบผู้เช่าเพื่อยืนยันยอด

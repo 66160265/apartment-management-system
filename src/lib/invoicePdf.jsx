@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { invoiceCode } from './billing'
+import { balanceOf, invoiceCode } from './billing'
 import { supabase } from './supabaseClient'
 import { loadSettings } from './useSettings'
 
@@ -34,7 +34,7 @@ export async function downloadInvoicePdf(invoice) {
 
     // QR พร้อมเพย์ระบุยอดตามใบแจ้งหนี้ (ใบที่ชำระแล้วไม่ต้องมี) ถ้ารหัสพร้อมเพย์ยังไม่ถูกต้องก็ออกเอกสารต่อได้โดยไม่มี QR
     const qr =
-        invoice.status === 'paid' ? null : await generatePromptPayQR(settings.promptpayId, invoice.total, { width: 480 }).catch(() => null)
+        invoice.status === 'paid' ? null : await generatePromptPayQR(settings.promptpayId, balanceOf(invoice), { width: 480 }).catch(() => null)
 
     // วันที่ชำระ (วันที่แอดมินอนุมัติสลิป) สำหรับใบที่จ่ายแล้ว
     const paidAt = invoice.reviewed_at
