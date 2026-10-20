@@ -10,6 +10,7 @@ import LoginPage from './pages/LoginPage.jsx'
 import UserDashboardPage from './pages/UserDashboardPage.jsx'
 import AccountPage from './pages/AccountPage.jsx'
 import AdminUsersPage from './pages/AdminUsersPage.jsx'
+import AuditLogPage from './pages/AuditLogPage.jsx'
 import NotificationsPage from './pages/NotificationsPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
 import ChatPage from './pages/ChatPage.jsx'
@@ -31,6 +32,7 @@ function App() {
           <Route path="/tenants" element={<RequireRole role="admin"><TenantsPage /></RequireRole>} />
           <Route path="/settings" element={<RequireRole role="admin"><SettingsPage /></RequireRole>} />
           <Route path="/admin/users" element={<RequireRole role="admin"><AdminUsersPage /></RequireRole>} />
+          <Route path="/admin/audit" element={<RequireRole role="admin"><AuditLogPage /></RequireRole>} />
 
           {/* เฉพาะผู้เช่า */}
           <Route path="/user/dashboard" element={<RequireRole role="user"><UserDashboardPage /></RequireRole>} />
