@@ -21,6 +21,10 @@ export const DEFAULT_SETTINGS = {
     commonFee: 0,
     // โหมดตรวจสลิปด้วย EasySlip: off ปิด, suggest ตรวจแล้วแสดงผลให้แอดมินดู (แอดมินยืนยันรับเงินเอง) ดู supabase/slip-verify.sql
     slipVerifyMode: 'off',
+    // ค่าปรับชำระล่าช้า: บาทต่อวันที่เกินกำหนด (0 = ไม่คิดค่าปรับ), วันผ่อนผัน, เพดานค่าปรับรวม (ว่าง = ไม่จำกัด) ดู supabase/payments.sql
+    lateFeePerDay: 0,
+    lateFeeGraceDays: 0,
+    lateFeeCap: '',
 }
 
 // สถานะใบแจ้งหนี้ (ค่าที่เก็บในฐานข้อมูล -> ป้ายและสีที่แสดง)

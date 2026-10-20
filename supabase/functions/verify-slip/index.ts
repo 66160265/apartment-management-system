@@ -127,9 +127,16 @@ Deno.serve(async (req) => {
     if (!res.ok || !result?.success) {
       verdict = mapEasySlipError(result?.error?.code, result?.error?.message)
     } else {
-      // ใบแจ้งหนี้: ยอดคงเหลือ (ยอดบิล - ที่ได้รับแล้ว)  ค่าซ่อม: ยอดค่าซ่อมเต็ม (claim คืน paid_amount = 0)
-      const balance = Math.max(0, Number(claim.total) - Number(claim.paid_amount ?? 0))
-      verdict = evaluateSlip(parseEasySlip(result), {
+      const slip = parseEasySlip(result)
+      // ค่าซ่อม: ยอดค่าซ่อมเต็ม (claim คืน paid_amount = 0)
+      let balance = Math.max(0, Number(claim.total) - Number(claim.paid_amount ?? 0))
+      // ใบแจ้งหนี้: ยอดที่ต้องชำระรวมค่าปรับล่าช้า ณ วันที่โอน (ให้ฐานข้อมูลคำนวณ ใช้สูตรเดียวกับตอนยืนยันรับเงิน)
+      // เรียกไม่ได้ (เช่น ยังไม่ได้รัน payments.sql รุ่นใหม่) ใช้ยอดคงเหลือแบบไม่มีค่าปรับแทน
+      if (kind === 'invoice') {
+        const { data: due, error: dueError } = await admin.rpc('invoice_balance_at', { p_invoice: id, p_transfer: slip.date })
+        if (!dueError && due !== null && due !== undefined && Number.isFinite(Number(due))) balance = Number(due)
+      }
+      verdict = evaluateSlip(slip, {
         balance,
         invoiceCreatedAt: claim.created_at,
         now: new Date(),

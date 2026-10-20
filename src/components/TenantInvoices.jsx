@@ -3,7 +3,7 @@ import PageHeader from './PageHeader'
 import Icon from './Icon'
 import DownloadInvoiceButton from './DownloadInvoiceButton'
 import { CopyButton, InvoiceBreakdown, InvoiceStepper, PaymentHistory, PromptPayCard, SlipImage, StatusBadge } from './InvoiceParts'
-import { balanceOf, baht, formatDateTime, formatMonth, isPartiallyPaid, paidOf } from '../lib/billing'
+import { balanceOf, baht, daysLate, formatDateTime, formatMonth, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
@@ -290,6 +290,9 @@ function TenantInvoices({ userId }) {
                                             {focus.status === 'pending' ? `ยอดที่ต้องชำระ${isPartiallyPaid(focus) ? 'คงเหลือ' : ''} · เดือน ${formatMonth(focus.month)}` : `รอตรวจสอบสลิป · เดือน ${formatMonth(focus.month)}`}
                                         </div>
                                         <div className="text-4xl font-semibold mt-1 tabular-nums">{baht(balanceOf(focus))}</div>
+                                        {lateFeeOf(focus) > 0 && focus.status === 'pending' && (
+                                            <div className="text-sm text-amber-200 mt-1">รวมค่าปรับล่าช้า {baht(lateFeeOf(focus))} (เกินกำหนด {daysLate(focus)} วัน) ค่าปรับเพิ่มขึ้นทุกวันจนกว่าจะชำระ</div>
+                                        )}
                                         {unpaid.length > 1 && <div className="text-sm text-white/75 mt-1">มีใบแจ้งหนี้ค้างชำระ {unpaid.length} เดือน</div>}
                                     </div>
                                     <button
@@ -329,6 +332,7 @@ function TenantInvoices({ userId }) {
                                                     <div className="font-medium text-primary-dark">เดือน {formatMonth(i.month)}</div>
                                                     <div className="text-xl font-semibold text-ink mt-0.5 tabular-nums">{baht(i.total)}</div>
                                                     {isPartiallyPaid(i) && <div className="text-xs text-amber-700 mt-0.5">ชำระแล้ว {baht(paidOf(i))} · เหลือ {baht(balanceOf(i))}</div>}
+                                                    {daysLate(i) > 0 && <div className="text-xs font-semibold text-red-600 mt-0.5">เกินกำหนด {daysLate(i)} วัน · ค่าปรับ {baht(lateFeeOf(i))}</div>}
                                                 </div>
                                                 <div className="flex flex-col items-end gap-2">
                                                     <StatusBadge status={i.status} />

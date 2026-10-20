@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import Icon from './Icon'
 import { invoiceStatuses } from '../data/billing'
-import { balanceOf, baht, calcInvoice, formatDateTime, getSlipUrl, paidOf } from '../lib/billing'
+import { balanceOf, baht, calcInvoice, daysLate, formatDateTime, getSlipUrl, lateFeeOf, paidOf } from '../lib/billing'
 import { formatPromptPayId, generatePromptPayQR } from '../lib/promptpay'
 import { supabase } from '../lib/supabaseClient'
 import { MAX_VERIFY_ATTEMPTS, verifyStatuses } from '../lib/slipVerify'
@@ -100,9 +100,20 @@ export function InvoiceBreakdown({ invoice }) {
                 <span className="text-xl font-semibold tabular-nums">{baht(invoice.total)}</span>
             </div>
             {/* ได้รับเงินแล้ว: ผู้เช่าโอนไม่ครบ แล้วโอนเพิ่มได้ จึงแสดงยอดที่ได้รับและยอดคงเหลือ (หรือยอดที่ต้องโอนคืนถ้าโอนเกิน) */}
-            {paidOf(invoice) > 0 && (
+            {(paidOf(invoice) > 0 || lateFeeOf(invoice) > 0) && (
                 <dl className="px-4 py-3 text-sm flex flex-col gap-1.5 border-t border-line">
-                    <div className="flex justify-between"><dt className="text-muted">ได้รับชำระแล้ว</dt><dd className="tabular-nums font-medium text-emerald-700">{baht(paidOf(invoice))}</dd></div>
+                    {lateFeeOf(invoice) > 0 && (
+                        <>
+                            <div className="flex justify-between">
+                                <dt className="text-muted">ค่าปรับชำระล่าช้า{daysLate(invoice) > 0 && ` (เกินกำหนด ${daysLate(invoice)} วัน)`}</dt>
+                                <dd className="tabular-nums font-medium text-red-700">{baht(lateFeeOf(invoice))}</dd>
+                            </div>
+                            <div className="flex justify-between"><dt className="text-muted">ยอดรวมค่าปรับ</dt><dd className="tabular-nums font-medium">{baht(Number(invoice.total) + lateFeeOf(invoice))}</dd></div>
+                        </>
+                    )}
+                    {paidOf(invoice) > 0 && (
+                        <div className="flex justify-between"><dt className="text-muted">ได้รับชำระแล้ว</dt><dd className="tabular-nums font-medium text-emerald-700">{baht(paidOf(invoice))}</dd></div>
+                    )}
                     {invoice.status !== 'paid' && (
                         <div className="flex justify-between"><dt className="text-muted">คงเหลือที่ต้องชำระ</dt><dd className="tabular-nums font-semibold text-amber-700">{baht(balanceOf(invoice))}</dd></div>
                     )}

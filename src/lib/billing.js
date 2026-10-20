@@ -22,11 +22,77 @@ export const baht = (n) => `฿${Number(n).toLocaleString('th-TH')}`
 // ปัดเป็นสตางค์ กันเลขทศนิยมคลาดเคลื่อน (เช่น 0.1 + 0.2)
 const round2 = (n) => Math.round(Number(n) * 100) / 100
 
+// ---- ค่าปรับชำระล่าช้า (ต้องตรงกับ invoice_late_fee ใน supabase/payments.sql) ----
+// ใบแจ้งหนี้จำค่าตั้งค่าไว้ตอนออกใบ: due_date วันครบกำหนด, late_fee_rate บาท/วัน, late_fee_grace วันผ่อนผัน, late_fee_cap เพดาน (null = ไม่จำกัด)
+// ค่าปรับ = อัตรา x max(0, (วันที่คิด - วันครบกำหนด) - วันผ่อนผัน) ไม่เกินเพดาน อัตรา 0 หรือไม่มี due_date = ไม่คิด
+
+// วันที่ปฏิทินไทย (YYYY-MM-DD) ของเวลาหนึ่ง
+export const thaiDateOf = (date) => new Date(date.getTime() + 7 * 3600000).toISOString().slice(0, 10)
+
+// จำนวนวันจาก a ถึง b (YYYY-MM-DD)
+const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000)
+
+// ค่าปรับ ณ วันที่ asOf (YYYY-MM-DD)
+export function lateFeeAt(invoice, asOf) {
+    const rate = Number(invoice.late_fee_rate ?? 0)
+    if (!(rate > 0) || !invoice.due_date || !asOf) return 0
+    const days = Math.max(0, daysBetween(invoice.due_date, asOf) - Number(invoice.late_fee_grace ?? 0))
+    let fee = rate * days
+    const cap = invoice.late_fee_cap
+    if (cap !== null && cap !== undefined && cap !== '') fee = Math.min(fee, Number(cap))
+    return Math.round(fee * 100) / 100
+}
+
+// ค่าปรับของใบแจ้งหนี้ตอนนี้: ใบที่ชำระครบแล้วใช้ค่าที่คิดจริงตอนชำระ (late_fee) ใบอื่นคำนวณสดตามวันนี้
+export function lateFeeOf(invoice, now = new Date()) {
+    if (invoice.status === 'paid') return Math.round(Number(invoice.late_fee ?? 0) * 100) / 100
+    return lateFeeAt(invoice, thaiDateOf(now))
+}
+
+// เกินกำหนดชำระกี่วัน (0 = ยังไม่เกิน หรือชำระแล้ว หรือบิลเก่าที่ไม่มีวันครบกำหนด)
+export function daysLate(invoice, now = new Date()) {
+    if (invoice.status === 'paid' || !invoice.due_date) return 0
+    return Math.max(0, daysBetween(invoice.due_date, thaiDateOf(now)))
+}
+
+// วันที่ที่ใช้คิดค่าปรับของสลิปที่ส่งมา = วันที่ส่งสลิป หรือวันที่โอนในผลตรวจสลิป อย่างใดอย่างหนึ่งที่เร็วกว่า (ต้องตรงกับ asof_date ในฐานข้อมูล)
+export function slipAsOf(invoice, now = new Date()) {
+    const uploaded = invoice.slip_uploaded_at ? new Date(invoice.slip_uploaded_at) : now
+    const transfer = invoice.verify_detail?.date ? new Date(invoice.verify_detail.date) : null
+    const up = thaiDateOf(uploaded)
+    if (!transfer || Number.isNaN(transfer.getTime())) return up
+    const tr = thaiDateOf(transfer)
+    return tr < up ? tr : up
+}
+
+// วันครบกำหนดชำระ (YYYY-MM-DD) = วันที่ dueDay ของเดือนถัดไป (month 'ปปปป-ดด')
+export const dueDateIso = (month, dueDay) => {
+    const [y, m] = month.split('-').map(Number)
+    return new Date(Date.UTC(y, m, dueDay)).toISOString().slice(0, 10)
+}
+
+// ค่าที่ต้องจำลงใบแจ้งหนี้ใหม่ ตามการตั้งค่าตอนนั้น (เปิดใช้เมื่ออัตรา > 0 ไม่งั้นคืนว่าง ใบจึงไม่แตะคอลัมน์ใหม่เมื่อไม่ได้ใช้ค่าปรับ)
+export function lateFeeSnapshot(settings, month) {
+    const rate = Number(settings.lateFeePerDay)
+    if (!(rate > 0)) return {}
+    const cap = settings.lateFeeCap
+    return {
+        due_date: dueDateIso(month, Number(settings.dueDay) || 5),
+        late_fee_rate: rate,
+        late_fee_grace: Math.max(0, Math.floor(Number(settings.lateFeeGraceDays) || 0)),
+        late_fee_cap: cap === '' || cap === null || cap === undefined ? null : Number(cap),
+    }
+}
+
 // ยอดที่ได้รับแล้วของใบแจ้งหนี้ (ผู้เช่าโอนหลายครั้งได้ ดู supabase/payments.sql) ใบเก่าที่ไม่มีช่องนี้ถือว่า 0
 export const paidOf = (invoice) => round2(invoice.paid_amount ?? 0)
 
-// ยอดคงเหลือที่ต้องชำระ (ไม่ติดลบ) ใช้เป็นยอดใน QR พร้อมเพย์และข้อความ "ยอดที่ต้องชำระ"
-export const balanceOf = (invoice) => Math.max(0, round2(Number(invoice.total) - paidOf(invoice)))
+// ยอดคงเหลือที่ต้องชำระ ณ ตอนนี้ (ไม่ติดลบ) = ยอดบิล + ค่าปรับล่าช้าวันนี้ - ที่ได้รับแล้ว ใช้เป็นยอดใน QR พร้อมเพย์และข้อความ "ยอดที่ต้องชำระ"
+export const balanceOf = (invoice, now = new Date()) => Math.max(0, round2(Number(invoice.total) + lateFeeOf(invoice, now) - paidOf(invoice)))
+
+// ยอดที่ต้องชำระสำหรับสลิปที่ส่งมา (คิดค่าปรับ ณ วันที่ slipAsOf) ใช้เป็นยอดตั้งต้นตอนแอดมินยืนยันสลิป
+export const balanceAtSlip = (invoice, now = new Date()) =>
+    Math.max(0, round2(Number(invoice.total) + lateFeeAt(invoice, slipAsOf(invoice, now)) - paidOf(invoice)))
 
 // ชำระบางส่วน: ได้รับเงินบางส่วนแล้วแต่ยังไม่ครบ (สถานะยังเป็นรอชำระ/รอตรวจสอบ)
 export const isPartiallyPaid = (invoice) => invoice.status !== 'paid' && paidOf(invoice) > 0

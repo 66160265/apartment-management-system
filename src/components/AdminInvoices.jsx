@@ -5,7 +5,7 @@ import PageHeader from './PageHeader'
 import MonthPicker from './MonthPicker'
 import { CopyButton, InvoiceBreakdown, InvoiceStepper, PaymentHistory, SlipImage, StatusBadge, VerifyBox } from './InvoiceParts'
 import { invoiceStatuses } from '../data/billing'
-import { balanceOf, baht, calcInvoice, currentMonth, formatDateTime, formatMonth, paidOf } from '../lib/billing'
+import { balanceAtSlip, baht, calcInvoice, currentMonth, daysLate, formatDateTime, formatMonth, lateFeeSnapshot, paidOf } from '../lib/billing'
 import { requestSlipVerify, suggestedAmountOf } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
@@ -45,7 +45,9 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
     const [error, setError] = useState('')
     // ยอดที่ได้รับจริงตามสลิป (ค่าเริ่มต้นคือยอดคงเหลือ แก้ได้เมื่อผู้เช่าโอนไม่ครบหรือเกิน)
     const [amount, setAmount] = useState(null)
-    const amountText = amount ?? String(suggestedAmountOf(invoice) ?? balanceOf(invoice))
+    // ยอดที่ต้องชำระของสลิปนี้ = ยอดบิล + ค่าปรับ ณ วันที่ส่ง/โอนสลิป - ที่ได้รับแล้ว
+    const due = balanceAtSlip(invoice)
+    const amountText = amount ?? String(suggestedAmountOf(invoice) ?? due)
     const [refundNote, setRefundNote] = useState('')
 
     // ตรวจสลิป: approve = true ยืนยันสลิปพร้อมยอดที่ได้รับ (ครบ = ชำระแล้ว, ไม่ครบ = กลับเป็นรอชำระพร้อมยอดคงเหลือ, เกิน = ชำระแล้วและเก็บยอดรอโอนคืน)
@@ -100,6 +102,9 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                         <div className="flex items-center gap-3 flex-wrap">
                             <h2 className="text-lg font-semibold text-primary-dark">{invoice.tenant_name}</h2>
                             <StatusBadge status={invoice.status} />
+                            {daysLate(invoice) > 0 && (
+                                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 ring-1 ring-red-200">เกินกำหนด {daysLate(invoice)} วัน</span>
+                            )}
                         </div>
                         <p className="text-sm text-muted mt-0.5">ห้อง {invoice.room} · ใบแจ้งหนี้เดือน {formatMonth(invoice.month)}</p>
                     </div>
@@ -189,9 +194,9 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                                             onChange={(e) => { setAmount(e.target.value); setError('') }}
                                         />
                                         <span className="block text-xs mt-1">
-                                            {paidOf(invoice) > 0 ? `ได้รับมาแล้ว ${baht(paidOf(invoice))} · ` : ''}ยอดคงเหลือ {baht(balanceOf(invoice))}
-                                            {Number(amountText) > 0 && Number(amountText) < balanceOf(invoice) && ' · ยอดไม่ครบ ผู้เช่าจะโอนส่วนที่เหลือเพิ่ม'}
-                                            {Number(amountText) > balanceOf(invoice) && ` · เกิน ${baht(Math.round((Number(amountText) - balanceOf(invoice)) * 100) / 100)} บันทึกไว้รอโอนคืน`}
+                                            {paidOf(invoice) > 0 ? `ได้รับมาแล้ว ${baht(paidOf(invoice))} · ` : ''}ยอดที่ต้องชำระ {baht(due)}{Number(invoice.late_fee_rate) > 0 && ' (รวมค่าปรับล่าช้าถึงวันที่โอน)'}
+                                            {Number(amountText) > 0 && Number(amountText) < due && ' · ยอดไม่ครบ ผู้เช่าจะโอนส่วนที่เหลือเพิ่ม'}
+                                            {Number(amountText) > due && ` · เกิน ${baht(Math.round((Number(amountText) - due) * 100) / 100)} บันทึกไว้รอโอนคืน`}
                                         </span>
                                     </label>
                                 )}
@@ -510,6 +515,8 @@ function AdminInvoices() {
                 month: form.month,
                 rent,
                 ...amounts,
+                // ค่าปรับล่าช้า: จำค่าตั้งค่า ณ วันออกใบไว้ในใบ (ไม่คิดค่าปรับ = ไม่มีฟิลด์เพิ่ม)
+                ...lateFeeSnapshot(settings, form.month),
             })
         setSaving(false)
         // บันทึกไม่สำเร็จ: error 23505 = ห้องนี้มีใบแจ้งหนี้เดือนนั้นแล้ว

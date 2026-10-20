@@ -103,7 +103,7 @@ $$;
 
 -- auto_approve_slip: ยืนยันรับเงินให้เองเมื่อ "ผ่านครบทุกเงื่อนไข" คืน 'paid' เมื่ออนุมัติ หรือ 'not_eligible' เมื่อไม่เข้าเงื่อนไข (ไม่ทำอะไร)
 -- เงื่อนไขทั้งหมด (ตรวจในฐานข้อมูลเองทุกครั้ง ไม่เชื่อ Edge Function อย่างเดียว):
---   1) โหมดตั้งเป็น auto  2) บิลรอตรวจและผลตรวจเป็น ok  3) ยอดในสลิปเท่ากับยอดคงเหลือพอดี (ไม่ครบ/เกินให้แอดมินตัดสิน)
+--   1) โหมดตั้งเป็น auto  2) บิลรอตรวจและผลตรวจเป็น ok  3) ยอดในสลิปเท่ากับยอดที่ต้องชำระพอดี (รวมค่าปรับล่าช้า ณ วันที่โอน) ไม่ครบ/เกินให้แอดมินตัดสิน
 --   4) EasySlip ยืนยันว่าผู้รับคือบัญชีของหอพัก (accountMatched = true)  5) มีเลขอ้างอิงสลิป และไม่เคยถูกใช้
 create or replace function public.auto_approve_slip(p_invoice uuid)
 returns text
@@ -114,6 +114,8 @@ declare
   inv public.invoices;
   detail jsonb;
   amt numeric;
+  due numeric;
+  transfer timestamptz;
   result text;
 begin
   if coalesce((select slip_verify_mode from public.app_settings where id = 1), 'off') <> 'auto' then
@@ -130,7 +132,13 @@ begin
     return 'not_eligible';
   end;
 
-  if amt is null or round(amt, 2) <> round(inv.total - inv.paid_amount, 2) then return 'not_eligible'; end if;
+  begin
+    transfer := nullif(detail ->> 'date', '')::timestamptz;
+  exception when others then
+    transfer := null;
+  end;
+  due := public.invoice_balance_at(inv.id, transfer);
+  if amt is null or due is null or round(amt, 2) <> round(due, 2) then return 'not_eligible'; end if;
   if (detail -> 'accountMatched') is distinct from 'true'::jsonb then return 'not_eligible'; end if;
   if nullif(detail ->> 'transRef', '') is null then return 'not_eligible'; end if;
 

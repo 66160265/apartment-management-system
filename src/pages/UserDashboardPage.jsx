@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
 import { invoiceStatuses } from '../data/billing'
-import { balanceOf, baht, formatDateTime, formatMonth, isPartiallyPaid, paidOf } from '../lib/billing'
+import { balanceOf, baht, daysLate, formatDateTime, formatMonth, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
 import { generatePromptPayQR } from '../lib/promptpay'
 import { RepairCostBanner } from '../components/RepairPayment'
 import { requestSlipVerify } from '../lib/slipVerify'
@@ -428,6 +428,11 @@ function UserDashboardPage() {
                                 <div className="text-xs text-muted mt-1.5 font-medium">
                                     {activeInvoice ? `เดือน ${formatMonth(activeInvoice.month)}` : 'ไม่มีใบแจ้งหนี้'}
                                 </div>
+                                {activeInvoice && lateFeeOf(activeInvoice) > 0 && activeInvoice.status !== 'paid' && (
+                                    <div className="text-xs text-red-600 mt-1 font-medium">
+                                        เกินกำหนด {daysLate(activeInvoice)} วัน · ค่าปรับ {baht(lateFeeOf(activeInvoice))}
+                                    </div>
+                                )}
                                 {activeInvoice && isPartiallyPaid(activeInvoice) && (
                                     <div className="text-xs text-amber-700 mt-1 font-medium">
                                         ชำระแล้ว {baht(paidOf(activeInvoice))} · เหลือ {baht(balanceOf(activeInvoice))}
@@ -686,6 +691,11 @@ function UserDashboardPage() {
                         <div className="text-3xl sm:text-5xl font-extrabold text-gray-900 mt-2 tracking-tight tabular-nums">
                             {activeInvoice ? baht(balanceOf(activeInvoice)) : '฿0'}
                         </div>
+                        {activeInvoice && lateFeeOf(activeInvoice) > 0 && activeInvoice.status !== 'paid' && (
+                            <span className="text-xs md:text-sm text-red-600 font-medium mt-1">
+                                รวมค่าปรับล่าช้า {baht(lateFeeOf(activeInvoice))} (เกินกำหนด {daysLate(activeInvoice)} วัน)
+                            </span>
+                        )}
                         {activeInvoice && isPartiallyPaid(activeInvoice) && (
                             <span className="text-xs md:text-sm text-amber-700 font-medium mt-1">
                                 ยอดบิล {baht(activeInvoice.total)} · ชำระแล้ว {baht(paidOf(activeInvoice))}

@@ -1,5 +1,5 @@
 import { formatPromptPayId } from '../lib/promptpay'
-import { balanceOf, baht, dueDateOf, formatMonth, formatShortDate, invoiceCode, isPartiallyPaid, paidOf, thaiBahtText } from '../lib/billing'
+import { balanceOf, baht, daysLate, dueDateOf, formatMonth, formatShortDate, invoiceCode, isPartiallyPaid, lateFeeOf, paidOf, thaiBahtText } from '../lib/billing'
 
 // เอกสารใบแจ้งหนี้ขนาด A4 (กว้าง 794px) ใช้สร้างไฟล์ PDF
 // ใช้ inline style และสีแบบ hex ทั้งหมด เพื่อให้แปลงเป็นรูปได้ตรงกับที่เห็นและไม่ขึ้นกับธีมของเว็บ
@@ -171,6 +171,11 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
                     <div style={{ width: 270, background: C.dark, color: '#FFFFFF', borderRadius: 12, padding: '12px 18px', textAlign: 'right' }}>
                         <div style={{ fontSize: 12, opacity: 0.85 }}>ยอดรวมสุทธิ</div>
                         <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.2, ...num }}>{baht(invoice.total)}</div>
+                        {lateFeeOf(invoice) > 0 && (
+                            <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4, ...num }}>
+                                ค่าปรับชำระล่าช้า {baht(lateFeeOf(invoice))}{daysLate(invoice) > 0 ? ` (เกินกำหนด ${daysLate(invoice)} วัน)` : ''}
+                            </div>
+                        )}
                         {isPartiallyPaid(invoice) && (
                             <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4, ...num }}>
                                 ชำระแล้ว {baht(paidOf(invoice))} · คงเหลือ {baht(balanceOf(invoice))}

@@ -20,29 +20,37 @@ const columns = {
     rateElectric: 'rate_electric',
     commonFee: 'common_fee',
     slipVerifyMode: 'slip_verify_mode',
+    lateFeePerDay: 'late_fee_per_day',
+    lateFeeGraceDays: 'late_fee_grace_days',
+    lateFeeCap: 'late_fee_cap',
 }
 // ค่าที่เป็นตัวเลข (ต้องแปลงเป็น Number ทั้งตอนอ่านและบันทึก)
-const numeric = new Set(['dueDay', 'rateWater', 'rateElectric', 'commonFee'])
+const numeric = new Set(['dueDay', 'rateWater', 'rateElectric', 'commonFee', 'lateFeePerDay', 'lateFeeGraceDays'])
+
+// เพดานค่าปรับ: ว่าง ('' ในฟอร์ม / null ในฐานข้อมูล) = ไม่จำกัด
+const capToRow = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
 
 // แปลงแถวจากตาราง app_settings เป็นออบเจ็กต์ตั้งค่า (ช่องที่ว่างใช้ค่าเริ่มต้น)
-function fromRow(row) {
+export function settingsFromRow(row) {
     const result = { ...DEFAULT_SETTINGS }
     if (!row) return result
     for (const [key, column] of Object.entries(columns)) {
         const value = row[column]
         if (value === null || value === undefined) continue
         // ช่องข้อความที่ว่างไว้ ให้ใช้ค่าเริ่มต้นแทน ส่วนตัวเลขยอมรับ 0 ได้
-        if (numeric.has(key)) result[key] = Number(value)
+        if (numeric.has(key) || key === 'lateFeeCap') result[key] = Number(value)
         else if (String(value).trim() !== '') result[key] = value
     }
     return result
 }
 
 // แปลงออบเจ็กต์ตั้งค่ากลับเป็นแถวสำหรับบันทึก (ตัวเลขแปลงเป็น Number ข้อความตัดช่องว่าง)
-function toRow(values) {
+export function settingsToRow(values) {
     const row = {}
     for (const [key, column] of Object.entries(columns)) {
-        if (values[key] !== undefined) row[column] = numeric.has(key) ? Number(values[key]) : String(values[key]).trim()
+        if (values[key] === undefined) continue
+        if (key === 'lateFeeCap') row[column] = capToRow(values[key])
+        else row[column] = numeric.has(key) ? Number(values[key]) : String(values[key]).trim()
     }
     return row
 }
@@ -64,24 +72,33 @@ export function loadSettings(force = false) {
         .eq('id', 1)
         .maybeSingle()
         .then(({ data }) => {
-            cached = fromRow(data)
+            cached = settingsFromRow(data)
             return cached
         })
     return pending
 }
 
+// คอลัมน์ของ app_settings ที่มาจากไฟล์ SQL รุ่นหลัง: ค่าเริ่มต้น (ใช้ตัดสินว่าข้ามได้ไหม) และไฟล์ที่ต้องรัน
+const optionalColumns = {
+    slip_verify_mode: { isDefault: (v) => v === undefined || v === 'off', sql: 'supabase/slip-verify.sql' },
+    late_fee_per_day: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/payments.sql' },
+    late_fee_grace_days: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/payments.sql' },
+    late_fee_cap: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/payments.sql' },
+}
+
 // บันทึกการตั้งค่า (เฉพาะแอดมิน) คืนค่า null เมื่อสำเร็จ หรือข้อความ error
 export async function saveSettings(values) {
-    const row = { id: 1, ...toRow(values), updated_at: new Date().toISOString() }
+    const row = { id: 1, ...settingsToRow(values), updated_at: new Date().toISOString() }
     let { error } = await supabase.from('app_settings').upsert(row)
-    // ยังไม่ได้รัน supabase/slip-verify.sql (ไม่มีคอลัมน์ slip_verify_mode): ยังบันทึกค่าอื่นได้ ถ้าไม่ได้เปิดโหมดตรวจสลิป
-    if (error && /slip_verify_mode/.test(error.message)) {
-        if (values.slipVerifyMode && values.slipVerifyMode !== 'off') {
-            return 'เปิดโหมดตรวจสลิปไม่ได้ เพราะฐานข้อมูลยังไม่มีคอลัมน์นี้ กรุณารัน supabase/slip-verify.sql ใน SQL Editor ก่อน'
-        }
-        const rest = { ...row }
-        delete rest.slip_verify_mode
-        ;({ error } = await supabase.from('app_settings').upsert(rest))
+    // คอลัมน์ที่เพิ่มทีหลัง (ต้องรัน SQL ก่อน) ถ้ายังไม่มีในฐานข้อมูลและค่าที่บันทึกเป็นค่าเริ่มต้น ให้ข้ามคอลัมน์นั้นแล้วบันทึกที่เหลือต่อ
+    // ถ้าผู้ใช้ตั้งค่าที่ไม่ใช่ค่าเริ่มต้น (เช่น เปิดโหมดตรวจสลิป ตั้งค่าปรับ) ให้แจ้งว่าต้องรัน SQL ก่อน ไม่บันทึกแบบเงียบ ๆ
+    for (let attempt = 0; error && attempt < 5; attempt++) {
+        const column = Object.keys(optionalColumns).find((c) => error.message.includes(c))
+        if (!column) break
+        const { isDefault, sql } = optionalColumns[column]
+        if (!isDefault(row[column])) return `บันทึกไม่ได้ เพราะฐานข้อมูลยังไม่มีคอลัมน์ ${column} กรุณารัน ${sql} ใน SQL Editor ก่อน`
+        delete row[column]
+        ;({ error } = await supabase.from('app_settings').upsert(row))
     }
     if (error) return `บันทึกไม่สำเร็จ: ${error.message}`
     // บันทึกสำเร็จ: อัปเดตแคชและแจ้งทุกหน้าที่ใช้ useSettings ให้แสดงค่าใหม่ทันที
