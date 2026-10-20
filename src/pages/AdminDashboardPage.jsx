@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import MonthPicker from '../components/MonthPicker'
 import { invoiceStatuses } from '../data/billing'
-import { currentMonth, formatMonth } from '../lib/billing'
+import { balanceOf, currentMonth, formatMonth, paidOf } from '../lib/billing'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
@@ -106,11 +106,12 @@ function AdminDashboardPage() {
         return invoices.filter((i) => i.month === selectedMonth)
     }, [invoices, selectedMonth])
 
-    // รายได้เดือนนี้ (เฉพาะใบแจ้งหนี้ที่ชำระแล้ว)
+    // รายได้เดือนนี้ = เงินที่ได้รับจริง: ใบที่ชำระแล้วนับเต็มยอดบิล (ยอดที่โอนเกินไม่นับเป็นรายได้) ใบที่ชำระบางส่วนนับเฉพาะที่ได้รับแล้ว
     const monthlyIncome = useMemo(() => {
-        return invoicesForMonth
-            .filter((i) => i.status === 'paid')
-            .reduce((sum, i) => sum + Number(i.total || 0), 0)
+        return invoicesForMonth.reduce(
+            (sum, i) => sum + (i.status === 'paid' ? Number(i.total || 0) : Math.min(paidOf(i), Number(i.total || 0))),
+            0,
+        )
     }, [invoicesForMonth])
 
     // ใบแจ้งหนี้ที่ค้างชำระจริง (pending หรือ review)
@@ -123,7 +124,8 @@ function AdminDashboardPage() {
                     id: inv.id,
                     room: inv.room,
                     tenant: inv.tenant_name || tenant?.name || '-',
-                    amount: Number(inv.total || 0),
+                    // ยอดค้างจริง: ถ้าชำระบางส่วนมาแล้วนับเฉพาะยอดคงเหลือ
+                    amount: balanceOf(inv),
                     month: formatMonth(inv.month),
                     status: inv.status,
                     statusLabel: invoiceStatuses[inv.status]?.label || inv.status,

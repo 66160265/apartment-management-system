@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import Icon from './Icon'
 import { invoiceStatuses } from '../data/billing'
-import { baht, calcInvoice, getSlipUrl } from '../lib/billing'
+import { balanceOf, baht, calcInvoice, formatDateTime, getSlipUrl, paidOf } from '../lib/billing'
 import { formatPromptPayId, generatePromptPayQR } from '../lib/promptpay'
+import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
 // ป้ายสถานะใบแจ้งหนี้ (รอชำระ / รอตรวจสอบ / ชำระแล้ว)
@@ -97,6 +98,60 @@ export function InvoiceBreakdown({ invoice }) {
                 <span className="text-sm font-medium">ยอดรวมสุทธิ</span>
                 <span className="text-xl font-semibold tabular-nums">{baht(invoice.total)}</span>
             </div>
+            {/* ได้รับเงินแล้ว: ผู้เช่าโอนไม่ครบ แล้วโอนเพิ่มได้ จึงแสดงยอดที่ได้รับและยอดคงเหลือ (หรือยอดที่ต้องโอนคืนถ้าโอนเกิน) */}
+            {paidOf(invoice) > 0 && (
+                <dl className="px-4 py-3 text-sm flex flex-col gap-1.5 border-t border-line">
+                    <div className="flex justify-between"><dt className="text-muted">ได้รับชำระแล้ว</dt><dd className="tabular-nums font-medium text-emerald-700">{baht(paidOf(invoice))}</dd></div>
+                    {invoice.status !== 'paid' && (
+                        <div className="flex justify-between"><dt className="text-muted">คงเหลือที่ต้องชำระ</dt><dd className="tabular-nums font-semibold text-amber-700">{baht(balanceOf(invoice))}</dd></div>
+                    )}
+                    {Number(invoice.refund_amount) > 0 && (
+                        <div className="flex justify-between"><dt className="text-muted">ชำระเกิน {invoice.refund_status === 'done' ? '(โอนคืนแล้ว)' : '(รอโอนคืน)'}</dt><dd className="tabular-nums font-medium text-sky-700">{baht(invoice.refund_amount)}</dd></div>
+                    )}
+                </dl>
+            )}
+        </div>
+    )
+}
+
+// ประวัติการรับเงินของใบแจ้งหนี้ (สลิปที่แอดมินยืนยันแล้วทุกใบ) ไม่แสดงอะไรถ้ายังไม่มี
+// refreshKey เปลี่ยนเมื่อต้องโหลดใหม่ (เช่น หลังยืนยันสลิป)
+export function PaymentHistory({ invoiceId, refreshKey }) {
+    const [rows, setRows] = useState([])
+
+    useEffect(() => {
+        let active = true
+        supabase
+            .from('invoice_payments')
+            .select('id, amount, slip_path, confirmed_at')
+            .eq('invoice_id', invoiceId)
+            .order('confirmed_at')
+            .then(({ data }) => active && setRows(data ?? []))
+        return () => {
+            active = false
+        }
+    }, [invoiceId, refreshKey])
+
+    if (rows.length === 0) return null
+    return (
+        <div className="flex flex-col gap-2">
+            <h3 className="font-medium text-primary-dark">ประวัติการรับชำระ</h3>
+            <ul className="flex flex-col gap-2">
+                {rows.map((p) => (
+                    <li key={p.id} className="rounded-xl border border-line bg-sand/40 px-4 py-2.5">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="text-muted">{formatDateTime(p.confirmed_at)}</span>
+                            <span className="font-semibold text-emerald-700 tabular-nums">{baht(p.amount)}</span>
+                        </div>
+                        {p.slip_path && (
+                            <details className="mt-1.5">
+                                <summary className="text-xs text-primary cursor-pointer">ดูสลิป</summary>
+                                <div className="flex justify-center pt-2"><SlipImage path={p.slip_path} /></div>
+                            </details>
+                        )}
+                    </li>
+                ))}
+            </ul>
         </div>
     )
 }
@@ -131,17 +186,19 @@ export function CopyButton({ text, label = 'คัดลอก' }) {
 export function PromptPayCard({ invoice }) {
     const settings = useSettings()
     const [qr, setQr] = useState({ url: null, error: '' })
+    // ยอดใน QR คือยอดคงเหลือ (ชำระบางส่วนมาแล้วจะเหลือเฉพาะส่วนที่ยังขาด)
+    const due = balanceOf(invoice)
 
     // สร้างรูป QR พร้อมเพย์ใหม่เมื่อรหัสพร้อมเพย์หรือยอดเปลี่ยน
     useEffect(() => {
         let active = true
-        generatePromptPayQR(settings.promptpayId, invoice.total, { width: 360 })
+        generatePromptPayQR(settings.promptpayId, due, { width: 360 })
             .then((url) => active && setQr({ url, error: '' }))
             .catch((e) => active && setQr({ url: null, error: e.message }))
         return () => {
             active = false
         }
-    }, [settings.promptpayId, invoice.total])
+    }, [settings.promptpayId, due])
 
     return (
         <div className="bg-white rounded-2xl shadow-card p-4 flex flex-col items-center gap-3 text-center">
@@ -160,7 +217,7 @@ export function PromptPayCard({ invoice }) {
             )}
             {/* ยอดที่ต้องจ่ายและเลขพร้อมเพย์ + ปุ่มคัดลอกเลข */}
             <div className="text-sm text-muted">
-                ยอด <span className="font-semibold text-ink">{baht(invoice.total)}</span>
+                ยอด <span className="font-semibold text-ink">{baht(due)}</span>
                 {settings.promptpayId && <> · พร้อมเพย์{' '}<span className="tabular-nums">{formatPromptPayId(settings.promptpayId)}</span></>}
             </div>
             {settings.promptpayId && <CopyButton text={String(settings.promptpayId).replace(/\D/g, '')} label="คัดลอกเลขพร้อมเพย์" />}

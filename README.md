@@ -52,7 +52,7 @@ npm run dev
 ## ตั้งค่า Supabase
 
 1. รันไฟล์ SQL ใน **SQL Editor** ตามลำดับนี้ (รันซ้ำได้):
-   `supabase/schema.sql` → `supabase/invoices.sql` → `supabase/repairs.sql` → `supabase/tenant-documents.sql` → `supabase/notifications.sql` → `supabase/settings.sql` → `supabase/chat.sql`
+   `supabase/schema.sql` → `supabase/invoices.sql` → `supabase/repairs.sql` → `supabase/tenant-documents.sql` → `supabase/notifications.sql` → `supabase/settings.sql` → `supabase/payments.sql` → `supabase/chat.sql` แล้วรัน `supabase/notifications.sql` อีกครั้ง (trigger แจ้งเตือนใบแจ้งหนี้อ่านคอลัมน์ที่ `payments.sql` เพิ่ม) → `supabase/chat.sql`
    - ถ้าเคยรันไว้แล้ว หลังอัปเดตระบบนัดวันซ่อม ให้รัน `supabase/repairs.sql` แล้วตามด้วย `supabase/notifications.sql` อีกครั้ง (ข้อมูลเดิมไม่หาย)
    - (ไม่บังคับ) เปิด extension **pg_cron** ที่ Database → Extensions ก่อนรัน `notifications.sql` เพื่อให้ระบบส่งแจ้งเตือนนัดซ่อมของวันนั้นทุกเช้า 07:00
 2. สร้างบัญชีแอดมินคนแรกที่ **Authentication → Users** แล้วเพิ่มแถวใน `profiles` (`id` = id ของผู้ใช้, `role` = `admin`)

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 // billing.js นำเข้า supabaseClient ซึ่งต้องมีค่าใน .env จึงจำลองขึ้นมาแทน (เทสต์ไม่ต้องต่อเน็ต)
 vi.mock('./supabaseClient', () => ({ supabase: {} }))
 
-const { calcInvoice, dueDateOf, invoiceCode, thaiBahtText, baht } = await import('./billing')
+const { calcInvoice, dueDateOf, invoiceCode, thaiBahtText, baht, paidOf, balanceOf, isPartiallyPaid } = await import('./billing')
 
 const base = { rent: 3500, waterPrev: 100, waterCurr: 110, elecPrev: 500, elecCurr: 560, waterRate: 18, elecRate: 7, commonFee: 100 }
 
@@ -56,6 +56,39 @@ describe('invoiceCode', () => {
 describe('baht', () => {
     it('ใส่ ฿ และคั่นหลักพัน', () => {
         expect(baht(4531)).toBe('฿4,531')
+    })
+})
+
+describe('ยอดชำระบางส่วน', () => {
+    it('ใบที่ยังไม่มีการชำระ คงเหลือเท่ายอดบิล', () => {
+        const inv = { total: 4531, status: 'pending' }
+        expect(paidOf(inv)).toBe(0)
+        expect(balanceOf(inv)).toBe(4531)
+        expect(isPartiallyPaid(inv)).toBe(false)
+    })
+
+    it('ชำระบางส่วน คงเหลือคือส่วนต่าง', () => {
+        const inv = { total: 4531, paid_amount: '3000.00', status: 'pending' }
+        expect(balanceOf(inv)).toBe(1531)
+        expect(isPartiallyPaid(inv)).toBe(true)
+    })
+
+    it('ชำระบางส่วนแล้วส่งสลิปเพิ่ม (รอตรวจ) ยังนับเป็นชำระบางส่วน', () => {
+        expect(isPartiallyPaid({ total: 4531, paid_amount: 3000, status: 'review' })).toBe(true)
+    })
+
+    it('ชำระครบแล้วไม่นับเป็นชำระบางส่วน และคงเหลือเป็น 0', () => {
+        const inv = { total: 4531, paid_amount: 4531, status: 'paid' }
+        expect(isPartiallyPaid(inv)).toBe(false)
+        expect(balanceOf(inv)).toBe(0)
+    })
+
+    it('จ่ายเกิน คงเหลือไม่ติดลบ', () => {
+        expect(balanceOf({ total: 4000, paid_amount: 4500, status: 'paid' })).toBe(0)
+    })
+
+    it('ไม่คลาดเคลื่อนจากทศนิยม', () => {
+        expect(balanceOf({ total: 0.3, paid_amount: 0.1 + 0.1 })).toBe(0.1)
     })
 })
 

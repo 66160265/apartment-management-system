@@ -19,6 +19,18 @@ export const formatDateTime = (iso) =>
 // แสดงจำนวนเงินพร้อมสัญลักษณ์บาท เช่น ฿4,500
 export const baht = (n) => `฿${Number(n).toLocaleString('th-TH')}`
 
+// ปัดเป็นสตางค์ กันเลขทศนิยมคลาดเคลื่อน (เช่น 0.1 + 0.2)
+const round2 = (n) => Math.round(Number(n) * 100) / 100
+
+// ยอดที่ได้รับแล้วของใบแจ้งหนี้ (ผู้เช่าโอนหลายครั้งได้ ดู supabase/payments.sql) ใบเก่าที่ไม่มีช่องนี้ถือว่า 0
+export const paidOf = (invoice) => round2(invoice.paid_amount ?? 0)
+
+// ยอดคงเหลือที่ต้องชำระ (ไม่ติดลบ) ใช้เป็นยอดใน QR พร้อมเพย์และข้อความ "ยอดที่ต้องชำระ"
+export const balanceOf = (invoice) => Math.max(0, round2(Number(invoice.total) - paidOf(invoice)))
+
+// ชำระบางส่วน: ได้รับเงินบางส่วนแล้วแต่ยังไม่ครบ (สถานะยังเป็นรอชำระ/รอตรวจสอบ)
+export const isPartiallyPaid = (invoice) => invoice.status !== 'paid' && paidOf(invoice) > 0
+
 // คำนวณยอดใบแจ้งหนี้จากค่าเช่า มิเตอร์ และอัตราค่าบริการ
 export function calcInvoice({ rent, waterPrev, waterCurr, elecPrev, elecCurr, waterRate, elecRate, commonFee }) {
     const waterUnits = Math.max(0, waterCurr - waterPrev)

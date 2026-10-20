@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
 import { invoiceStatuses } from '../data/billing'
-import { baht, formatDateTime, formatMonth } from '../lib/billing'
+import { balanceOf, baht, formatDateTime, formatMonth, isPartiallyPaid, paidOf } from '../lib/billing'
 import { generatePromptPayQR } from '../lib/promptpay'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
@@ -164,7 +164,7 @@ function UserDashboardPage() {
     // สร้าง PromptPay QR เมื่อเลือกใบแจ้งหนี้หรือเข้าสู่หน้าชำระเงิน
     useEffect(() => {
         if (activeInvoice && currentView === 'payment') {
-            generatePromptPayQR(BANK.promptpay, activeInvoice.total, { width: 480 })
+            generatePromptPayQR(BANK.promptpay, balanceOf(activeInvoice), { width: 480 })
                 .then((url) => {
                     setQrCodeUrl(url)
                     setQrError('')
@@ -421,6 +421,11 @@ function UserDashboardPage() {
                                 <div className="text-xs text-muted mt-1.5 font-medium">
                                     {activeInvoice ? `เดือน ${formatMonth(activeInvoice.month)}` : 'ไม่มีใบแจ้งหนี้'}
                                 </div>
+                                {activeInvoice && isPartiallyPaid(activeInvoice) && (
+                                    <div className="text-xs text-amber-700 mt-1 font-medium">
+                                        ชำระแล้ว {baht(paidOf(activeInvoice))} · เหลือ {baht(balanceOf(activeInvoice))}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -589,8 +594,10 @@ function UserDashboardPage() {
                                 {activeInvoice?.status === 'pending' ? (
                                     <>
                                         <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs p-3.5 rounded-xl leading-relaxed">
-                                            <span className="font-semibold mb-0.5 flex items-center gap-1.5"><Icon name="alert" className="w-4 h-4" />มียอดรอชำระเงิน</span>
-                                            กรุณาชำระเงินและแนบหลักฐานการโอนภายในวันที่ {formatDueDate(activeInvoice.month)}
+                                            <span className="font-semibold mb-0.5 flex items-center gap-1.5"><Icon name="alert" className="w-4 h-4" />{isPartiallyPaid(activeInvoice) ? 'ยังมียอดคงเหลือ' : 'มียอดรอชำระเงิน'}</span>
+                                            {isPartiallyPaid(activeInvoice)
+                                                ? `ได้รับชำระแล้ว ${baht(paidOf(activeInvoice))} กรุณาโอนส่วนที่เหลือ ${baht(balanceOf(activeInvoice))} และแนบหลักฐานการโอน`
+                                                : `กรุณาชำระเงินและแนบหลักฐานการโอนภายในวันที่ ${formatDueDate(activeInvoice.month)}`}
                                         </div>
 
                                         {/* ปุ่มชำระเงิน / อัปโหลดสลิป ตามรูปแรก เมื่อกดจะเปิดหน้าในรูปที่สอง */}
@@ -670,8 +677,13 @@ function UserDashboardPage() {
                             ยอดที่ต้องชำระ · ประจำเดือน {activeInvoice ? formatMonth(activeInvoice.month) : '-'} (ห้อง {tenantInfo?.room})
                         </span>
                         <div className="text-3xl sm:text-5xl font-extrabold text-gray-900 mt-2 tracking-tight tabular-nums">
-                            {activeInvoice ? baht(activeInvoice.total) : '฿0'}
+                            {activeInvoice ? baht(balanceOf(activeInvoice)) : '฿0'}
                         </div>
+                        {activeInvoice && isPartiallyPaid(activeInvoice) && (
+                            <span className="text-xs md:text-sm text-amber-700 font-medium mt-1">
+                                ยอดบิล {baht(activeInvoice.total)} · ชำระแล้ว {baht(paidOf(activeInvoice))}
+                            </span>
+                        )}
                         <span className="text-xs md:text-sm text-red-600 font-semibold mt-2">
                             ภายในวันที่ {activeInvoice ? formatDueDate(activeInvoice.month) : '-'}
                         </span>
@@ -924,6 +936,9 @@ function UserDashboardPage() {
                                                 <div className="text-base font-bold text-gray-900 tabular-nums">
                                                     {baht(inv.total)}
                                                 </div>
+                                                {isPartiallyPaid(inv) && (
+                                                    <div className="text-[11px] text-amber-700">ชำระแล้ว {baht(paidOf(inv))} · เหลือ {baht(balanceOf(inv))}</div>
+                                                )}
                                                 <span
                                                     className={`inline-block text-[11px] px-2.5 py-0.5 rounded-full font-medium mt-0.5 ${
                                                         inv.status === 'paid'

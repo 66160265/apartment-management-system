@@ -397,11 +397,23 @@ begin
           || public.thai_month(new.month) || ' ยอด ' || public.fmt_baht(new.total) || ' รอตรวจสอบ',
         '/invoices', 'ไปที่ใบแจ้งหนี้');
     elsif new.status = 'paid' then
+      -- ชำระครบ (ถ้าโอนเกิน refund_amount > 0 บอกผู้เช่าว่าหอพักจะโอนยอดเกินคืน ดู supabase/payments.sql)
       perform public.notify(
         new.user_id, 'invoice', 'ชำระเงินเรียบร้อย',
         'ใบแจ้งหนี้เดือน ' || public.thai_month(new.month) || ' · ' || public.fmt_baht(new.total),
-        'ผู้ดูแลตรวจสอบสลิปและยืนยันการชำระเงินใบแจ้งหนี้เดือน ' || public.thai_month(new.month) || ' แล้ว',
+        'ผู้ดูแลตรวจสอบสลิปและยืนยันการชำระเงินใบแจ้งหนี้เดือน ' || public.thai_month(new.month) || ' แล้ว'
+          || case when new.refund_amount > 0
+               then E'\nยอดที่โอนเกินมา ' || public.fmt_baht(new.refund_amount) || ' หอพักจะโอนคืนให้'
+               else '' end,
         '/invoices', 'ดูใบแจ้งหนี้');
+    elsif new.status = 'pending' and old.status = 'review' and new.paid_amount > old.paid_amount then
+      -- ผู้ดูแลยืนยันสลิปแต่ยอดยังไม่ครบ: เก็บยอดที่ได้รับไว้ ผู้เช่าโอนส่วนที่เหลือเพิ่ม (ไม่ใช่การปฏิเสธสลิป)
+      perform public.notify(
+        new.user_id, 'invoice', 'ได้รับยอดชำระบางส่วน',
+        'ใบแจ้งหนี้เดือน ' || public.thai_month(new.month) || ' · คงเหลือ ' || public.fmt_baht(new.total - new.paid_amount),
+        'ได้รับยอดชำระ ' || public.fmt_baht(new.paid_amount - old.paid_amount) || ' แล้ว ยังเหลือยอดที่ต้องชำระอีก '
+          || public.fmt_baht(new.total - new.paid_amount) || E'\nกรุณาโอนส่วนที่เหลือและแนบสลิปเพิ่ม',
+        '/invoices', 'ชำระส่วนที่เหลือ');
     elsif new.status = 'pending' and old.status = 'review' then
       perform public.notify(
         new.user_id, 'invoice', 'สลิปไม่ผ่านการตรวจสอบ',

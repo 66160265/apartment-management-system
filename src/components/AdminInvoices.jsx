@@ -3,9 +3,9 @@ import DownloadInvoiceButton from './DownloadInvoiceButton'
 import Icon from './Icon'
 import PageHeader from './PageHeader'
 import MonthPicker from './MonthPicker'
-import { CopyButton, InvoiceBreakdown, InvoiceStepper, SlipImage, StatusBadge } from './InvoiceParts'
+import { CopyButton, InvoiceBreakdown, InvoiceStepper, PaymentHistory, SlipImage, StatusBadge } from './InvoiceParts'
 import { invoiceStatuses } from '../data/billing'
-import { baht, calcInvoice, currentMonth, formatDateTime, formatMonth } from '../lib/billing'
+import { balanceOf, baht, calcInvoice, currentMonth, formatDateTime, formatMonth, paidOf } from '../lib/billing'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
@@ -42,21 +42,30 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
     const [reason, setReason] = useState('')
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
+    // ยอดที่ได้รับจริงตามสลิป (ค่าเริ่มต้นคือยอดคงเหลือ แก้ได้เมื่อผู้เช่าโอนไม่ครบหรือเกิน)
+    const [amount, setAmount] = useState(String(balanceOf(invoice)))
+    const [refundNote, setRefundNote] = useState('')
 
-    // ตรวจสลิป: approve = true เปลี่ยนเป็น "ชำระแล้ว", false ปฏิเสธพร้อมเหตุผลและกลับไป "รอชำระ" (อัปเดตได้เฉพาะใบที่ยังรอตรวจสอบ)
+    // ตรวจสลิป: approve = true ยืนยันสลิปพร้อมยอดที่ได้รับ (ครบ = ชำระแล้ว, ไม่ครบ = กลับเป็นรอชำระพร้อมยอดคงเหลือ, เกิน = ชำระแล้วและเก็บยอดรอโอนคืน)
+    // false ปฏิเสธพร้อมเหตุผลและกลับไป "รอชำระ" (อัปเดตได้เฉพาะใบที่ยังรอตรวจสอบ)
     const review = async (approve) => {
         if (!approve && !reason.trim()) {
             setError('กรุณาระบุเหตุผลที่ปฏิเสธ')
             return
         }
+        const received = Number(amount)
+        if (approve && (amount.trim() === '' || !(received > 0))) {
+            setError('กรุณากรอกยอดที่ได้รับตามสลิป (มากกว่า 0)')
+            return
+        }
         setBusy(true)
-        const { error: err } = await supabase
-            .from('invoices')
-            .update(approve
-                ? { status: 'paid', reviewed_at: new Date().toISOString(), reject_reason: null }
-                : { status: 'pending', slip_path: null, slip_uploaded_at: null, reject_reason: reason.trim() })
-            .eq('id', invoice.id)
-            .eq('status', 'review')
+        const { error: err } = approve
+            ? await supabase.rpc('approve_slip', { p_invoice: invoice.id, p_amount: received })
+            : await supabase
+                .from('invoices')
+                .update({ status: 'pending', slip_path: null, slip_uploaded_at: null, reject_reason: reason.trim() })
+                .eq('id', invoice.id)
+                .eq('status', 'review')
         setBusy(false)
         if (err) {
             setError(`บันทึกไม่สำเร็จ: ${err.message}`)
@@ -64,6 +73,15 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
         }
         await onChanged()
         onBack()
+    }
+
+    // บันทึกว่าโอนยอดที่ผู้เช่าชำระเกินคืนแล้ว
+    const markRefunded = async () => {
+        setBusy(true)
+        const { error: err } = await supabase.rpc('mark_refunded', { p_invoice: invoice.id, p_note: refundNote })
+        setBusy(false)
+        if (err) return setError(`บันทึกไม่สำเร็จ: ${err.message}`)
+        await onChanged()
     }
 
     return (
@@ -85,7 +103,11 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <DownloadInvoiceButton invoice={invoice} label="ดาวน์โหลด PDF" className="border border-line text-primary-dark hover:bg-mist/50 px-4 py-1.5 rounded-xl text-sm" />
-                        <button onClick={() => onEdit(invoice)} className="border border-line text-primary-dark hover:bg-mist/50 px-4 py-1.5 rounded-xl text-sm">แก้ไข</button>
+                        <button
+                            onClick={() => onEdit(invoice)}
+                            title={paidOf(invoice) > 0 ? 'ได้รับชำระแล้ว แก้ไขยอดรวมไม่ได้' : undefined}
+                            className="border border-line text-primary-dark hover:bg-mist/50 px-4 py-1.5 rounded-xl text-sm"
+                        >แก้ไข</button>
                         <button onClick={() => onDelete(invoice)} className="border border-red-200 text-red-600 hover:bg-red-50 px-4 py-1.5 rounded-xl text-sm">ลบ</button>
                     </div>
                     <div className="w-full pt-4 border-t border-line">
@@ -116,14 +138,18 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                             )}
                         </div>
                         <div className="flex items-center justify-center rounded-xl bg-sand/70 border border-dashed border-line p-4 min-h-72">
-                            {invoice.slip_path ? (
+                            {invoice.status === 'review' && invoice.slip_path ? (
                                 <SlipImage path={invoice.slip_path} />
                             ) : (
                                 <div className="text-center text-sm text-muted">
                                     <span className="mx-auto mb-3 grid place-items-center w-12 h-12 rounded-full bg-white text-muted shadow-card">
                                         <Icon name={invoice.reject_reason ? 'ban' : 'image'} className="w-6 h-6" />
                                     </span>
-                                    {invoice.reject_reason ? `สลิปก่อนหน้าถูกปฏิเสธ: ${invoice.reject_reason}` : 'ผู้เช่ายังไม่ได้แนบสลิป'}
+                                    {invoice.reject_reason
+                                        ? `สลิปก่อนหน้าถูกปฏิเสธ: ${invoice.reject_reason}`
+                                        : paidOf(invoice) > 0
+                                            ? 'สลิปที่ยืนยันแล้วอยู่ในประวัติการรับชำระด้านล่าง'
+                                            : 'ผู้เช่ายังไม่ได้แนบสลิป'}
                                 </div>
                             )}
                         </div>
@@ -144,6 +170,25 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                                         />
                                     </label>
                                 )}
+                                {!rejecting && (
+                                    <label className="text-sm text-muted">
+                                        ยอดที่ได้รับตามสลิป (บาท)
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            inputMode="decimal"
+                                            className={inputClass}
+                                            value={amount}
+                                            onChange={(e) => { setAmount(e.target.value); setError('') }}
+                                        />
+                                        <span className="block text-xs mt-1">
+                                            {paidOf(invoice) > 0 ? `ได้รับมาแล้ว ${baht(paidOf(invoice))} · ` : ''}ยอดคงเหลือ {baht(balanceOf(invoice))}
+                                            {Number(amount) > 0 && Number(amount) < balanceOf(invoice) && ' · ยอดไม่ครบ ผู้เช่าจะโอนส่วนที่เหลือเพิ่ม'}
+                                            {Number(amount) > balanceOf(invoice) && ` · เกิน ${baht(Math.round((Number(amount) - balanceOf(invoice)) * 100) / 100)} บันทึกไว้รอโอนคืน`}
+                                        </span>
+                                    </label>
+                                )}
                                 {error && <p className="text-sm text-red-600">{error}</p>}
                                 <div className="flex gap-3">
                                     {rejecting ? (
@@ -155,12 +200,41 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                                         <>
                                             <button onClick={() => setRejecting(true)} disabled={busy} className="flex-1 border border-red-200 text-red-600 hover:bg-red-50 py-2.5 rounded-xl">ปฏิเสธ</button>
                                             <button onClick={() => review(true)} disabled={busy} className="flex-[2] bg-primary hover:bg-primary-dark disabled:opacity-60 text-white py-2.5 rounded-xl font-medium shadow-card">
-                                                {busy ? 'กำลังบันทึก...' : `อนุมัติ ${baht(invoice.total)}`}
+                                                {busy ? 'กำลังบันทึก...' : `ยืนยันรับ ${baht(Number(amount) > 0 ? Number(amount) : 0)}`}
                                             </button>
                                         </>
                                     )}
                                 </div>
                             </>
+                        )}
+
+                        <PaymentHistory invoiceId={invoice.id} refreshKey={invoice.paid_amount} />
+
+                        {/* โอนเกิน: แสดงยอดที่ต้องโอนคืน และปุ่มบันทึกเมื่อโอนคืนแล้ว */}
+                        {Number(invoice.refund_amount) > 0 && (
+                            <div className={`rounded-xl px-4 py-3 text-sm flex flex-col gap-2 ring-1 ${invoice.refund_status === 'pending' ? 'bg-sky-50 text-sky-900 ring-sky-200' : 'bg-emerald-50 text-emerald-900 ring-emerald-200'}`}>
+                                <div className="font-medium">
+                                    {invoice.refund_status === 'pending'
+                                        ? `ผู้เช่าโอนเกิน ${baht(invoice.refund_amount)} — รอโอนคืน`
+                                        : `โอนคืน ${baht(invoice.refund_amount)} แล้วเมื่อ ${formatDateTime(invoice.refunded_at)}`}
+                                </div>
+                                {invoice.refund_status === 'done' && invoice.refund_note && <div className="text-xs">หมายเหตุ: {invoice.refund_note}</div>}
+                                {invoice.refund_status === 'pending' && (
+                                    <>
+                                        <input
+                                            className={smallInputClass}
+                                            maxLength={500}
+                                            placeholder="หมายเหตุ เช่น โอนคืนเข้าบัญชีเดิมเมื่อวันที่ ... (ไม่บังคับ)"
+                                            value={refundNote}
+                                            onChange={(e) => setRefundNote(e.target.value)}
+                                        />
+                                        {error && <p className="text-red-600">{error}</p>}
+                                        <button onClick={markRefunded} disabled={busy} className="self-start bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-xl">
+                                            {busy ? 'กำลังบันทึก...' : 'บันทึกว่าโอนคืนแล้ว'}
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
@@ -447,7 +521,10 @@ function AdminInvoices() {
 
     // ลบใบแจ้งหนี้พร้อมรูปสลิป (ถ้าลบรูปไม่สำเร็จก็ยังลบใบแจ้งหนี้ได้ เหลือแค่ไฟล์ค้าง)
     const handleDelete = async (invoice) => {
-        if (invoice.slip_path) await supabase.storage.from('slips').remove([invoice.slip_path])
+        // สลิปทุกใบของบิลนี้ (ใบที่ยืนยันแล้วอยู่ในประวัติการรับชำระ ใบล่าสุดอาจอยู่ที่ slip_path ด้วย)
+        const { data: payments } = await supabase.from('invoice_payments').select('slip_path').eq('invoice_id', invoice.id)
+        const paths = new Set([invoice.slip_path, ...(payments ?? []).map((p) => p.slip_path)].filter(Boolean))
+        if (paths.size > 0) await supabase.storage.from('slips').remove([...paths])
         const { error } = await supabase.from('invoices').delete().eq('id', invoice.id)
         if (error) return `ลบไม่สำเร็จ: ${error.message}`
         if (editingId === invoice.id) cancelEdit()
@@ -487,6 +564,8 @@ function AdminInvoices() {
             return [c.value, { count: list.length, sum: list.reduce((acc, i) => acc + Number(i.total), 0) }]
         })
     )
+    // ใบที่ผู้เช่าโอนเกินและยังรอโอนคืน
+    const pendingRefunds = invoices.filter((i) => i.refund_status === 'pending')
     // รายการที่แสดง: กรองตามสถานะ เดือน และคำค้นหา (ห้อง/ชื่อ) เรียงเดือนใหม่สุดก่อน แล้วตามเลขห้อง
     const keyword = search.trim().toLowerCase()
     const months = [...new Set(invoices.map((i) => i.month))].sort().reverse()
@@ -516,6 +595,25 @@ function AdminInvoices() {
             <PageHeader title="ใบแจ้งหนี้ & ชำระเงิน" subtitle="บันทึกมิเตอร์ สร้างใบแจ้งหนี้ และตรวจสอบสลิปการโอนเงินของผู้เช่า" />
 
             <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
+                {/* ผู้เช่าโอนเกินและยังไม่ได้โอนคืน: แสดงรายการให้แอดมินกดเข้าไปบันทึกเมื่อโอนคืนแล้ว */}
+                {pendingRefunds.length > 0 && (
+                    <div className="rounded-2xl bg-sky-50 ring-1 ring-sky-200 text-sky-900 p-4 flex flex-col gap-2">
+                        <div className="font-medium">
+                            รอโอนคืนผู้เช่า {pendingRefunds.length} รายการ รวม {baht(pendingRefunds.reduce((sum, i) => sum + Number(i.refund_amount), 0))}
+                        </div>
+                        <ul className="flex flex-col gap-1.5">
+                            {pendingRefunds.map((i) => (
+                                <li key={i.id}>
+                                    <button type="button" onClick={() => setSelectedId(i.id)} className="w-full flex items-center justify-between gap-3 text-left text-sm bg-white/70 hover:bg-white rounded-xl px-3 py-2">
+                                        <span>ห้อง {i.room} · {i.tenant_name} · {formatMonth(i.month)}</span>
+                                        <span className="font-semibold tabular-nums">{baht(i.refund_amount)}</span>
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+
                 {/* การ์ดสรุปตามสถานะ (กดเพื่อกรอง) การ์ดรอตรวจสอบมีป้ายเตือนเมื่อมีสลิปรอ */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {summaryCards.map((c) => {
@@ -606,7 +704,9 @@ function AdminInvoices() {
                         {/* เตือนเมื่อแก้ใบที่ส่งสลิปหรือจ่ายแล้ว */}
                         {editing && editing.status !== 'pending' && (
                             <p className="text-sm text-amber-800 bg-amber-50 ring-1 ring-amber-200 rounded-xl px-4 py-2">
-                                ใบแจ้งหนี้นี้{editing.status === 'review' ? 'มีสลิปรอตรวจสอบ' : 'ชำระแล้ว'} หากเปลี่ยนยอดรวม ยอดอาจไม่ตรงกับสลิปที่ผู้เช่าโอนมา
+                                {paidOf(editing) > 0
+                                    ? `ใบแจ้งหนี้นี้ได้รับชำระแล้ว ${baht(paidOf(editing))} แก้ไขยอดรวมไม่ได้ (แก้ได้เฉพาะรายการที่ไม่ทำให้ยอดรวมเปลี่ยน)`
+                                    : `ใบแจ้งหนี้นี้${editing.status === 'review' ? 'มีสลิปรอตรวจสอบ' : 'ชำระแล้ว'} หากเปลี่ยนยอดรวม ยอดอาจไม่ตรงกับสลิปที่ผู้เช่าโอนมา`}
                             </p>
                         )}
                         {/* ข้อความ error และปุ่มยกเลิก/สร้าง/บันทึก */}

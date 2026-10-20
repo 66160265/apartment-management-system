@@ -1,5 +1,5 @@
 import { formatPromptPayId } from '../lib/promptpay'
-import { baht, dueDateOf, formatMonth, formatShortDate, invoiceCode, thaiBahtText } from '../lib/billing'
+import { balanceOf, baht, dueDateOf, formatMonth, formatShortDate, invoiceCode, isPartiallyPaid, paidOf, thaiBahtText } from '../lib/billing'
 
 // เอกสารใบแจ้งหนี้ขนาด A4 (กว้าง 794px) ใช้สร้างไฟล์ PDF
 // ใช้ inline style และสีแบบ hex ทั้งหมด เพื่อให้แปลงเป็นรูปได้ตรงกับที่เห็นและไม่ขึ้นกับธีมของเว็บ
@@ -171,6 +171,11 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
                     <div style={{ width: 270, background: C.dark, color: '#FFFFFF', borderRadius: 12, padding: '12px 18px', textAlign: 'right' }}>
                         <div style={{ fontSize: 12, opacity: 0.85 }}>ยอดรวมสุทธิ</div>
                         <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.2, ...num }}>{baht(invoice.total)}</div>
+                        {isPartiallyPaid(invoice) && (
+                            <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4, ...num }}>
+                                ชำระแล้ว {baht(paidOf(invoice))} · คงเหลือ {baht(balanceOf(invoice))}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -188,7 +193,7 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
                             <div style={{ textAlign: 'center', flexShrink: 0 }}>
                                 <img src={qr} alt="QR PromptPay" width={150} height={150} style={{ display: 'block', borderRadius: 8, border: `1px solid ${C.line}` }} />
                                 <div style={{ fontSize: 11, fontWeight: 600, color: C.dark, marginTop: 6 }}>สแกนจ่ายด้วยพร้อมเพย์</div>
-                                <div style={{ fontSize: 11, color: C.muted }}>ยอด {baht(invoice.total)}</div>
+                                <div style={{ fontSize: 11, color: C.muted }}>ยอด {baht(balanceOf(invoice))}</div>
                             </div>
                         )}
                         <div style={{ flex: 1 }}>
