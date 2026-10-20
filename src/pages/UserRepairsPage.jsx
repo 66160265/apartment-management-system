@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
+import { TenantRepairPayment } from '../components/RepairPayment'
 import { AppointmentBox, ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge, SlotList, SlotPicker, UrgencyBadge } from '../components/RepairParts'
 import { repairCategories, repairProgressKeys, repairStatuses, repairStatusKeys } from '../data/repairs'
 import { baht, formatDateTime } from '../lib/billing'
@@ -514,6 +515,9 @@ function UserRepairsPage() {
                                 {editing.cost_payer === 'tenant' ? <span className="text-red-600">(ผู้เช่าเป็นผู้ชำระ)</span> : <span className="text-muted">(หอพักรับผิดชอบ)</span>}
                             </p>
                         )}
+
+                        {/* ชำระค่าซ่อม (ซ่อมเสร็จและผู้ดูแลระบุให้ผู้เช่าเป็นผู้ชำระ) */}
+                        {!isNew && <TenantRepairPayment repair={editing} userId={userId} />}
 
                         {/* ผู้เช่ายืนยันผลการซ่อมแล้ว */}
                         {!isNew && editing.tenant_confirmed_at && (

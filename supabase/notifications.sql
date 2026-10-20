@@ -233,7 +233,8 @@ begin
       end if;
       if new.status in ('in_progress', 'done') and new.cost > 0 then
         v_text := v_text || E'\nค่าใช้จ่าย: ' || public.fmt_baht(new.cost)
-          || case when new.cost_payer = 'tenant' then ' (ผู้เช่าเป็นผู้ชำระ)' else ' (หอพักรับผิดชอบ)' end;
+          || case when new.cost_payer = 'tenant' then ' (ผู้เช่าเป็นผู้ชำระ)' else ' (หอพักรับผิดชอบ)' end
+          || case when new.cost_payer = 'tenant' and new.status = 'done' then E'\nชำระค่าซ่อมและแนบสลิปได้ที่หน้าแจ้งซ่อม' else '' end;
       end if;
       if new.admin_note <> '' then
         v_text := v_text || E'\n\nข้อความจากผู้ดูแล: ' || new.admin_note;

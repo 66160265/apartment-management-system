@@ -1,13 +1,15 @@
 // ===========================================================================
 // Edge Function: verify-slip  (ตรวจสลิปโอนเงินด้วย EasySlip API v2)
-// หน้าที่: อ่านสลิปที่ผู้เช่าแนบกับใบแจ้งหนี้ ส่งให้ EasySlip ตรวจ แล้วบันทึกผลลง invoices.verify_status / verify_detail
-//         โหมด "แนะนำ": แอดมินดูผลและกดยืนยันรับเงินเอง  โหมด "อัตโนมัติ": ผ่านครบทุกเงื่อนไขแล้วยืนยันรับเงินให้เอง (ดู auto_approve_slip ใน supabase/slip-verify.sql)
+// หน้าที่: อ่านสลิปที่ผู้เช่าแนบ ส่งให้ EasySlip ตรวจ แล้วบันทึกผลลง verify_status / verify_detail
+//         ใช้ได้ 2 แบบ: สลิปของใบแจ้งหนี้ (ส่ง invoice_id) และสลิปค่าซ่อม (ส่ง payment_id ของตาราง repair_payments)
+//         โหมด "แนะนำ": แอดมินดูผลและกดยืนยันรับเงินเอง  โหมด "อัตโนมัติ": ผ่านครบทุกเงื่อนไขแล้วยืนยันรับเงินให้เอง
+//         (ดู auto_approve_slip ใน supabase/slip-verify.sql และ auto_approve_repair_payment ใน supabase/repair-payments.sql)
 //         ไม่ปฏิเสธสลิปเองเด็ดขาด สลิปที่ไม่เข้าเงื่อนไขรอแอดมินตรวจ
 // ผู้เรียก: หน้าเว็บหลังผู้เช่าส่งสลิป (src/lib/slipVerify.js) หรือแอดมินกด "ตรวจสลิป" เอง
 // ต้องตั้งค่า:  npx supabase secrets set EASYSLIP_API_KEY=<คีย์>   (คีย์ห้ามอยู่ในโค้ดหน้าเว็บหรือในรีโป)
 //   ตรวจผู้รับ: ลงทะเบียนบัญชีรับเงินของหอพักในแดชบอร์ด EasySlip แล้วตั้ง EASYSLIP_MATCH_ACCOUNT=1 (โหมดอัตโนมัติขอตรวจผู้รับเสมอ และจำเป็นต้องมีผลยืนยัน)
 // ถ้าแก้ไฟล์นี้: ต้อง deploy ใหม่ด้วย  npx supabase functions deploy verify-slip
-// ต้องรัน supabase/slip-verify.sql ก่อน และตั้งโหมดตรวจเป็น "แนะนำ" ในหน้าตั้งค่า (โหมด "ปิด" ฟังก์ชันนี้ไม่ทำอะไรและไม่เสียโควตา)
+// ต้องรัน supabase/slip-verify.sql (และ repair-payments.sql สำหรับค่าซ่อม) ก่อน และตั้งโหมดตรวจในหน้าตั้งค่า (โหมด "ปิด" ฟังก์ชันนี้ไม่ทำอะไรและไม่เสียโควตา)
 // ===========================================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -29,6 +31,24 @@ const EASYSLIP_URL = 'https://api.easyslip.com/v2/verify/bank'
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// ชื่อฟังก์ชันและพารามิเตอร์ในฐานข้อมูลของแต่ละชนิด (ใบแจ้งหนี้ / ค่าซ่อม)
+const KINDS = {
+  invoice: {
+    param: 'p_invoice',
+    claim: 'claim_slip_verify',
+    apply: 'apply_slip_result',
+    error: 'mark_slip_error',
+    auto: 'auto_approve_slip',
+  },
+  repair: {
+    param: 'p_payment',
+    claim: 'claim_repair_slip_verify',
+    apply: 'apply_repair_slip_result',
+    error: 'mark_repair_slip_error',
+    auto: 'auto_approve_repair_payment',
+  },
+} as const
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
@@ -40,19 +60,27 @@ Deno.serve(async (req) => {
   const { data: caller } = await admin.auth.getUser(token)
   if (!caller.user) return json({ error: 'ไม่ได้เข้าสู่ระบบ' }, 401)
 
-  let invoiceId = ''
+  let body: { invoice_id?: unknown; payment_id?: unknown } = {}
   try {
-    invoiceId = String((await req.json()).invoice_id ?? '')
+    body = await req.json()
   } catch {
     // body ไม่ใช่ JSON ตกไปตรวจด้านล่าง
   }
-  if (!UUID.test(invoiceId)) return json({ error: 'ข้อมูลไม่ถูกต้อง' }, 400)
+  const kind = body.payment_id ? 'repair' : 'invoice'
+  const id = String((kind === 'repair' ? body.payment_id : body.invoice_id) ?? '')
+  if (!UUID.test(id)) return json({ error: 'ข้อมูลไม่ถูกต้อง' }, 400)
+  const fn = KINDS[kind]
+  const idArg = { [fn.param]: id }
 
-  // ตรวจสิทธิ์: แอดมิน หรือเจ้าของใบแจ้งหนี้เท่านั้น
+  // ตรวจสิทธิ์: แอดมิน หรือเจ้าของรายการเท่านั้น
   const { data: profile } = await admin.from('profiles').select('role').eq('id', caller.user.id).single()
-  const { data: invoice } = await admin.from('invoices').select('id, user_id').eq('id', invoiceId).maybeSingle()
-  if (!invoice) return json({ error: 'ไม่พบใบแจ้งหนี้' }, 404)
-  if (profile?.role !== 'admin' && invoice.user_id !== caller.user.id) return json({ error: 'ไม่มีสิทธิ์' }, 403)
+  const { data: owner } = await admin
+    .from(kind === 'repair' ? 'repair_payments' : 'invoices')
+    .select('id, user_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!owner) return json({ error: kind === 'repair' ? 'ไม่พบรายการชำระค่าซ่อม' : 'ไม่พบใบแจ้งหนี้' }, 404)
+  if (profile?.role !== 'admin' && owner.user_id !== caller.user.id) return json({ error: 'ไม่มีสิทธิ์' }, 403)
 
   // โหมด "ปิด" ไม่ต้องทำอะไร ไม่แตะโควตา
   const { data: settings } = await admin.from('app_settings').select('slip_verify_mode').eq('id', 1).maybeSingle()
@@ -63,7 +91,7 @@ Deno.serve(async (req) => {
   if (!apiKey) return json({ status: 'error', message: 'ยังไม่ได้ตั้งค่า EASYSLIP_API_KEY' }, 500)
 
   // จองสิทธิ์ตรวจ 1 ครั้ง (กดซ้ำ/เรียกพร้อมกัน/ครบ 3 ครั้ง/ไม่ได้รอตรวจ = ไม่ตรวจและไม่เสียโควตา)
-  const { data: claimed, error: claimError } = await admin.rpc('claim_slip_verify', { p_invoice: invoiceId })
+  const { data: claimed, error: claimError } = await admin.rpc(fn.claim, idArg)
   if (claimError) return json({ error: `จองสิทธิ์ตรวจไม่สำเร็จ: ${claimError.message}` }, 500)
   const claim = Array.isArray(claimed) ? claimed[0] : claimed
   if (!claim) return json({ status: 'skipped' })
@@ -75,7 +103,7 @@ Deno.serve(async (req) => {
 
     if (file.size > MAX_IMAGE_BYTES) {
       const detail = { notes: ['รูปสลิปใหญ่เกิน 4MB ตรวจอัตโนมัติไม่ได้ กรุณาตรวจด้วยตา'] }
-      await admin.rpc('apply_slip_result', { p_invoice: invoiceId, p_status: 'skipped', p_detail: detail })
+      await admin.rpc(fn.apply, { ...idArg, p_status: 'skipped', p_detail: detail })
       return json({ status: 'skipped', detail })
     }
 
@@ -89,18 +117,19 @@ Deno.serve(async (req) => {
       body: form,
       signal: AbortSignal.timeout(25000),
     })
-    const body = await res.json().catch(() => null)
+    const result = await res.json().catch(() => null)
 
     // บันทึกเฉพาะ "โครงสร้าง" ของคำตอบ (ชื่อฟิลด์ ไม่ใช่ค่า) ไว้ดูใน Logs ตอนทดสอบ เพราะเอกสารของ EasySlip ระบุฟิลด์ไม่ครบ
-    const data = body?.data
-    console.log('easyslip', res.status, body?.success, body?.error?.code ?? '', Object.keys(data ?? {}).join(','), Object.keys(data?.rawSlip ?? {}).join(','))
+    const data = result?.data
+    console.log('easyslip', kind, res.status, result?.success, result?.error?.code ?? '', Object.keys(data ?? {}).join(','), Object.keys(data?.rawSlip ?? {}).join(','))
 
     let verdict
-    if (!res.ok || !body?.success) {
-      verdict = mapEasySlipError(body?.error?.code, body?.error?.message)
+    if (!res.ok || !result?.success) {
+      verdict = mapEasySlipError(result?.error?.code, result?.error?.message)
     } else {
+      // ใบแจ้งหนี้: ยอดคงเหลือ (ยอดบิล - ที่ได้รับแล้ว)  ค่าซ่อม: ยอดค่าซ่อมเต็ม (claim คืน paid_amount = 0)
       const balance = Math.max(0, Number(claim.total) - Number(claim.paid_amount ?? 0))
-      verdict = evaluateSlip(parseEasySlip(body), {
+      verdict = evaluateSlip(parseEasySlip(result), {
         balance,
         invoiceCreatedAt: claim.created_at,
         now: new Date(),
@@ -108,8 +137,8 @@ Deno.serve(async (req) => {
       })
     }
 
-    const { data: finalStatus, error: applyError } = await admin.rpc('apply_slip_result', {
-      p_invoice: invoiceId,
+    const { data: finalStatus, error: applyError } = await admin.rpc(fn.apply, {
+      ...idArg,
       p_status: verdict.status,
       p_detail: verdict.detail,
     })
@@ -119,14 +148,14 @@ Deno.serve(async (req) => {
     // ไม่เข้าเงื่อนไข = ไม่ทำอะไร สลิปยังรอแอดมินตรวจ ถ้าขั้นนี้พลาดก็ไม่ถือว่าตรวจสลิปล้มเหลว
     let approved = false
     if (mode === 'auto' && finalStatus === 'ok') {
-      const { data: autoResult, error: autoError } = await admin.rpc('auto_approve_slip', { p_invoice: invoiceId })
-      if (autoError) console.log('auto_approve_slip error', autoError.message)
+      const { data: autoResult, error: autoError } = await admin.rpc(fn.auto, idArg)
+      if (autoError) console.log(fn.auto, 'error', autoError.message)
       approved = autoResult === 'paid'
     }
     return json({ status: finalStatus, approved, detail: verdict.detail })
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
-    await admin.rpc('mark_slip_error', { p_invoice: invoiceId, p_message: `ตรวจสลิปไม่สำเร็จ: ${message}` })
+    await admin.rpc(fn.error, { ...idArg, p_message: `ตรวจสลิปไม่สำเร็จ: ${message}` })
     return json({ status: 'error', message }, 200)
   }
 })

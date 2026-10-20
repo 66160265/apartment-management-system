@@ -57,6 +57,20 @@ create policy "payments read" on public.invoice_payments for select to authentic
   using (public.is_admin() or user_id = auth.uid());
 revoke insert, update, delete on table public.invoice_payments from anon, authenticated;
 
+-- ตารางกลางเก็บเลขอ้างอิงสลิปที่ "ใช้ยืนยันรับเงินแล้ว" ทั้งค่าห้อง (ใบแจ้งหนี้) และค่าซ่อม (repair-payments.sql)
+-- สลิปหนึ่งใบใช้ได้ครั้งเดียวทั้งระบบ ผู้ใช้เว็บเข้าถึงตารางนี้ไม่ได้ (เปิด RLS และไม่มีนโยบาย) ใช้ผ่านฟังก์ชันเท่านั้น
+create table if not exists public.slip_refs (
+  trans_ref text primary key,
+  source text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.slip_refs enable row level security;
+revoke all on table public.slip_refs from anon, authenticated;
+
+insert into public.slip_refs (trans_ref, source)
+select trans_ref, 'invoice' from public.invoice_payments where trans_ref is not null
+on conflict do nothing;
+
 -- ย้ายข้อมูลเดิม: ใบที่ชำระแล้วถือว่าได้รับเต็มยอดบิล และเก็บสลิปเดิมเป็นประวัติ (ทำครั้งเดียว ไม่ซ้ำเมื่อรันอีก)
 insert into public.invoice_payments (invoice_id, user_id, amount, slip_path, slip_uploaded_at, confirmed_at)
 select i.id, i.user_id, i.total, i.slip_path, i.slip_uploaded_at, coalesce(i.reviewed_at, i.created_at)
@@ -111,6 +125,10 @@ begin
   begin
     insert into public.invoice_payments (invoice_id, user_id, amount, slip_path, slip_uploaded_at, confirmed_by, trans_ref, auto_approved)
     values (inv.id, inv.user_id, round(p_amount, 2), inv.slip_path, inv.slip_uploaded_at, p_by, ref, coalesce(p_auto, false));
+    -- สลิปนี้อาจเคยถูกใช้จ่ายค่าซ่อมไปแล้ว (ตารางกลางกันซ้ำข้ามประเภท)
+    if ref is not null then
+      insert into public.slip_refs (trans_ref, source) values (ref, 'invoice');
+    end if;
   exception when unique_violation then
     raise exception 'สลิปนี้ถูกใช้ยืนยันรับเงินกับใบแจ้งหนี้อื่นแล้ว';
   end;

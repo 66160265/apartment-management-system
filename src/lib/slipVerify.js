@@ -1,11 +1,13 @@
 import { supabase } from './supabaseClient'
 
-// เรียก Edge Function verify-slip ให้ตรวจสลิปของใบแจ้งหนี้ (supabase/functions/verify-slip)
+// เรียก Edge Function verify-slip ให้ตรวจสลิป (supabase/functions/verify-slip)
+// kind = 'invoice' (ค่าเริ่มต้น, id คือใบแจ้งหนี้) หรือ 'repair' (id คือแถวในตาราง repair_payments)
 // ผู้เช่าเรียกหลังส่งสลิปแบบไม่รอผล แอดมินเรียกจากปุ่ม "ตรวจสลิปด้วยระบบ" ผลถูกบันทึกลง invoices.verify_status / verify_detail
 // ไม่ throw: ตรวจไม่ได้ (ฟังก์ชันยังไม่ deploy โหมดปิด ฯลฯ) ต้องไม่ทำให้การส่งสลิปหรือหน้าแอดมินพัง แอดมินยังตรวจด้วยตาได้เสมอ
-export async function requestSlipVerify(invoiceId) {
+export async function requestSlipVerify(id, kind = 'invoice') {
     try {
-        const { data, error } = await supabase.functions.invoke('verify-slip', { body: { invoice_id: invoiceId } })
+        const body = kind === 'repair' ? { payment_id: id } : { invoice_id: id }
+        const { data, error } = await supabase.functions.invoke('verify-slip', { body })
         return { data, error: error?.message ?? null }
     } catch (e) {
         return { data: null, error: e?.message ?? 'ตรวจสลิปไม่สำเร็จ' }

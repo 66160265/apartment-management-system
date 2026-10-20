@@ -38,6 +38,12 @@ describe('requestSlipVerify', () => {
         await requestSlipVerify('abc')
         expect(supabase.functions.invoke).toHaveBeenLastCalledWith('verify-slip', { body: { invoice_id: 'abc' } })
     })
+
+    it('ค่าซ่อมส่ง payment_id', async () => {
+        supabase.functions.invoke.mockResolvedValueOnce({ data: { status: 'ok' }, error: null })
+        await requestSlipVerify('xyz', 'repair')
+        expect(supabase.functions.invoke).toHaveBeenLastCalledWith('verify-slip', { body: { payment_id: 'xyz' } })
+    })
 })
 
 describe('verifyStatuses', () => {

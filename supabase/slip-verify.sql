@@ -77,7 +77,7 @@ begin
   if not found then return 'ignored'; end if;
 
   if result in ('ok', 'warn') and ref is not null and (
-       exists (select 1 from public.invoice_payments where trans_ref = ref)
+       exists (select 1 from public.slip_refs where trans_ref = ref)
        or exists (select 1 from public.invoices
                    where id <> p_invoice and status = 'review' and verify_status in ('ok', 'warn') and verify_detail ->> 'transRef' = ref)
      ) then
