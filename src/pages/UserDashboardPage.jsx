@@ -695,7 +695,9 @@ function UserDashboardPage() {
                                     />
                                 ) : qrError ? (
                                     <div className="w-56 h-56 flex items-center justify-center text-center text-red-600 text-xs px-4">
-                                        ยังสร้าง QR ไม่ได้ เพราะรหัสพร้อมเพย์ของหอพักไม่ถูกต้อง กรุณาติดต่อผู้ดูแลหอพัก หรือโอนเข้าบัญชีธนาคารแทน
+                                        {BANK.promptpay
+                                            ? 'ยังสร้าง QR ไม่ได้ เพราะรหัสพร้อมเพย์ของหอพักไม่ถูกต้อง กรุณาติดต่อผู้ดูแลหอพัก หรือโอนเข้าบัญชีธนาคารแทน'
+                                            : 'ผู้ดูแลหอพักยังไม่ได้ตั้งค่าช่องทางรับชำระเงิน กรุณาติดต่อผู้ดูแลหอพักก่อนโอนเงิน'}
                                     </div>
                                 ) : (
                                     <div className="w-56 h-56 flex items-center justify-center text-muted text-xs">
@@ -705,27 +707,31 @@ function UserDashboardPage() {
                             </div>
 
                             {/* เลขพร้อมเพย์ */}
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm font-semibold text-gray-800">
-                                    พร้อมเพย์ {BANK.promptpay}
-                                </span>
-                                <CopyBtn text={BANK.promptpay.replace(/-/g, '')} label="คัดลอก" />
-                            </div>
+                            {BANK.promptpay && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-sm font-semibold text-gray-800">
+                                        พร้อมเพย์ {BANK.promptpay}
+                                    </span>
+                                    <CopyBtn text={BANK.promptpay.replace(/-/g, '')} label="คัดลอก" />
+                                </div>
+                            )}
 
                             {/* บัญชีธนาคารเพิ่มเติม */}
-                            <div className="w-full pt-4 border-t border-line text-xs text-gray-600 flex flex-col gap-1.5 text-left bg-sand/30 p-3.5 rounded-xl">
-                                <span className="font-bold text-primary-dark">หรือโอนเข้าบัญชีธนาคาร:</span>
-                                <div className="flex justify-between items-center">
-                                    <span>ธนาคาร: <strong className="text-gray-900">{BANK.name}</strong></span>
+                            {BANK.account && (
+                                <div className="w-full pt-4 border-t border-line text-xs text-gray-600 flex flex-col gap-1.5 text-left bg-sand/30 p-3.5 rounded-xl">
+                                    <span className="font-bold text-primary-dark">หรือโอนเข้าบัญชีธนาคาร:</span>
+                                    <div className="flex justify-between items-center">
+                                        <span>ธนาคาร: <strong className="text-gray-900">{BANK.name}</strong></span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span>เลขที่บัญชี: <strong className="font-mono text-gray-900">{BANK.account}</strong></span>
+                                        <CopyBtn text={BANK.account.replace(/-/g, '')} label="คัดลอก" />
+                                    </div>
+                                    <div>
+                                        <span>ชื่อบัญชี: <strong className="text-gray-900">{BANK.holder}</strong></span>
+                                    </div>
                                 </div>
-                                <div className="flex justify-between items-center">
-                                    <span>เลขที่บัญชี: <strong className="font-mono text-gray-900">{BANK.account}</strong></span>
-                                    <CopyBtn text={BANK.account.replace(/-/g, '')} label="คัดลอก" />
-                                </div>
-                                <div>
-                                    <span>ชื่อบัญชี: <strong className="text-gray-900">{BANK.holder}</strong></span>
-                                </div>
-                            </div>
+                            )}
                         </div>
 
                         {/* ฝั่งขวา: แนบสลิปโอนเงิน + ปุ่มส่งหลักฐาน + ปุ่มดาวน์โหลด PDF (ตามรูปที่สอง) */}

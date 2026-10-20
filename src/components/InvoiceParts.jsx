@@ -151,17 +151,19 @@ export function PromptPayCard({ invoice }) {
                 <img src={qr.url} alt="QR พร้อมเพย์" className="w-48 h-48 rounded-xl border border-line" />
             ) : qr.error ? (
                 <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">
-                    ยังสร้าง QR ไม่ได้ เพราะรหัสพร้อมเพย์ของหอพักไม่ถูกต้อง กรุณาติดต่อผู้ดูแลหอพัก หรือโอนเข้าบัญชีธนาคารแทน
+                    {settings.promptpayId
+                        ? 'ยังสร้าง QR ไม่ได้ เพราะรหัสพร้อมเพย์ของหอพักไม่ถูกต้อง กรุณาติดต่อผู้ดูแลหอพัก หรือโอนเข้าบัญชีธนาคารแทน'
+                        : 'ผู้ดูแลหอพักยังไม่ได้ตั้งค่าช่องทางรับชำระเงิน กรุณาติดต่อผู้ดูแลหอพักก่อนโอนเงิน'}
                 </p>
             ) : (
                 <div className="w-48 h-48 rounded-xl bg-line/60 animate-pulse" aria-label="กำลังสร้าง QR" />
             )}
             {/* ยอดที่ต้องจ่ายและเลขพร้อมเพย์ + ปุ่มคัดลอกเลข */}
             <div className="text-sm text-muted">
-                ยอด <span className="font-semibold text-ink">{baht(invoice.total)}</span> · พร้อมเพย์{' '}
-                <span className="tabular-nums">{formatPromptPayId(settings.promptpayId)}</span>
+                ยอด <span className="font-semibold text-ink">{baht(invoice.total)}</span>
+                {settings.promptpayId && <> · พร้อมเพย์{' '}<span className="tabular-nums">{formatPromptPayId(settings.promptpayId)}</span></>}
             </div>
-            <CopyButton text={String(settings.promptpayId).replace(/\D/g, '')} label="คัดลอกเลขพร้อมเพย์" />
+            {settings.promptpayId && <CopyButton text={String(settings.promptpayId).replace(/\D/g, '')} label="คัดลอกเลขพร้อมเพย์" />}
         </div>
     )
 }
