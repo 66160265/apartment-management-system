@@ -3,17 +3,18 @@ import Icon from '../components/Icon'
 import MonthPicker from '../components/MonthPicker'
 import PageHeader from '../components/PageHeader'
 import { baht, currentMonth, formatMonth } from '../lib/billing'
+import { formatDate } from '../lib/tenants'
 import { downloadCsv } from '../lib/downloadCsv'
 import {
-    csvFileName, invoiceColumns, monthlyColumns, monthlyRows, monthlySummary, monthOf, occupancy, outstandingColumns, outstandingRows,
-    paymentColumns, recentMonths, toCsv,
+    csvFileName, invoiceColumns, monthlyColumns, monthlyRows, monthlySummary, monthOf, moveOutColumns, occupancy, outstandingColumns, outstandingRows,
+    owedFromMoveOuts, paymentColumns, pendingDepositRefund, recentMonths, toCsv,
 } from '../lib/reports'
 import { supabase } from '../lib/supabaseClient'
 
 // รายงานสำหรับแอดมิน: อัตราเข้าพัก รายรับ-ยอดค้างรายเดือน และส่งออก CSV (เปิดใน Excel/ส่งให้นักบัญชีได้)
 // รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ไม่ใช่เดือนของใบแจ้งหนี้
 
-const emptyData = { rooms: [], invoices: [], invoicePayments: [], repairPayments: [] }
+const emptyData = { rooms: [], invoices: [], invoicePayments: [], repairPayments: [], moveOuts: [] }
 
 function Stat({ label, value, hint, tone = 'text-primary-dark' }) {
     return (
@@ -50,7 +51,9 @@ function ReportsPage() {
             supabase.from('invoice_payments').select('*'),
             // ตารางนี้มีเมื่อรัน repair-payments.sql แล้ว ถ้ายังไม่มีให้ถือว่าไม่มีรายรับค่าซ่อม
             supabase.from('repair_payments').select('*').eq('status', 'paid'),
-        ]).then(([rooms, invoices, payments, repairPayments]) => {
+            // ตารางนี้มีเมื่อรัน move-out.sql แล้ว
+            supabase.from('move_outs').select('*').order('move_out_date', { ascending: false }),
+        ]).then(([rooms, invoices, payments, repairPayments, moveOuts]) => {
             if (!active) return
             const err = rooms.error || invoices.error
             if (err) {
@@ -62,6 +65,7 @@ function ReportsPage() {
                     // ตารางรับเงินยังไม่มี (ยังไม่ได้รัน payments.sql) ให้รายงานแสดงเท่าที่มี
                     invoicePayments: payments.error ? [] : payments.data,
                     repairPayments: repairPayments.error ? [] : repairPayments.data,
+                    moveOuts: moveOuts.error ? [] : moveOuts.data,
                 })
                 setNow(new Date())
                 setError('')
@@ -80,6 +84,8 @@ function ReportsPage() {
     const outstanding = useMemo(() => outstandingRows(data.invoices, now), [data.invoices, now])
     const outstandingTotal = outstanding.reduce((acc, r) => acc + r.balance, 0)
     const pendingRefund = data.invoices.filter((i) => i.refund_status === 'pending').reduce((acc, i) => acc + Number(i.refund_amount), 0)
+    const depositToRefund = pendingDepositRefund(data.moveOuts)
+    const owedAfterMoveOut = owedFromMoveOuts(data.moveOuts)
     const invoiceById = useMemo(() => Object.fromEntries(data.invoices.map((i) => [i.id, i])), [data.invoices])
 
     const exportInvoices = () =>
@@ -90,6 +96,7 @@ function ReportsPage() {
             toCsv(data.invoicePayments.filter((p) => monthOf(p.confirmed_at) === month).sort((a, b) => a.confirmed_at.localeCompare(b.confirmed_at)), paymentColumns(invoiceById)),
         )
     const exportOutstanding = () => downloadCsv(csvFileName('ยอดค้างชำระ', now.toISOString().slice(0, 10)), toCsv(outstanding, outstandingColumns))
+    const exportMoveOuts = () => downloadCsv(csvFileName('ย้ายออกและเงินประกัน', now.toISOString().slice(0, 10)), toCsv(data.moveOuts, moveOutColumns))
     const exportMonthly = () => downloadCsv(csvFileName('สรุปรายเดือน', `${months.at(-1)}_${months[0]}`), toCsv([...rows12].reverse(), monthlyColumns))
 
     return (
@@ -108,7 +115,7 @@ function ReportsPage() {
                             <Stat label="อัตราเข้าพัก" value={`${occ.rate}%`} hint={`มีผู้เช่า ${occ.occupied} จาก ${occ.total - occ.maintenance} ห้อง (ไม่รวมปิดปรับปรุง)`} />
                             <Stat label="ห้องว่าง" value={occ.vacant} hint={occ.maintenance > 0 ? `ปิดปรับปรุง ${occ.maintenance} ห้อง` : undefined} />
                             <Stat label="ยอดค้างชำระทั้งหมด (วันนี้)" value={baht(outstandingTotal)} hint={`${outstanding.length} ใบ รวมค่าปรับของวันนี้`} tone={outstandingTotal > 0 ? 'text-amber-700' : 'text-primary-dark'} />
-                            <Stat label="รอโอนคืนผู้เช่า" value={baht(pendingRefund)} hint="ยอดที่ผู้เช่าโอนเกิน" tone={pendingRefund > 0 ? 'text-sky-700' : 'text-primary-dark'} />
+                            <Stat label="รอโอนคืนผู้เช่า" value={baht(pendingRefund + depositToRefund)} hint={`ยอดที่ผู้เช่าโอนเกิน ${baht(pendingRefund)} · เงินประกัน ${baht(depositToRefund)}`} tone={pendingRefund + depositToRefund > 0 ? 'text-sky-700' : 'text-primary-dark'} />
                         </section>
 
                         {/* สรุปเดือนที่เลือก */}
@@ -165,6 +172,51 @@ function ReportsPage() {
                             </div>
                             <p className="text-xs text-muted">รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ใบเดือนก่อนที่เพิ่งได้รับเงินจะไปอยู่ในเดือนที่รับ ส่วนยอดค้างคือยอดของใบเดือนนั้นที่ยังไม่ชำระ ณ วันนี้</p>
                         </section>
+
+                        {/* ย้ายออกและเงินประกัน */}
+                        {data.moveOuts.length > 0 && (
+                            <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <h2 className="font-medium text-primary-dark">ย้ายออกและเงินประกัน ({data.moveOuts.length} ราย)</h2>
+                                    <ExportButton onClick={exportMoveOuts}>ย้ายออก/เงินประกัน (CSV)</ExportButton>
+                                </div>
+                                {owedAfterMoveOut > 0 && (
+                                    <p className="text-sm text-red-800 bg-red-50 ring-1 ring-red-200 rounded-xl px-4 py-2.5">
+                                        ผู้เช่าที่ย้ายออกมียอดต้องจ่ายเพิ่ม (หักเกินเงินประกัน) รวม {baht(owedAfterMoveOut)} ระบบไม่ติดตามยอดนี้ ควรเรียกเก็บนอกระบบ
+                                    </p>
+                                )}
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm min-w-[640px]">
+                                        <thead>
+                                            <tr className="text-left text-muted border-b border-line">
+                                                <th className="py-2 pr-3">ย้ายออก</th>
+                                                <th className="py-2 px-3">ห้อง / ผู้เช่า</th>
+                                                <th className="py-2 px-3 text-right">เงินประกัน</th>
+                                                <th className="py-2 px-3 text-right">หัก</th>
+                                                <th className="py-2 px-3 text-right">คืน / ต้องจ่ายเพิ่ม</th>
+                                                <th className="py-2 pl-3">สถานะ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {data.moveOuts.slice(0, 20).map((m) => (
+                                                <tr key={m.id} className="border-b border-line/60">
+                                                    <td className="py-2 pr-3">{formatDate(m.move_out_date)}</td>
+                                                    <td className="py-2 px-3 text-ink">{m.room} <span className="text-muted">· {m.tenant_name}</span></td>
+                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(m.deposit)}</td>
+                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(m.deductions_total)}</td>
+                                                    <td className={`py-2 px-3 text-right tabular-nums font-medium ${Number(m.owed_amount) > 0 ? 'text-red-700' : ''}`}>
+                                                        {Number(m.owed_amount) > 0 ? `เพิ่ม ${baht(m.owed_amount)}` : baht(m.refund_amount)}
+                                                    </td>
+                                                    <td className="py-2 pl-3">
+                                                        {m.refund_status === 'pending' ? <span className="text-sky-700 font-medium">รอคืนเงิน</span> : m.refund_status === 'done' ? <span className="text-emerald-700">คืนแล้ว</span> : <span className="text-muted">ไม่มียอดคืน</span>}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+                        )}
 
                         {/* ยอดค้างชำระ */}
                         <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">

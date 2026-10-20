@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('./supabaseClient', () => ({ supabase: {} }))
 
-const { monthOf, recentMonths, monthlySummary, monthlyRows, outstandingRows, occupancy, toCsv, invoiceColumns, outstandingColumns, monthlyColumns, paymentColumns } = await import('./reports')
+const {
+    monthOf, recentMonths, monthlySummary, monthlyRows, outstandingRows, occupancy, toCsv, invoiceColumns, outstandingColumns, monthlyColumns, paymentColumns,
+    pendingDepositRefund, owedFromMoveOuts, moveOutColumns,
+} = await import('./reports')
 
 const now = new Date('2026-11-10T10:00:00+07:00')
 const inv = (over = {}) => ({
@@ -143,6 +146,34 @@ describe('toCsv', () => {
 
     it('ไม่มีแถว = มีแต่หัวตาราง', () => {
         expect(toCsv([], cols)).toBe('ชื่อ,ยอด')
+    })
+})
+
+describe('ย้ายออกและเงินประกัน', () => {
+    const m = (over = {}) => ({
+        room: '101', tenant_name: 'สมชาย', move_out_date: '2026-10-31', deposit: 5000, deductions_total: 1200, refund_amount: 3800, owed_amount: 0,
+        refund_status: 'pending', refunded_at: null, deductions: [{ label: 'ค่าทำความสะอาด', amount: 500 }, { label: 'ค่าซ่อมประตู', amount: 700 }], ...over,
+    })
+
+    it('รวมเฉพาะเงินประกันที่รอคืน', () => {
+        expect(pendingDepositRefund([m(), m({ refund_amount: 1000, refund_status: 'done' }), m({ refund_amount: 200 }), m({ refund_amount: 0, refund_status: 'none' })])).toBe(4000)
+        expect(pendingDepositRefund([])).toBe(0)
+    })
+
+    it('รวมยอดที่ผู้เช่าต้องจ่ายเพิ่ม', () => {
+        expect(owedFromMoveOuts([m({ owed_amount: 800 }), m({ owed_amount: 0 }), m({ owed_amount: 150.5 })])).toBe(950.5)
+    })
+
+    it('ส่งออก CSV: สถานะเป็นภาษาไทย วันที่คืนตามเวลาไทย และรวมรายการหัก', () => {
+        const csv = toCsv([m(), m({ refund_status: 'done', refunded_at: '2026-11-02T23:30:00+07:00' })], moveOutColumns).split('\r\n')
+        expect(csv[1]).toBe('2026-10-31,101,สมชาย,5000,1200,3800,0,รอคืนเงิน,,ค่าทำความสะอาด 500 / ค่าซ่อมประตู 700')
+        expect(csv[2]).toContain('คืนแล้ว,2026-11-02,')
+    })
+
+    it('รายการหักที่เป็นสูตรถูกกัน CSV injection', () => {
+        const csv = toCsv([m({ deductions: [{ label: '=cmd', amount: 1 }] })], moveOutColumns)
+        expect(csv).toContain("=cmd 1")
+        expect(csv.split('\r\n')[1].endsWith(',=cmd 1')).toBe(false)
     })
 })
 

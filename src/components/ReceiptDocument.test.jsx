@@ -45,6 +45,12 @@ describe('ReceiptDocument (แสดงผลครั้งแรก)', () => {
         expect(html).not.toContain('อ้างอิงใบแจ้งหนี้')
     })
 
+    it('หักจากเงินประกัน: บอกแหล่งที่มา ไม่บอกว่าโอน', () => {
+        const html = render({ ...base, source: 'deposit' })
+        expect(html).toContain('หักจากเงินประกันตอนย้ายออก')
+        expect(html).not.toContain('รับชำระโดยการโอนเงิน')
+    })
+
     it('ข้อมูลเดิมที่ไม่มีเลขที่ ไม่แสดงบรรทัดเลขที่และไม่ error', () => {
         expect(render({ ...base, code: '' })).not.toContain('เลขที่ ')
     })

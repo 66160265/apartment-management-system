@@ -122,7 +122,9 @@ function ReceiptDocument({ receipt, tenant, floor, settings }) {
                             <td style={td}>
                                 <div style={{ fontWeight: 600 }}>{receipt.description}</div>
                                 <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
-                                    {receipt.kind === 'invoice' ? 'รับชำระโดยการโอนเงิน (ตรวจสอบสลิปแล้ว)' : 'รับชำระค่าซ่อมโดยการโอนเงิน (ตรวจสอบสลิปแล้ว)'}
+                                    {receipt.source === 'deposit'
+                                        ? 'หักจากเงินประกันตอนย้ายออก'
+                                        : receipt.kind === 'invoice' ? 'รับชำระโดยการโอนเงิน (ตรวจสอบสลิปแล้ว)' : 'รับชำระค่าซ่อมโดยการโอนเงิน (ตรวจสอบสลิปแล้ว)'}
                                     {receipt.transRef && ` · เลขอ้างอิงธนาคาร ${receipt.transRef}`}
                                 </div>
                             </td>

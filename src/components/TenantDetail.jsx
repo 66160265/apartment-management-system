@@ -3,6 +3,7 @@ import PageHeader from './PageHeader'
 import Icon from './Icon'
 import DatePicker from './DatePicker'
 import { Avatar, ContractBadge } from './TenantParts'
+import MoveOutSection from './MoveOutSection'
 import TenantDocuments from './TenantDocuments'
 import { callAdminUsers } from '../lib/adminUsers'
 import { supabase } from '../lib/supabaseClient'
@@ -53,6 +54,7 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
         phone: tenant.phone,
         startDate: tenant.startDate,
         endDate: tenant.endDate,
+        deposit: String(tenant.deposit ?? 0),
     })
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
@@ -76,12 +78,16 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
             setError('วันสิ้นสุดสัญญาต้องไม่ก่อนวันเริ่มสัญญา')
             return
         }
+        if (form.deposit === '' || Number.isNaN(Number(form.deposit)) || Number(form.deposit) < 0) {
+            setError('เงินประกันต้องเป็นตัวเลขที่ไม่ติดลบ')
+            return
+        }
         setSaving(true)
+        const fields = { name: form.name.trim(), phone: form.phone.trim(), start_date: form.startDate, end_date: form.endDate }
+        // ส่งเงินประกันเมื่อมีการเปลี่ยนเท่านั้น (ถ้ายังไม่ได้รัน move-out.sql จะได้ไม่กระทบการแก้ข้อมูลอื่น)
+        if (Number(form.deposit) !== Number(tenant.deposit ?? 0)) fields.deposit = Number(form.deposit)
         // อัปเดตแถวผู้เช่าของห้องนี้ แล้วโหลดรายการใหม่และกลับหน้ารายชื่อ
-        const { error: err } = await supabase
-            .from('tenants')
-            .update({ name: form.name.trim(), phone: form.phone.trim(), start_date: form.startDate, end_date: form.endDate })
-            .eq('room', tenant.room)
+        const { error: err } = await supabase.from('tenants').update(fields).eq('room', tenant.room)
         setSaving(false)
         if (err) {
             setError(`บันทึกไม่สำเร็จ: ${err.message}`)
@@ -193,8 +199,15 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
                             <DatePicker value={form.endDate} onChange={(v) => set('endDate')({ target: { value: v } })} min={form.startDate} align="right" />
                         </div>
                     </div>
+                    <label className="text-sm text-muted">
+                        เงินประกัน (บาท)
+                        <input className={inputClass} type="number" min="0" step="0.01" value={form.deposit} onChange={set('deposit')} />
+                    </label>
                     {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
                 </form>
+
+                {/* เงินประกันและการย้ายออก */}
+                <MoveOutSection tenant={tenant} />
 
                 {/* การ์ดเอกสารของผู้เช่า */}
                 <TenantDocuments room={tenant.room} />

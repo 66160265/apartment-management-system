@@ -1,0 +1,63 @@
+import { balanceOf, formatMonth } from './billing'
+
+// ย้ายออกและคืนเงินประกัน (components/MoveOutSection.jsx, supabase/move-out.sql): ตรรกะฝั่งเว็บ ใช้แสดงตัวอย่างยอดก่อนบันทึก
+// ยอดจริงคำนวณโดยฟังก์ชัน record_move_out ในฐานข้อมูล สูตรต้องตรงกัน (เทสต์เทียบกับค่าที่ฐานข้อมูลให้ไว้ในชุดทดสอบ SQL)
+
+const round2 = (n) => Math.round(Number(n) * 100) / 100
+
+// สรุปยอด: เงินประกัน - ยอดหัก = ยอดคืน (ไม่ต่ำกว่า 0) ถ้าหักเกิน = ยอดที่ผู้เช่าต้องจ่ายเพิ่ม
+export function settlement(deposit, deductions) {
+    const dep = round2(deposit || 0)
+    const total = round2(deductions.reduce((acc, d) => acc + Number(d.amount || 0), 0))
+    return {
+        deposit: dep,
+        total,
+        refund: Math.max(0, round2(dep - total)),
+        owed: Math.max(0, round2(total - dep)),
+    }
+}
+
+// ใบแจ้งหนี้ที่ยังค้างของห้อง ที่หักจากเงินประกันได้ (ต้องอยู่ในสถานะรอชำระ ใบที่รอตรวจสลิปต้องจัดการก่อน)
+// ยอดคือยอดค้างรวมค่าปรับของวันนี้ เรียงเดือนเก่าก่อน
+export function unpaidInvoicesOf(invoices, room, now = new Date()) {
+    return invoices
+        .filter((i) => i.room === room && i.status === 'pending')
+        .map((i) => ({ id: i.id, month: i.month, label: `ค่าเช่าและค่าบริการ เดือน ${formatMonth(i.month)}`, balance: balanceOf(i, now) }))
+        .filter((i) => i.balance > 0)
+        .sort((a, b) => a.month.localeCompare(b.month))
+}
+
+// ใบแจ้งหนี้ของห้องที่รอตรวจสลิป (ต้องจัดการก่อนย้ายออก) ใช้เตือนแอดมิน
+export const reviewingInvoicesOf = (invoices, room) => invoices.filter((i) => i.room === room && i.status === 'review')
+
+// ตรวจรายการหักที่กรอกเอง คืนข้อความ error หรือสตริงว่าง (แถวที่ว่างทั้งคู่ไม่นับ)
+export function validateCustoms(customs) {
+    for (const c of customs) {
+        const label = (c.label ?? '').trim()
+        const blankAmount = c.amount === '' || c.amount === null || c.amount === undefined
+        if (!label && blankAmount) continue
+        if (!label) return 'กรุณาระบุชื่อรายการหัก'
+        if (label.length > 100) return 'ชื่อรายการหักยาวเกิน 100 ตัวอักษร'
+        const amount = Number(c.amount)
+        if (blankAmount || !Number.isFinite(amount) || amount <= 0) return `ยอดของรายการ "${label}" ต้องมากกว่า 0`
+    }
+    return ''
+}
+
+// รายการหักที่ส่งให้ record_move_out: ใบแจ้งหนี้ที่เลือก (ผูก invoice_id) + รายการที่กรอกเอง (แถวว่างข้าม)
+export function buildDeductions(selectedInvoices, customs) {
+    return [
+        ...selectedInvoices.map((i) => ({ label: i.label, amount: round2(i.balance), invoice_id: i.id })),
+        ...customs
+            .filter((c) => (c.label ?? '').trim() !== '' || (c.amount !== '' && c.amount !== null && c.amount !== undefined))
+            .map((c) => ({ label: c.label.trim(), amount: round2(c.amount) })),
+    ]
+}
+
+// ผลของการย้ายออกเป็นข้อความสั้นสำหรับรายการ/รายงาน
+export function moveOutOutcome(m) {
+    if (Number(m.owed_amount) > 0) return { key: 'owed', amount: Number(m.owed_amount) }
+    if (m.refund_status === 'pending') return { key: 'refund_pending', amount: Number(m.refund_amount) }
+    if (m.refund_status === 'done') return { key: 'refund_done', amount: Number(m.refund_amount) }
+    return { key: 'none', amount: 0 }
+}

@@ -44,6 +44,8 @@ export function buildInvoiceReceipt({ payment, invoice, payments }) {
         refunded: isFinal && invoice.refund_status === 'done',
         transRef: payment.trans_ref ?? '',
         autoApproved: Boolean(payment.auto_approved),
+        // transfer = โอน (ผ่านสลิป) deposit = หักจากเงินประกันตอนย้ายออก
+        source: payment.source ?? 'transfer',
     }
 }
 
@@ -68,6 +70,7 @@ export function buildRepairReceipt({ payment, repair }) {
         refunded: false,
         transRef: payment.trans_ref ?? '',
         autoApproved: Boolean(payment.auto_approved),
+        source: 'transfer',
     }
 }
 

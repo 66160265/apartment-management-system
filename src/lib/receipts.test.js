@@ -74,6 +74,13 @@ describe('buildInvoiceReceipt', () => {
         expect(buildInvoiceReceipt({ payment: p, invoice: invoice(), payments: [p] }).code).toBe('')
     })
 
+    it('การรับเงินที่หักจากเงินประกันถูกทำเครื่องหมายแหล่งที่มา (ค่าเริ่มต้นคือโอน)', () => {
+        const base = pay('p1', 1000, '2026-10-20T10:00:00+07:00', 1)
+        expect(buildInvoiceReceipt({ payment: base, invoice: invoice(), payments: [base] }).source).toBe('transfer')
+        const dep = { ...base, source: 'deposit' }
+        expect(buildInvoiceReceipt({ payment: dep, invoice: invoice(), payments: [dep] }).source).toBe('deposit')
+    })
+
     it('ไม่พบ payment ในรายการ ใช้ลำดับแรกแทน ไม่ error', () => {
         const p = pay('x', 100, '2026-10-20T10:00:00+07:00', 1)
         expect(() => buildInvoiceReceipt({ payment: p, invoice: invoice(), payments: [] })).not.toThrow()

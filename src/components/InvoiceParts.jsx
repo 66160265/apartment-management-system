@@ -217,7 +217,7 @@ export function PaymentHistory({ invoiceId, refreshKey, invoice }) {
                 {rows.map((p) => (
                     <li key={p.id} className="rounded-xl border border-line bg-sand/40 px-4 py-2.5">
                         <div className="flex items-center justify-between gap-3 text-sm">
-                            <span className="text-muted">{formatDateTime(p.confirmed_at)}{p.auto_approved && ' · ระบบอนุมัติอัตโนมัติ'}</span>
+                            <span className="text-muted">{formatDateTime(p.confirmed_at)}{p.auto_approved && ' · ระบบอนุมัติอัตโนมัติ'}{p.source === 'deposit' && ' · หักจากเงินประกัน'}</span>
                             <span className="font-semibold text-emerald-700 tabular-nums">{baht(p.amount)}</span>
                         </div>
                         {invoice && p.receipt_no !== null && p.receipt_no !== undefined && (

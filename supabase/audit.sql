@@ -216,6 +216,40 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
+-- ย้ายออกและคืนเงินประกัน (มีเมื่อรัน move-out.sql แล้ว ถ้ารัน move-out.sql ทีหลัง ให้รันไฟล์นี้ซ้ำ)
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if to_regclass('public.move_outs') is not null then
+    execute $f$
+      create or replace function public.audit_move_outs()
+      returns trigger
+      language plpgsql
+      security definer set search_path = public
+      as $body$
+      begin
+        if tg_op = 'INSERT' then
+          perform public.audit_write('moveout.create', 'move_outs', new.id::text, new.room,
+            'บันทึกการย้ายออก ห้อง ' || new.room || ' ' || new.tenant_name || ' เงินประกัน ' || public.fmt_baht(new.deposit)
+              || ' หัก ' || public.fmt_baht(new.deductions_total)
+              || case when new.owed_amount > 0 then ' ผู้เช่าต้องจ่ายเพิ่ม ' || public.fmt_baht(new.owed_amount) else ' คืน ' || public.fmt_baht(new.refund_amount) end,
+            jsonb_build_object('deposit', new.deposit, 'deductions', new.deductions, 'refund', new.refund_amount, 'owed', new.owed_amount, 'move_out_date', new.move_out_date));
+        elsif new.refund_status = 'done' and old.refund_status is distinct from 'done' then
+          perform public.audit_write('moveout.refund', 'move_outs', new.id::text, new.room,
+            'บันทึกคืนเงินประกัน ห้อง ' || new.room || ' ' || new.tenant_name || ' ' || public.fmt_baht(new.refund_amount),
+            jsonb_build_object('refund', new.refund_amount, 'note', new.refund_note));
+        end if;
+        return new;
+      end;
+      $body$
+    $f$;
+    drop trigger if exists audit_move_outs on public.move_outs;
+    create trigger audit_move_outs after insert or update on public.move_outs
+      for each row execute function public.audit_move_outs();
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
 -- ผู้เช่า (เพิ่ม/ลบ)
 -- ---------------------------------------------------------------------------
 create or replace function public.audit_tenants()

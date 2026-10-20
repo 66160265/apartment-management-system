@@ -142,5 +142,28 @@ export const paymentColumns = (invoiceById) => [
     { header: 'เลขอ้างอิงสลิป', value: (p) => p.trans_ref ?? '' },
 ]
 
+// ---- การย้ายออกและเงินประกัน (supabase/move-out.sql) ----
+
+const refundLabels = { pending: 'รอคืนเงิน', done: 'คืนแล้ว', none: 'ไม่มียอดคืน' }
+
+// เงินประกันที่ยังต้องคืนผู้เช่า (บันทึกย้ายออกที่สถานะรอคืน)
+export const pendingDepositRefund = (moveOuts) => sum(moveOuts.filter((m) => m.refund_status === 'pending'), (m) => m.refund_amount)
+
+// ยอดที่ผู้เช่าต้องจ่ายเพิ่มเพราะหักเกินเงินประกัน (ระบบไม่ติดตามต่อ ใช้เตือนให้เรียกเก็บนอกระบบ)
+export const owedFromMoveOuts = (moveOuts) => sum(moveOuts, (m) => m.owed_amount)
+
+export const moveOutColumns = [
+    { header: 'วันที่ย้ายออก', value: (m) => m.move_out_date },
+    { header: 'ห้อง', value: (m) => m.room },
+    { header: 'ผู้เช่า', value: (m) => m.tenant_name },
+    { header: 'เงินประกัน', value: (m) => Number(m.deposit) },
+    { header: 'หักรวม', value: (m) => Number(m.deductions_total) },
+    { header: 'คืนผู้เช่า', value: (m) => Number(m.refund_amount) },
+    { header: 'ผู้เช่าต้องจ่ายเพิ่ม', value: (m) => Number(m.owed_amount) },
+    { header: 'สถานะคืนเงิน', value: (m) => refundLabels[m.refund_status] ?? m.refund_status },
+    { header: 'วันที่คืนเงิน', value: (m) => (m.refunded_at ? thaiDateOf(new Date(m.refunded_at)) : '') },
+    { header: 'รายการหัก', value: (m) => (m.deductions ?? []).map((d) => `${d.label} ${d.amount}`).join(' / ') },
+]
+
 // ชื่อไฟล์ปลอดภัย เช่น ใบแจ้งหนี้-2026-10.csv
 export const csvFileName = (name, suffix) => `${name}-${suffix}.csv`
