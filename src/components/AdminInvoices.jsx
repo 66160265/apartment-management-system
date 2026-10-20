@@ -554,7 +554,7 @@ function AdminInvoices() {
     if (bulk) {
         return (
             <>
-                <PageHeader title="กรอกมิเตอร์ทั้งเดือน" subtitle="กรอกเลขมิเตอร์ทุกห้องในตารางเดียว แล้วสร้างใบแจ้งหนี้ทั้งเดือนพร้อมกัน" />
+                <PageHeader title="สร้างใบแจ้งหนี้" subtitle="กรอกเลขมิเตอร์ปัจจุบันของห้องที่ต้องการ (ห้องเดียวหรือทุกห้องก็ได้) แล้วสร้างใบแจ้งหนี้พร้อมกัน" />
                 <BulkInvoiceForm
                     tenants={tenants}
                     rents={rents}
@@ -632,11 +632,11 @@ function AdminInvoices() {
         <>
             <PageHeader
                 title="ใบแจ้งหนี้ & ชำระเงิน"
-                subtitle="บันทึกมิเตอร์ สร้างใบแจ้งหนี้ และตรวจสอบสลิปการโอนเงินของผู้เช่า"
+                subtitle="สร้างใบแจ้งหนี้ ตรวจสอบสลิปการโอนเงิน และติดตามการชำระของผู้เช่า"
                 actions={
                     <button onClick={() => { setBulk(true); setBulkNotice('') }} className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-sm font-medium shadow-card flex items-center gap-1.5">
-                        <Icon name="receipt" className="w-4 h-4" />
-                        กรอกมิเตอร์ทั้งเดือน
+                        <Icon name="plus" className="w-4 h-4" />
+                        สร้างใบแจ้งหนี้
                     </button>
                 }
             />
@@ -695,12 +695,14 @@ function AdminInvoices() {
                 </div>
 
                 {/* ฟอร์มสร้าง/แก้ไขใบแจ้งหนี้: ซ้าย = กรอกข้อมูล, ขวา = สรุปยอด */}
+                {/* สร้างใบแจ้งหนี้ใช้ปุ่ม "สร้างใบแจ้งหนี้" (ตารางกรอกมิเตอร์ กรอกห้องเดียวหรือหลายห้องก็ได้) ฟอร์มนี้จึงแสดงเฉพาะตอนแก้ไขใบที่สร้างไปแล้ว */}
+                {editingId && (
                 <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
                     <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
                         {/* หัวฟอร์ม + เลือกเดือน (เดือนที่ห้องนี้มีใบแล้วมีจุด; ตอนแก้ไขเปลี่ยนเดือนไม่ได้) */}
                         <div className="flex flex-wrap justify-between items-center gap-3">
                             <h2 className="font-medium text-primary-dark">
-                                {editingId ? `แก้ไขใบแจ้งหนี้ ห้อง ${form.room}` : 'บันทึกมิเตอร์'}
+                                แก้ไขใบแจ้งหนี้ ห้อง {form.room}
                             </h2>
                             <MonthPicker
                                 value={form.month}
@@ -772,6 +774,7 @@ function AdminInvoices() {
                         </div>
                     </div>
                 </form>
+                )}
 
                 <div className="bg-white rounded-2xl shadow-card p-5">
                     {/* หัวกล่องรายการ: จำนวน + ตัวกรองเดือน + ช่องค้นหา */}

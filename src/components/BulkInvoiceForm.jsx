@@ -20,6 +20,9 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone, onCancel 
     // ค่าที่กรอก: { ห้อง: { waterPrev, waterCurr, elecPrev, elecCurr } }
     const [inputs, setInputs] = useState({})
     const [confirming, setConfirming] = useState(false)
+    // ค้นหาห้อง/ชื่อ และแสดงห้องที่มีใบเดือนนี้แล้วด้วยหรือไม่ (ปกติซ่อนไว้ เหลือเฉพาะห้องที่ยังต้องออกใบ)
+    const [search, setSearch] = useState('')
+    const [showCreated, setShowCreated] = useState(false)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
 
@@ -29,6 +32,9 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone, onCancel 
     const summary = useMemo(() => (rateError ? { records: [], errors: {}, total: 0 } : summarize(rows, inputs, rates, context)), [rows, inputs, rates, context, rateError])
     const errorCount = Object.keys(summary.errors).length
     const createdAlready = rows.filter((r) => r.exists).length
+    // แถวที่แสดง (การซ่อน/ค้นหาไม่กระทบค่าที่กรอกไว้และยอดสรุป)
+    const keyword = search.trim().toLowerCase()
+    const shownRows = rows.filter((r) => (showCreated || !r.exists) && (!keyword || r.room.toLowerCase().includes(keyword) || r.name.toLowerCase().includes(keyword)))
 
     const setCell = (room, key, value) => {
         setInputs((prev) => ({ ...prev, [room]: { ...prev[room], [key]: value } }))
@@ -102,13 +108,30 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone, onCancel 
                 {rateError && <p className="md:col-span-2 text-sm text-red-600">{rateError}</p>}
             </div>
 
-            <p className="text-sm text-muted">
-                กรอกเลขมิเตอร์ปัจจุบันของแต่ละห้อง (มิเตอร์ก่อนหน้าดึงจากใบเดือนล่าสุดให้ แก้ได้ถ้าเปลี่ยนมิเตอร์) กด Enter เพื่อไปห้องถัดไป ห้องที่ไม่กรอกจะถูกข้าม
-                {createdAlready > 0 && ` · เดือน ${formatMonth(month)} มีใบแจ้งหนี้แล้ว ${createdAlready} ห้อง`}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted max-w-3xl">
+                    กรอกเลขมิเตอร์ปัจจุบันของห้องที่ต้องการออกใบ (มิเตอร์ก่อนหน้าดึงจากใบเดือนล่าสุดให้ แก้ได้ถ้าเปลี่ยนมิเตอร์) กด Enter เพื่อไปห้องถัดไป ห้องที่ไม่กรอกจะถูกข้าม
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2 border border-line bg-white rounded-xl px-3 py-1.5 w-56 max-w-full focus-within:border-secondary">
+                        <Icon name="search" className="w-4 h-4 text-muted" />
+                        <input type="text" placeholder="ค้นหาห้อง/ชื่อ" aria-label="ค้นหาห้องหรือชื่อผู้เช่า" className="outline-none w-full bg-transparent text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
+                    </div>
+                    {createdAlready > 0 && (
+                        <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                            <input type="checkbox" checked={showCreated} onChange={(e) => setShowCreated(e.target.checked)} />
+                            แสดงห้องที่มีใบเดือน {formatMonth(month)} แล้ว ({createdAlready})
+                        </label>
+                    )}
+                </div>
+            </div>
 
             {rows.length === 0 ? (
                 <p className="text-center py-10 text-muted">ยังไม่มีผู้เช่า</p>
+            ) : shownRows.length === 0 ? (
+                <p className="text-center py-10 text-muted">
+                    {keyword ? 'ไม่พบห้องที่ตรงกับคำค้นหา' : `ทุกห้องมีใบแจ้งหนี้เดือน ${formatMonth(month)} แล้ว (เลือกเดือนอื่น หรือกดแสดงห้องที่มีใบแล้ว)`}
+                </p>
             ) : (
                 <div className="bg-white rounded-2xl shadow-card overflow-x-auto">
                     <table className="w-full text-sm min-w-[880px]">
@@ -126,7 +149,7 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone, onCancel 
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map((r) => {
+                            {shownRows.map((r) => {
                                 const input = inputs[r.room] ?? {}
                                 const ev = evaluateRow(r, input, rates)
                                 const disabled = ev.state === 'skip'

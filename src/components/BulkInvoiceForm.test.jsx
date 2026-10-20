@@ -22,11 +22,11 @@ describe('BulkInvoiceForm (แสดงผลครั้งแรก)', () => {
     ]
     const html = renderToString(<BulkInvoiceForm tenants={tenants} rents={rents} invoices={invoices} settings={settings} onDone={() => {}} onCancel={() => {}} />).replace(/<!-- -->/g, '')
 
-    it('แสดงทุกห้องเรียงตามเลขห้อง', () => {
-        expect(html.indexOf('101')).toBeGreaterThan(-1)
-        expect(html.indexOf('101')).toBeLessThan(html.indexOf('102'))
+    it('แสดงห้องที่ยังต้องออกใบ เรียงตามเลขห้อง (ห้อง 102 มีใบแล้วจึงถูกซ่อน)', () => {
+        expect(html.indexOf('101 <span')).toBeGreaterThan(-1)
+        expect(html.indexOf('101 <span')).toBeLessThan(html.indexOf('103 <span'))
         expect(html).toContain('สมหญิง')
-        expect(html).toContain('สมชาย')
+        expect(html).not.toContain('สมชาย')
     })
 
     it('ใส่มิเตอร์ก่อนหน้าจากใบล่าสุดให้ในช่อง', () => {
@@ -34,9 +34,20 @@ describe('BulkInvoiceForm (แสดงผลครั้งแรก)', () => {
         expect(html).toContain('value="560"')
     })
 
-    it('ห้องที่มีใบเดือนนี้แล้วและห้องไม่มีบัญชี ถูกปิดและบอกเหตุผล', () => {
-        expect(html).toContain('มีใบแจ้งหนี้เดือนนี้แล้ว')
+    it('ห้องที่มีใบเดือนนี้แล้วถูกซ่อนไว้ก่อน (มีตัวเลือกแสดง) ส่วนห้องไม่มีบัญชีถูกปิดและบอกเหตุผล', () => {
+        expect(html).not.toContain('ห้อง 102 มิเตอร์น้ำปัจจุบัน')
+        expect(html).toContain('แสดงห้องที่มีใบเดือน')
+        expect(html).toContain('(1)')
         expect(html).toContain('ยังไม่มีบัญชีผู้เช่า')
+        expect(html).toContain('ค้นหาห้อง/ชื่อ')
+    })
+
+    it('ทุกห้องมีใบแล้ว: แจ้งว่าไม่มีห้องให้ออกใบ ไม่แสดงตารางว่าง', () => {
+        const all = renderToString(
+            <BulkInvoiceForm tenants={[{ room: '102', name: 'สมชาย', user_id: 'u2' }]} rents={rents} invoices={invoices} settings={settings} onDone={() => {}} onCancel={() => {}} />,
+        ).replace(/<!-- -->/g, '')
+        expect(all).toContain('ทุกห้องมีใบแจ้งหนี้เดือน')
+        expect(all).not.toContain('<table')
     })
 
     it('ยังไม่กรอกอะไร: ปุ่มสร้างถูกปิด และบอกว่าพร้อมสร้าง 0 ใบ', () => {
