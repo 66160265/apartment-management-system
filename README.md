@@ -67,7 +67,7 @@ npx supabase functions deploy admin-users
 npx supabase functions deploy verify-slip
 ```
 
-   (ไม่บังคับ) ตรวจสลิปอัตโนมัติด้วย [EasySlip](https://easyslip.com): ตั้ง API key เป็น secret ของ Edge Function (ห้ามใส่ใน `.env` ของเว็บหรือในรีโป) แล้วไปที่เมนู **ตั้งค่า** เลือกโหมดตรวจสลิปเป็น "แนะนำ"
+   (ไม่บังคับ) ตรวจสลิปอัตโนมัติด้วย [EasySlip](https://easyslip.com): ตั้ง API key เป็น secret ของ Edge Function (ห้ามใส่ใน `.env` ของเว็บหรือในรีโป) แล้วไปที่เมนู **ตั้งค่า** เลือกโหมดตรวจสลิปเป็น "แนะนำ" (แอดมินยืนยันเอง) หรือ "อัตโนมัติ" (ผ่านครบเงื่อนไขแล้วยืนยันให้ ต้องลงทะเบียนบัญชีรับเงินใน EasySlip ก่อน)
 
 ```bash
 npx supabase secrets set EASYSLIP_API_KEY=<API key>

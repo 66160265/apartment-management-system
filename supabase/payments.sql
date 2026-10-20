@@ -44,6 +44,9 @@ alter table public.invoice_payments add column if not exists trans_ref text;
 -- สลิปหนึ่งใบ (เลขอ้างอิงเดียวกัน) ยืนยันรับเงินได้ครั้งเดียวทั้งระบบ กันเอาสลิปเดียวไปจ่ายหลายบิล
 create unique index if not exists invoice_payments_trans_ref_key on public.invoice_payments (trans_ref) where trans_ref is not null;
 
+-- true = ระบบตรวจสลิปอนุมัติเอง (ไม่ใช่แอดมินกด) แสดงในประวัติการรับชำระ
+alter table public.invoice_payments add column if not exists auto_approved boolean not null default false;
+
 create index if not exists invoice_payments_invoice_idx on public.invoice_payments (invoice_id, confirmed_at);
 
 alter table public.invoice_payments enable row level security;
@@ -80,8 +83,10 @@ drop trigger if exists invoices_lock_total on public.invoices;
 create trigger invoices_lock_total before update of total on public.invoices
   for each row execute function public.invoices_lock_total();
 
--- approve_slip: แอดมินยืนยันสลิปที่รอตรวจพร้อมยอดที่ได้รับจริง คืน 'paid' หรือ 'partial'
-create or replace function public.approve_slip(p_invoice uuid, p_amount numeric)
+-- record_payment: ตรรกะบันทึกรับเงิน 1 สลิป (ใช้ร่วมกันระหว่างแอดมินกดยืนยัน approve_slip กับระบบอนุมัติอัตโนมัติ auto_approve_slip ใน slip-verify.sql)
+-- ไม่ตรวจสิทธิ์ในตัวเอง ผู้เรียกต้องตรวจก่อน และห้ามให้ผู้ใช้เว็บเรียกตรง ๆ (ถอนสิทธิ์ไว้ด้านล่าง) คืน 'paid' หรือ 'partial'
+-- p_by = แอดมินที่ยืนยัน (ว่าง = ระบบอนุมัติอัตโนมัติ)
+create or replace function public.record_payment(p_invoice uuid, p_amount numeric, p_by uuid, p_auto boolean)
 returns text
 language plpgsql
 security definer set search_path = public
@@ -91,9 +96,6 @@ declare
   new_paid numeric(12, 2);
   ref text;
 begin
-  if not public.is_admin() then
-    raise exception 'ไม่มีสิทธิ์';
-  end if;
   if p_amount is null or p_amount <= 0 or p_amount > 10000000 then
     raise exception 'ยอดที่ได้รับต้องมากกว่า 0';
   end if;
@@ -107,8 +109,8 @@ begin
   ref := nullif(to_jsonb(inv) -> 'verify_detail' ->> 'transRef', '');
 
   begin
-    insert into public.invoice_payments (invoice_id, user_id, amount, slip_path, slip_uploaded_at, confirmed_by, trans_ref)
-    values (inv.id, inv.user_id, round(p_amount, 2), inv.slip_path, inv.slip_uploaded_at, auth.uid(), ref);
+    insert into public.invoice_payments (invoice_id, user_id, amount, slip_path, slip_uploaded_at, confirmed_by, trans_ref, auto_approved)
+    values (inv.id, inv.user_id, round(p_amount, 2), inv.slip_path, inv.slip_uploaded_at, p_by, ref, coalesce(p_auto, false));
   exception when unique_violation then
     raise exception 'สลิปนี้ถูกใช้ยืนยันรับเงินกับใบแจ้งหนี้อื่นแล้ว';
   end;
@@ -130,6 +132,20 @@ begin
      set status = 'pending', paid_amount = new_paid, slip_path = null, slip_uploaded_at = null, reject_reason = null
    where id = inv.id;
   return 'partial';
+end;
+$$;
+
+-- approve_slip: แอดมินยืนยันสลิปที่รอตรวจพร้อมยอดที่ได้รับจริง คืน 'paid' หรือ 'partial'
+create or replace function public.approve_slip(p_invoice uuid, p_amount numeric)
+returns text
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'ไม่มีสิทธิ์';
+  end if;
+  return public.record_payment(p_invoice, p_amount, auth.uid(), false);
 end;
 $$;
 
@@ -161,6 +177,7 @@ begin
 end;
 $$;
 
+revoke all on function public.record_payment(uuid, numeric, uuid, boolean) from public, anon, authenticated;
 revoke all on function public.approve_slip(uuid, numeric) from public, anon;
 revoke all on function public.mark_refunded(uuid, text) from public, anon;
 grant execute on function public.approve_slip(uuid, numeric) to authenticated;

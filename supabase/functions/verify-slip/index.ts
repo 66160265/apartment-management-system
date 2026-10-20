@@ -1,10 +1,11 @@
 // ===========================================================================
 // Edge Function: verify-slip  (ตรวจสลิปโอนเงินด้วย EasySlip API v2)
 // หน้าที่: อ่านสลิปที่ผู้เช่าแนบกับใบแจ้งหนี้ ส่งให้ EasySlip ตรวจ แล้วบันทึกผลลง invoices.verify_status / verify_detail
-//         แอดมินดูผลและกดยืนยันรับเงินเอง (ฟังก์ชันนี้ไม่อนุมัติหรือปฏิเสธสลิปแทนแอดมิน)
+//         โหมด "แนะนำ": แอดมินดูผลและกดยืนยันรับเงินเอง  โหมด "อัตโนมัติ": ผ่านครบทุกเงื่อนไขแล้วยืนยันรับเงินให้เอง (ดู auto_approve_slip ใน supabase/slip-verify.sql)
+//         ไม่ปฏิเสธสลิปเองเด็ดขาด สลิปที่ไม่เข้าเงื่อนไขรอแอดมินตรวจ
 // ผู้เรียก: หน้าเว็บหลังผู้เช่าส่งสลิป (src/lib/slipVerify.js) หรือแอดมินกด "ตรวจสลิป" เอง
 // ต้องตั้งค่า:  npx supabase secrets set EASYSLIP_API_KEY=<คีย์>   (คีย์ห้ามอยู่ในโค้ดหน้าเว็บหรือในรีโป)
-//   ถ้าต้องการให้ EasySlip ตรวจผู้รับด้วย: ลงทะเบียนบัญชีรับเงินของหอพักในแดชบอร์ด EasySlip แล้วตั้ง EASYSLIP_MATCH_ACCOUNT=1
+//   ตรวจผู้รับ: ลงทะเบียนบัญชีรับเงินของหอพักในแดชบอร์ด EasySlip แล้วตั้ง EASYSLIP_MATCH_ACCOUNT=1 (โหมดอัตโนมัติขอตรวจผู้รับเสมอ และจำเป็นต้องมีผลยืนยัน)
 // ถ้าแก้ไฟล์นี้: ต้อง deploy ใหม่ด้วย  npx supabase functions deploy verify-slip
 // ต้องรัน supabase/slip-verify.sql ก่อน และตั้งโหมดตรวจเป็น "แนะนำ" ในหน้าตั้งค่า (โหมด "ปิด" ฟังก์ชันนี้ไม่ทำอะไรและไม่เสียโควตา)
 // ===========================================================================
@@ -55,7 +56,8 @@ Deno.serve(async (req) => {
 
   // โหมด "ปิด" ไม่ต้องทำอะไร ไม่แตะโควตา
   const { data: settings } = await admin.from('app_settings').select('slip_verify_mode').eq('id', 1).maybeSingle()
-  if (settings?.slip_verify_mode !== 'suggest') return json({ status: 'off' })
+  const mode = settings?.slip_verify_mode
+  if (mode !== 'suggest' && mode !== 'auto') return json({ status: 'off' })
 
   const apiKey = Deno.env.get('EASYSLIP_API_KEY')
   if (!apiKey) return json({ status: 'error', message: 'ยังไม่ได้ตั้งค่า EASYSLIP_API_KEY' }, 500)
@@ -79,7 +81,7 @@ Deno.serve(async (req) => {
 
     const form = new FormData()
     form.append('image', file, `slip.${String(claim.slip_path).split('.').pop() || 'jpg'}`)
-    if (Deno.env.get('EASYSLIP_MATCH_ACCOUNT') === '1') form.append('matchAccount', 'true')
+    if (mode === 'auto' || Deno.env.get('EASYSLIP_MATCH_ACCOUNT') === '1') form.append('matchAccount', 'true')
 
     const res = await fetch(EASYSLIP_URL, {
       method: 'POST',
@@ -98,7 +100,12 @@ Deno.serve(async (req) => {
       verdict = mapEasySlipError(body?.error?.code, body?.error?.message)
     } else {
       const balance = Math.max(0, Number(claim.total) - Number(claim.paid_amount ?? 0))
-      verdict = evaluateSlip(parseEasySlip(body), { balance, invoiceCreatedAt: claim.created_at, now: new Date() })
+      verdict = evaluateSlip(parseEasySlip(body), {
+        balance,
+        invoiceCreatedAt: claim.created_at,
+        now: new Date(),
+        requireAccountMatch: mode === 'auto',
+      })
     }
 
     const { data: finalStatus, error: applyError } = await admin.rpc('apply_slip_result', {
@@ -107,7 +114,16 @@ Deno.serve(async (req) => {
       p_detail: verdict.detail,
     })
     if (applyError) throw new Error(applyError.message)
-    return json({ status: finalStatus, detail: verdict.detail })
+
+    // โหมดอัตโนมัติ: ผลเป็น ok แล้วลองยืนยันรับเงิน ฐานข้อมูลตรวจเงื่อนไขซ้ำเองทั้งหมด (ยอดพอดี ผู้รับยืนยัน สลิปไม่ซ้ำ)
+    // ไม่เข้าเงื่อนไข = ไม่ทำอะไร สลิปยังรอแอดมินตรวจ ถ้าขั้นนี้พลาดก็ไม่ถือว่าตรวจสลิปล้มเหลว
+    let approved = false
+    if (mode === 'auto' && finalStatus === 'ok') {
+      const { data: autoResult, error: autoError } = await admin.rpc('auto_approve_slip', { p_invoice: invoiceId })
+      if (autoError) console.log('auto_approve_slip error', autoError.message)
+      approved = autoResult === 'paid'
+    }
+    return json({ status: finalStatus, approved, detail: verdict.detail })
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     await admin.rpc('mark_slip_error', { p_invoice: invoiceId, p_message: `ตรวจสลิปไม่สำเร็จ: ${message}` })

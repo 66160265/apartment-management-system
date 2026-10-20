@@ -208,8 +208,15 @@ function SettingsPage() {
                             <select className={inputClass} value={form.slipVerifyMode} onChange={set('slipVerifyMode')}>
                                 <option value="off">ปิด (แอดมินตรวจสลิปด้วยตา)</option>
                                 <option value="suggest">แนะนำ (ตรวจกับ EasySlip แล้วแสดงผลให้แอดมินดู)</option>
+                                <option value="auto">อัตโนมัติ (ผ่านครบทุกเงื่อนไขแล้วยืนยันรับเงินให้เลย)</option>
                             </select>
                         </Field>
+                        {form.slipVerifyMode === 'auto' && (
+                            <p className="text-sm text-amber-900 bg-amber-50 ring-1 ring-amber-200 rounded-xl px-4 py-2.5 mt-3">
+                                ระบบจะยืนยันรับเงินให้เองเฉพาะสลิปที่ผ่านครบทุกข้อ: ยอดเท่ากับยอดคงเหลือพอดี, EasySlip ยืนยันว่าผู้รับคือบัญชีของหอพัก, มีเลขอ้างอิงและไม่เคยถูกใช้ ส่วนโอนไม่ครบ โอนเกิน หรือมีข้อสงสัย จะรอแอดมินตรวจเหมือนเดิม
+                                <strong className="block mt-1">ต้องลงทะเบียนบัญชีรับเงินของหอพักในแดชบอร์ด EasySlip ก่อน ไม่งั้นจะไม่มีสลิปไหนอนุมัติอัตโนมัติได้</strong>
+                            </p>
+                        )}
                         <p className="text-xs text-muted mt-3">
                             โหมด &quot;แนะนำ&quot; ใช้โควตาของบริการ EasySlip ทุกครั้งที่ผู้เช่าส่งสลิป (สูงสุด 3 ครั้งต่อใบแจ้งหนี้) ต้องตั้งค่า API key เป็น secret ของ Edge Function verify-slip ก่อน ถ้ายังไม่ได้ตั้ง ระบบจะแสดงว่า &quot;ตรวจอัตโนมัติไม่สำเร็จ&quot; และให้ตรวจด้วยตา
                         </p>

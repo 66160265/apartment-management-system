@@ -77,9 +77,10 @@ export function mapEasySlipError(code: string | undefined, message?: string): Ve
 
 // ประเมินสลิปเทียบกับใบแจ้งหนี้
 // balance = ยอดคงเหลือที่ต้องชำระ, invoiceCreatedAt = เวลาออกบิล, now = เวลาปัจจุบัน
+// requireAccountMatch = true ในโหมดอัตโนมัติ: ต้องมีผลยืนยันว่าผู้รับคือบัญชีหอพัก (accountMatched = true) ไม่งั้นเป็น warn
 // ผลเป็น ok เมื่อทุกอย่างปกติและยอดตรงกับยอดคงเหลือ เป็น warn เมื่อสลิปจริงแต่มีข้อสังเกตให้แอดมินดู
 // สลิปซ้ำตรวจในฐานข้อมูล (apply_slip_result) ไม่ใช่ที่นี่
-export function evaluateSlip(slip: SlipInfo, ctx: { balance: number; invoiceCreatedAt: string; now: Date }): Verdict {
+export function evaluateSlip(slip: SlipInfo, ctx: { balance: number; invoiceCreatedAt: string; now: Date; requireAccountMatch?: boolean }): Verdict {
   const notes: string[] = []
   let status: 'ok' | 'warn' | 'failed' = 'ok'
 
@@ -117,6 +118,9 @@ export function evaluateSlip(slip: SlipInfo, ctx: { balance: number; invoiceCrea
   if (slip.accountMatched === false) {
     status = 'warn'
     notes.push('ผู้รับเงินในสลิปไม่ตรงกับบัญชีของหอพัก')
+  } else if (ctx.requireAccountMatch && slip.accountMatched !== true) {
+    status = 'warn'
+    notes.push('ยังยืนยันผู้รับเงินไม่ได้ (ต้องลงทะเบียนบัญชีหอพักใน EasySlip) จึงไม่อนุมัติอัตโนมัติ')
   }
   if (!slip.transRef) {
     status = 'warn'

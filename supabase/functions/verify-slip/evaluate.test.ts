@@ -98,6 +98,14 @@ describe('evaluateSlip', () => {
     expect((v.detail.notes as string[]).join()).toContain('ผู้รับ')
   })
 
+  it('โหมดอัตโนมัติ: ต้องยืนยันผู้รับได้ ไม่งั้น warn (โหมดแนะนำไม่บังคับ)', () => {
+    const matched = parseEasySlip(response({}, { matchedAccount: { nameTh: 'หอพัก' } }))
+    expect(evaluateSlip(matched, { ...ctx, requireAccountMatch: true }).status).toBe('ok')
+    const unknown = parseEasySlip(response())
+    expect(evaluateSlip(unknown, { ...ctx, requireAccountMatch: true }).status).toBe('warn')
+    expect(evaluateSlip(unknown, ctx).status).toBe('ok')
+  })
+
   it('ไม่มีเลขอ้างอิง = warn (ตรวจสลิปซ้ำไม่ได้)', () => {
     expect(evaluateSlip(parseEasySlip(response({ transRef: undefined })), ctx).status).toBe('warn')
   })
