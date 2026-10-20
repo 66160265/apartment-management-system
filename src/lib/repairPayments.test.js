@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { owesRepairCost } from './repairPayments'
+import { owesRepairCost, unpaidRepairCosts } from './repairPayments'
 
 describe('owesRepairCost', () => {
     const base = { status: 'done', cost_payer: 'tenant', cost: 500 }
@@ -23,5 +23,27 @@ describe('owesRepairCost', () => {
         for (const cost of [0, '0', null, undefined, 'abc', -5]) {
             expect(owesRepairCost({ ...base, cost })).toBe(false)
         }
+    })
+})
+
+describe('unpaidRepairCosts', () => {
+    const owed = (id, over = {}) => ({ id, status: 'done', cost_payer: 'tenant', cost: 500, ...over })
+
+    it('เรื่องที่ยังไม่ส่งสลิปนับว่าค้างชำระ', () => {
+        expect(unpaidRepairCosts([owed('a'), owed('b')], []).map((r) => r.id)).toEqual(['a', 'b'])
+    })
+
+    it('ส่งสลิปแล้ว (รอตรวจ) หรือชำระแล้ว ไม่นับว่าค้าง', () => {
+        const payments = [{ repair_id: 'a', status: 'review' }, { repair_id: 'b', status: 'paid' }]
+        expect(unpaidRepairCosts([owed('a'), owed('b'), owed('c')], payments).map((r) => r.id)).toEqual(['c'])
+    })
+
+    it('สลิปที่ถูกปฏิเสธ ยังนับว่าค้าง (ต้องโอนใหม่)', () => {
+        expect(unpaidRepairCosts([owed('a')], [{ repair_id: 'a', status: 'rejected' }])).toHaveLength(1)
+    })
+
+    it('เรื่องที่ไม่ต้องชำระ (หอพักรับผิดชอบ ยังไม่เสร็จ ไม่มียอด) ไม่นับ', () => {
+        const repairs = [owed('a', { cost_payer: 'owner' }), owed('b', { status: 'in_progress' }), owed('c', { cost: 0 })]
+        expect(unpaidRepairCosts(repairs, [])).toEqual([])
     })
 })

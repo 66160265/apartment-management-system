@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import Icon from './Icon'
 import { PromptPayCard, SlipImage, VerifyBox } from './InvoiceParts'
 import { baht, formatDateTime } from '../lib/billing'
 import { owesRepairCost } from '../lib/repairPayments'
+import { refreshRepairCosts, useRepairCosts } from '../lib/useRepairCosts'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
@@ -23,14 +25,14 @@ function useRepairPayments(repairId) {
             .select('*')
             .eq('repair_id', repairId)
             .order('created_at')
-            .then(({ data }) => active && setPayments(data ?? []))
+            .then(({ data, error }) => active && setPayments(error ? null : (data ?? [])))
         return () => {
             active = false
         }
     }, [repairId])
     const refresh = useCallback(async () => {
-        const { data } = await supabase.from('repair_payments').select('*').eq('repair_id', repairId).order('created_at')
-        setPayments(data ?? [])
+        const { data, error } = await supabase.from('repair_payments').select('*').eq('repair_id', repairId).order('created_at')
+        setPayments(error ? null : (data ?? []))
     }, [repairId])
     return [payments, refresh]
 }
@@ -89,6 +91,42 @@ function SlipPicker({ label, onSubmit }) {
     )
 }
 
+// แถบเตือนค่าซ่อมที่ผู้เช่ายังไม่ได้ชำระ (ไม่แสดงถ้าไม่มี) ใช้ได้ทั้งหน้าภาพรวมและหน้าแจ้งซ่อม
+// onOpen(repairId) = กดรายการแล้วเปิดเรื่องนั้น (ไม่ส่ง = ลิงก์ไปหน้าแจ้งซ่อม)
+export function RepairCostBanner({ onOpen }) {
+    const items = useRepairCosts()
+    if (items.length === 0) return null
+    const total = items.reduce((sum, r) => sum + Number(r.cost), 0)
+    return (
+        <div role="alert" className="rounded-2xl bg-amber-50 ring-1 ring-amber-300 text-amber-950 p-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2 font-medium">
+                <Icon name="alert" className="w-5 h-5 shrink-0 text-amber-600" />
+                มีค่าซ่อมค้างชำระ {items.length} รายการ รวม {baht(total)}
+            </div>
+            <ul className="flex flex-col gap-1.5">
+                {items.map((r) => {
+                    const label = (
+                        <>
+                            <span className="truncate">ห้อง {r.room} · {r.problem}</span>
+                            <span className="shrink-0 font-semibold tabular-nums">{baht(r.cost)} · ชำระ</span>
+                        </>
+                    )
+                    const cls = 'w-full flex items-center justify-between gap-3 text-left text-sm bg-white/70 hover:bg-white rounded-xl px-3 py-2'
+                    return (
+                        <li key={r.id}>
+                            {onOpen ? (
+                                <button type="button" onClick={() => onOpen(r.id)} className={cls}>{label}</button>
+                            ) : (
+                                <Link to="/repairs" className={cls}>{label}</Link>
+                            )}
+                        </li>
+                    )
+                })}
+            </ul>
+        </div>
+    )
+}
+
 // ฝั่งผู้เช่า: ยอดค่าซ่อม QR พร้อมเพย์ แนบสลิป และสถานะการชำระ (แสดงเฉพาะเรื่องที่มีค่าซ่อมให้ผู้เช่าชำระ)
 export function TenantRepairPayment({ repair, userId }) {
     const settings = useSettings()
@@ -113,6 +151,7 @@ export function TenantRepairPayment({ repair, userId }) {
         // สั่งตรวจสลิปด้วยระบบ ไม่รอผล (โหมดปิดหรือตรวจไม่ได้ แอดมินยังตรวจด้วยตาได้)
         requestSlipVerify(paymentId, 'repair')
         await refresh()
+        refreshRepairCosts()
         return null
     }
 

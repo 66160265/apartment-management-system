@@ -6,6 +6,7 @@ import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
 import { invoiceStatuses } from '../data/billing'
 import { balanceOf, baht, formatDateTime, formatMonth, isPartiallyPaid, paidOf } from '../lib/billing'
 import { generatePromptPayQR } from '../lib/promptpay'
+import { RepairCostBanner } from '../components/RepairPayment'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
@@ -411,6 +412,9 @@ function UserDashboardPage() {
                             </div>
                         </div>
                     </div>
+
+                    {/* ค่าซ่อมที่ยังไม่ได้ชำระ (ไม่แสดงถ้าไม่มี) */}
+                    <RepairCostBanner />
 
                     {/* การ์ดสรุปตัวเลข 2 ใบ ตามรูปแรก (พร้อมการ์ดที่ 3 สำหรับการแสดงผลบน Desktop) */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5">

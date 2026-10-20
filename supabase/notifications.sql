@@ -249,10 +249,15 @@ begin
         v_title := 'นัดเข้าซ่อม ' || public.repair_appointment_text(new.appointment_date, new.appointment_period);
       elsif new.status is distinct from old.status then
         v_title := case new.status
-          when 'done' then 'ซ่อมเสร็จแล้ว กรุณาตรวจสอบและยืนยัน'
+          when 'done' then case when new.cost_payer = 'tenant' and new.cost > 0
+                                then 'ซ่อมเสร็จแล้ว มีค่าซ่อมที่ต้องชำระ ' || public.fmt_baht(new.cost)
+                                else 'ซ่อมเสร็จแล้ว กรุณาตรวจสอบและยืนยัน' end
           when 'cancelled' then 'เรื่องแจ้งซ่อมถูกยกเลิก'
           when 'pending' then 'ต้องนัดวันเข้าซ่อมใหม่'
           else 'สถานะแจ้งซ่อมเปลี่ยนเป็น "' || public.repair_status_label(new.status) || '"' end;
+      elsif new.status = 'done' and new.cost_payer = 'tenant' and new.cost > 0
+            and (new.cost is distinct from old.cost or new.cost_payer is distinct from old.cost_payer) then
+        v_title := 'มีค่าซ่อมที่ต้องชำระ ' || public.fmt_baht(new.cost);
       elsif new.admin_note is distinct from old.admin_note or new.technician is distinct from old.technician then
         v_title := 'ผู้ดูแลส่งข้อความเกี่ยวกับงานซ่อม';
       end if;
@@ -351,6 +356,25 @@ begin
         || case when r.contact_phone <> '' then E'\nเบอร์ผู้เช่า: ' || r.contact_phone else '' end,
       '/repairs', 'ไปที่ระบบแจ้งซ่อม');
   end loop;
+
+  -- ค่าซ่อมที่ผู้เช่ายังไม่ชำระ: เตือนทุก 3 วันนับจากวันที่ซ่อมเสร็จ (วันที่ 3, 6, 9, ...) ไม่เตือนเรื่องที่ส่งสลิปแล้วหรือชำระแล้ว
+  -- ตาราง repair_payments มาจาก repair-payments.sql ถ้ายังไม่ได้รันให้ข้ามส่วนนี้ (ใช้ dynamic SQL กัน error ตอนยังไม่มีตาราง)
+  if to_regclass('public.repair_payments') is not null then
+    for r in execute
+      'select r.* from public.repairs r
+        where r.status = ''done'' and r.cost_payer = ''tenant'' and r.cost > 0
+          and r.user_id is not null and r.completed_at is not null
+          and (public.today_th() - (r.completed_at at time zone ''Asia/Bangkok'')::date) >= 3
+          and (public.today_th() - (r.completed_at at time zone ''Asia/Bangkok'')::date) % 3 = 0
+          and not exists (select 1 from public.repair_payments p where p.repair_id = r.id and p.status in (''review'', ''paid''))'
+    loop
+      perform public.notify(
+        r.user_id, 'repair', 'ค่าซ่อมยังไม่ได้ชำระ ' || public.fmt_baht(r.cost),
+        'ห้อง ' || r.room || ' · ' || r.problem,
+        'ค่าซ่อม "' || r.problem || '" ยอด ' || public.fmt_baht(r.cost) || E' ยังไม่ได้ชำระ\nชำระและแนบสลิปได้ที่หน้าแจ้งซ่อม',
+        '/repairs', 'ชำระค่าซ่อม');
+    end loop;
+  end if;
 end;
 $$;
 
