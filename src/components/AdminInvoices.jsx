@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import DownloadInvoiceButton from './DownloadInvoiceButton'
+import BulkInvoiceForm from './BulkInvoiceForm'
 import Icon from './Icon'
 import PageHeader from './PageHeader'
 import MonthPicker from './MonthPicker'
@@ -368,6 +369,9 @@ function AdminInvoices() {
     // id ของใบแจ้งหนี้ที่กำลังแก้ไขในฟอร์มด้านบน (null = สร้างใหม่)
     const [editingId, setEditingId] = useState(null)
     const [deleting, setDeleting] = useState(null)
+    // กรอกมิเตอร์ทั้งเดือน: เปิดตารางกรอกทุกห้อง / ข้อความแจ้งผลหลังสร้างเสร็จ
+    const [bulk, setBulk] = useState(false)
+    const [bulkNotice, setBulkNotice] = useState('')
 
     // นำผลการโหลดไปตั้งค่า state: เรียงผู้เช่าตามห้อง และสร้างแผนที่ ห้อง -> ค่าเช่า
     const applyResult = useCallback(({ tenantsRes, roomsRes, invoicesRes }) => {
@@ -546,6 +550,27 @@ function AdminInvoices() {
         setDeleting(null)
     }
 
+    // กรอกมิเตอร์ทั้งเดือน: แสดงตารางกรอกทุกห้องแทนหน้ารายการ
+    if (bulk) {
+        return (
+            <>
+                <PageHeader title="กรอกมิเตอร์ทั้งเดือน" subtitle="กรอกเลขมิเตอร์ทุกห้องในตารางเดียว แล้วสร้างใบแจ้งหนี้ทั้งเดือนพร้อมกัน" />
+                <BulkInvoiceForm
+                    tenants={tenants}
+                    rents={rents}
+                    invoices={invoices}
+                    settings={settings}
+                    onCancel={() => setBulk(false)}
+                    onDone={async (count) => {
+                        await load()
+                        setBulk(false)
+                        setBulkNotice(`สร้างใบแจ้งหนี้ ${count} ใบเรียบร้อยแล้ว ผู้เช่าได้รับแจ้งเตือนแล้ว`)
+                    }}
+                />
+            </>
+        )
+    }
+
     // เลือกใบแจ้งหนี้แล้ว: แสดงหน้ารายละเอียดแทนหน้ารายการ
     const selected = invoices.find((i) => i.id === selectedId)
     if (selected) {
@@ -605,9 +630,22 @@ function AdminInvoices() {
 
     return (
         <>
-            <PageHeader title="ใบแจ้งหนี้ & ชำระเงิน" subtitle="บันทึกมิเตอร์ สร้างใบแจ้งหนี้ และตรวจสอบสลิปการโอนเงินของผู้เช่า" />
+            <PageHeader
+                title="ใบแจ้งหนี้ & ชำระเงิน"
+                subtitle="บันทึกมิเตอร์ สร้างใบแจ้งหนี้ และตรวจสอบสลิปการโอนเงินของผู้เช่า"
+                actions={
+                    <button onClick={() => { setBulk(true); setBulkNotice('') }} className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-sm font-medium shadow-card flex items-center gap-1.5">
+                        <Icon name="receipt" className="w-4 h-4" />
+                        กรอกมิเตอร์ทั้งเดือน
+                    </button>
+                }
+            />
 
             <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
+                {bulkNotice && (
+                    <div role="status" className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 text-sm px-4 py-3">{bulkNotice}</div>
+                )}
+
                 {/* ผู้เช่าโอนเกินและยังไม่ได้โอนคืน: แสดงรายการให้แอดมินกดเข้าไปบันทึกเมื่อโอนคืนแล้ว */}
                 {pendingRefunds.length > 0 && (
                     <div className="rounded-2xl bg-sky-50 ring-1 ring-sky-200 text-sky-900 p-4 flex flex-col gap-2">
