@@ -82,6 +82,22 @@ create policy "payments read" on public.invoice_payments for select to authentic
   using (public.is_admin() or user_id = auth.uid());
 revoke insert, update, delete on table public.invoice_payments from anon, authenticated;
 
+-- เลขที่ใบเสร็จ: ออกให้ตอนยืนยันรับเงินเท่านั้น (สลิปที่ถูกปฏิเสธไม่กินเลข) ใช้ตัวนับกลางตัวเดียวทั้งค่าห้องและค่าซ่อม เลขไม่ซ้ำและเรียงตามเวลารับเงิน
+-- แสดงเป็น RC-<ปี>-<เลข 6 หลัก> ฝั่งเว็บ (lib/receipts.js) ผู้ใช้เว็บแก้เลขไม่ได้ (ไม่มีสิทธิ์แก้ตาราง)
+create sequence if not exists public.receipt_no_seq;
+alter table public.invoice_payments add column if not exists receipt_no bigint;
+-- ย้ายข้อมูลเดิม: ให้เลขตามลำดับเวลารับเงิน (ทำเฉพาะแถวที่ยังไม่มีเลข รันซ้ำไม่เปลี่ยนเลขเดิม)
+do $$
+declare
+  r record;
+begin
+  for r in select id from public.invoice_payments where receipt_no is null order by confirmed_at, id loop
+    update public.invoice_payments set receipt_no = nextval('public.receipt_no_seq') where id = r.id;
+  end loop;
+end $$;
+alter table public.invoice_payments alter column receipt_no set default nextval('public.receipt_no_seq');
+create unique index if not exists invoice_payments_receipt_key on public.invoice_payments (receipt_no);
+
 -- ตารางกลางเก็บเลขอ้างอิงสลิปที่ "ใช้ยืนยันรับเงินแล้ว" ทั้งค่าห้อง (ใบแจ้งหนี้) และค่าซ่อม (repair-payments.sql)
 -- สลิปหนึ่งใบใช้ได้ครั้งเดียวทั้งระบบ ผู้ใช้เว็บเข้าถึงตารางนี้ไม่ได้ (เปิด RLS และไม่มีนโยบาย) ใช้ผ่านฟังก์ชันเท่านั้น
 create table if not exists public.slip_refs (
@@ -101,7 +117,9 @@ insert into public.invoice_payments (invoice_id, user_id, amount, slip_path, sli
 select i.id, i.user_id, i.total, i.slip_path, i.slip_uploaded_at, coalesce(i.reviewed_at, i.created_at)
 from public.invoices i
 where i.status = 'paid' and i.total > 0
-  and not exists (select 1 from public.invoice_payments p where p.invoice_id = i.id);
+  and not exists (select 1 from public.invoice_payments p where p.invoice_id = i.id)
+-- เรียงตามเวลารับเงิน เพื่อให้เลขที่ใบเสร็จของข้อมูลเดิมเรียงตามลำดับที่รับเงินจริง (ตัวนับเลขทำงานตามลำดับแถวที่ออก)
+order by coalesce(i.reviewed_at, i.created_at), i.id;
 
 update public.invoices set paid_amount = total where status = 'paid' and paid_amount = 0;
 

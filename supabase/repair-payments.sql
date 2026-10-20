@@ -30,6 +30,18 @@ create table if not exists public.repair_payments (
   created_at timestamptz not null default now()
 );
 
+-- เลขที่ใบเสร็จ (ใช้ตัวนับ receipt_no_seq ร่วมกับค่าห้อง ดู payments.sql) ออกตอนยืนยันรับเงินเท่านั้น
+alter table public.repair_payments add column if not exists receipt_no bigint;
+do $$
+declare
+  x record;
+begin
+  for x in select id from public.repair_payments where status = 'paid' and receipt_no is null order by reviewed_at, id loop
+    update public.repair_payments set receipt_no = nextval('public.receipt_no_seq') where id = x.id;
+  end loop;
+end $$;
+create unique index if not exists repair_payments_receipt_key on public.repair_payments (receipt_no);
+
 -- ค่าซ่อมหนึ่งเรื่องมีรายการที่ "รอตรวจหรือชำระแล้ว" ได้ไม่เกิน 1 รายการ (ส่งสลิปซ้อนไม่ได้ ส่งใหม่ได้เมื่อถูกปฏิเสธ)
 create unique index if not exists repair_payments_active_key on public.repair_payments (repair_id) where status in ('review', 'paid');
 create index if not exists repair_payments_repair_idx on public.repair_payments (repair_id, created_at);
@@ -126,7 +138,7 @@ begin
 
   update public.repair_payments
      set status = 'paid', reviewed_at = now(), reviewed_by = p_by, auto_approved = coalesce(p_auto, false),
-         trans_ref = ref, reject_reason = null
+         trans_ref = ref, reject_reason = null, receipt_no = nextval('public.receipt_no_seq')
    where id = pay.id;
 
   perform public.notify(

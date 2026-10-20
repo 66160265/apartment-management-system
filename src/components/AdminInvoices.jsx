@@ -220,7 +220,7 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                             </>
                         )}
 
-                        <PaymentHistory invoiceId={invoice.id} refreshKey={invoice.paid_amount} />
+                        <PaymentHistory invoiceId={invoice.id} refreshKey={invoice.paid_amount} invoice={invoice} />
 
                         {/* โอนเกิน: แสดงยอดที่ต้องโอนคืน และปุ่มบันทึกเมื่อโอนคืนแล้ว */}
                         {Number(invoice.refund_amount) > 0 && (

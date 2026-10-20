@@ -221,7 +221,7 @@ function InvoiceDetail({ invoice, userId, onBack, onChanged }) {
                         </div>
                     )}
 
-                    <PaymentHistory invoiceId={invoice.id} refreshKey={invoice.paid_amount} />
+                    <PaymentHistory invoiceId={invoice.id} refreshKey={invoice.paid_amount} invoice={invoice} />
                 </div>
             </div>
         </div>
