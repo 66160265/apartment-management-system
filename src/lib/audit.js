@@ -14,6 +14,10 @@ export const auditActions = {
     'tenant.create': { label: 'เพิ่มผู้เช่า', tone: 'bg-sky-50 text-sky-800 ring-sky-200' },
     'tenant.delete': { label: 'ลบผู้เช่า', tone: 'bg-red-50 text-red-800 ring-red-200' },
     'settings.update': { label: 'แก้การตั้งค่า', tone: 'bg-violet-50 text-violet-800 ring-violet-200' },
+    'contract.renew': { label: 'ต่อสัญญา', tone: 'bg-emerald-50 text-emerald-800 ring-emerald-200' },
+    'announcement.create': { label: 'ลงประกาศ', tone: 'bg-sky-50 text-sky-800 ring-sky-200' },
+    'announcement.update': { label: 'แก้ประกาศ', tone: 'bg-amber-50 text-amber-800 ring-amber-200' },
+    'announcement.delete': { label: 'ลบประกาศ', tone: 'bg-red-50 text-red-800 ring-red-200' },
 }
 
 // action ที่ไม่รู้จัก (เพิ่มในฐานข้อมูลภายหลัง) แสดงชื่อ action ตรง ๆ
@@ -25,6 +29,7 @@ export const auditGroups = [
     { value: 'money', label: 'ใบแจ้งหนี้และการรับเงิน', entities: ['invoices', 'invoice_payments'] },
     { value: 'repairs', label: 'ค่าซ่อม', entities: ['repairs', 'repair_payments'] },
     { value: 'tenants', label: 'ผู้เช่า', entities: ['tenants'] },
+    { value: 'announcements', label: 'ประกาศ', entities: ['announcements'] },
     { value: 'settings', label: 'การตั้งค่า', entities: ['app_settings'] },
 ]
 
@@ -59,6 +64,13 @@ export function auditDetailRows(entry) {
     if (entry.action === 'settings.update') {
         return Object.entries(detail).map(([key, change]) => [settingLabels[key] ?? key, `${show(change?.old)} → ${show(change?.new)}`])
     }
+    // แก้ประกาศ: "หัวข้อ: ค่าเดิม → ค่าใหม่" เหมือนการตั้งค่า
+    if (entry.action === 'announcement.update') {
+        const labels = { title: 'หัวข้อ', important: 'ประกาศสำคัญ' }
+        return Object.entries(detail).map(([key, change]) => [labels[key] ?? key, `${show(change?.old)} → ${show(change?.new)}`])
+    }
+    const contractLabels = { previous_end_date: 'วันสิ้นสุดเดิม', new_end_date: 'วันสิ้นสุดใหม่', note: 'หมายเหตุ' }
+    if (entry.action === 'contract.renew') return Object.entries(detail).map(([key, value]) => [contractLabels[key] ?? key, show(value)])
     return Object.entries(detail).map(([key, value]) => [key, show(value)])
 }
 

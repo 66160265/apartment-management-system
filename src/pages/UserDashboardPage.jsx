@@ -7,6 +7,7 @@ import { invoiceStatuses } from '../data/billing'
 import { balanceOf, baht, daysLate, formatDateTime, formatMonth, formatShortDate, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
 import { invoiceDueDate, tenantUnpaid } from '../lib/dashboard'
 import { generatePromptPayQR } from '../lib/promptpay'
+import AnnouncementBanner from '../components/AnnouncementBanner'
 import { RepairCostBanner } from '../components/RepairPayment'
 import { useRealtimeReload } from '../lib/realtime'
 import { requestSlipVerify } from '../lib/slipVerify'
@@ -410,6 +411,20 @@ function UserDashboardPage() {
 
                     {/* ค่าซ่อมที่ยังไม่ได้ชำระ (ไม่แสดงถ้าไม่มี) */}
                     <RepairCostBanner />
+
+                    {/* ประกาศล่าสุดจากหอพัก (ภายใน 14 วัน) */}
+                    <AnnouncementBanner />
+
+                    {/* สัญญาใกล้หมดหรือหมดแล้ว: บอกผู้เช่าให้ติดต่อผู้ดูแล (ต่อสัญญาทำโดยผู้ดูแล) */}
+                    {contractRemainingDays !== null && contractRemainingDays <= 30 && (
+                        <div role="status" className={`rounded-2xl ring-1 p-4 flex items-start gap-3 text-sm ${contractRemainingDays > 0 ? 'bg-amber-50 ring-amber-200 text-amber-950' : 'bg-red-50 ring-red-200 text-red-950'}`}>
+                            <Icon name="calendar" className="w-5 h-5 shrink-0 mt-0.5" />
+                            <p>
+                                <strong>{contractRemainingDays > 0 ? `สัญญาเช่าของคุณจะสิ้นสุดในอีก ${contractRemainingDays} วัน` : 'สัญญาเช่าของคุณสิ้นสุดแล้ว'}</strong>
+                                {' '}({formatShortDate(tenantInfo.end_date)}) หากต้องการต่อสัญญา กรุณาติดต่อผู้ดูแลหอพัก
+                            </p>
+                        </div>
+                    )}
 
                     {/* ค้างชำระหลายใบ: แสดงรายการทั้งหมด เลือกใบที่จะดู/จ่ายได้ (ถ้ามีใบเดียว การ์ดการดำเนินการด้านล่างครอบคลุมแล้ว) */}
                     {unpaid.length > 1 && (
