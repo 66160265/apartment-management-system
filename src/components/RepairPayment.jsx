@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import DownloadReceiptButton from './DownloadReceiptButton'
 import Icon from './Icon'
 import { PromptPayCard, SlipImage, VerifyBox } from './InvoiceParts'
 import { baht, formatDateTime } from '../lib/billing'
+import { useRealtimeReload } from '../lib/realtime'
 import { owesRepairCost } from '../lib/repairPayments'
+import { buildRepairReceipt } from '../lib/receipts'
 import { refreshRepairCosts, useRepairCosts } from '../lib/useRepairCosts'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
-// การจ่ายค่าซ่อมในระบบ (supabase/repair-payments.sql): ผู้เช่าโอนตามยอดค่าซ่อมแล้วแนบสลิป ผู้ดูแลตรวจและยืนยัน
+// การจ่ายค่าซ่อมในระบบ (supabase/migrations/20261022000000_initial_schema.sql (ส่วน repair-payments)): ผู้เช่าโอนตามยอดค่าซ่อมแล้วแนบสลิป ผู้ดูแลตรวจและยืนยัน
 // เงื่อนไข: ซ่อมเสร็จแล้ว (done) ผู้ดูแลระบุให้ผู้เช่าเป็นผู้ชำระ (cost_payer = tenant) และมียอด (cost > 0)
 
 const MAX_SIZE = 5 * 1024 * 1024
@@ -34,6 +37,8 @@ function useRepairPayments(repairId) {
         const { data, error } = await supabase.from('repair_payments').select('*').eq('repair_id', repairId).order('created_at')
         setPayments(error ? null : (data ?? []))
     }, [repairId])
+    // อัปเดตเองเมื่อสลิปค่าซ่อมถูกส่ง ยืนยัน หรือปฏิเสธ (ทั้งฝั่งผู้เช่าและแอดมิน)
+    useRealtimeReload(['repair_payments'], refresh)
     return [payments, refresh]
 }
 
@@ -160,9 +165,12 @@ export function TenantRepairPayment({ repair, userId }) {
             <h3 className="font-medium text-primary-dark">ชำระค่าซ่อม {baht(repair.cost)}</h3>
 
             {paid ? (
-                <p className="text-sm text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-xl px-4 py-2.5">
-                    ชำระค่าซ่อมเรียบร้อยแล้ว เมื่อ {formatDateTime(paid.reviewed_at)}
-                </p>
+                <div className="text-sm text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <span>ชำระค่าซ่อมเรียบร้อยแล้ว เมื่อ {formatDateTime(paid.reviewed_at)}</span>
+                    {paid.receipt_no !== null && paid.receipt_no !== undefined && (
+                        <DownloadReceiptButton receipt={buildRepairReceipt({ payment: paid, repair })} className="text-xs text-primary hover:underline" label="ดาวน์โหลดใบเสร็จ" />
+                    )}
+                </div>
             ) : reviewing ? (
                 <>
                     <p className="text-sm text-sky-800 bg-sky-50 ring-1 ring-sky-200 rounded-xl px-4 py-2.5">
@@ -227,9 +235,12 @@ export function AdminRepairPayment({ repair }) {
             </div>
 
             {paid && (
-                <p className="text-sm text-emerald-800">
-                    ยืนยันรับเงินเมื่อ {formatDateTime(paid.reviewed_at)}{paid.auto_approved && ' · ระบบอนุมัติอัตโนมัติ'}
-                </p>
+                <div className="text-sm text-emerald-800 flex flex-wrap items-center justify-between gap-2">
+                    <span>ยืนยันรับเงินเมื่อ {formatDateTime(paid.reviewed_at)}{paid.auto_approved && ' · ระบบอนุมัติอัตโนมัติ'}</span>
+                    {paid.receipt_no !== null && paid.receipt_no !== undefined && (
+                        <DownloadReceiptButton receipt={buildRepairReceipt({ payment: paid, repair })} className="text-xs text-primary hover:underline" label="ดาวน์โหลดใบเสร็จ" />
+                    )}
+                </div>
             )}
             {paid && paid.slip_path && (
                 <details>

@@ -51,10 +51,17 @@ npm run dev
 
 ## ตั้งค่า Supabase
 
-1. รันไฟล์ SQL ใน **SQL Editor** ตามลำดับนี้ (รันซ้ำได้):
-   `supabase/schema.sql` → `supabase/invoices.sql` → `supabase/repairs.sql` → `supabase/tenant-documents.sql` → `supabase/notifications.sql` → `supabase/settings.sql` → `supabase/payments.sql` → `supabase/slip-verify.sql` → `supabase/repair-payments.sql` → `supabase/audit.sql` → `supabase/chat.sql` แล้วรัน `supabase/notifications.sql` อีกครั้ง (trigger แจ้งเตือนใบแจ้งหนี้อ่านคอลัมน์ที่ `payments.sql` เพิ่ม)
-   - ถ้าเคยรันไว้แล้ว หลังอัปเดตระบบนัดวันซ่อม ให้รัน `supabase/repairs.sql` แล้วตามด้วย `supabase/notifications.sql` อีกครั้ง (ข้อมูลเดิมไม่หาย)
-   - (ไม่บังคับ) เปิด extension **pg_cron** ที่ Database → Extensions ก่อนรัน `notifications.sql` เพื่อให้ระบบส่งแจ้งเตือนนัดซ่อมของวันนั้นทุกเช้า 07:00
+1. รันไฟล์ migration ใน `supabase/migrations/` **ตามลำดับชื่อไฟล์** (รันได้ทั้งฐานข้อมูลใหม่และที่ใช้งานอยู่แล้ว):
+   - `20261022000000_initial_schema.sql` โครงสร้างตาราง สิทธิ์ RLS ที่เก็บไฟล์ ฟังก์ชัน trigger Realtime และดัชนี
+   - `20261022010000_hardening.sql` ปิดฟังก์ชันที่คนนอกเรียกได้ ตั้ง search_path และเพิ่มระบบบังคับเปลี่ยนรหัสผ่านครั้งแรก (บัญชีผู้เช่าที่มีอยู่แล้วจะถูกตั้งให้เปลี่ยนรหัสตอนเข้าครั้งถัดไป)
+   - `20261022020000_rls_performance.sql` ปรับ policy RLS และเพิ่มดัชนีให้เร็วขึ้นเมื่อข้อมูลเยอะ
+   ทำได้สองวิธี:
+   - วางทีละไฟล์ใน **SQL Editor** แล้วกด Run
+   - หรือใช้ Supabase CLI: `npx supabase link --project-ref <project-ref>` แล้ว `npx supabase db push`
+   - รันซ้ำได้ ข้อมูลเดิมไม่หาย (ใช้อัปเดตฐานข้อมูลที่เคยรันไฟล์ SQL แยกมาก่อนได้ด้วย) ถ้าใช้ CLI กับฐานข้อมูลที่รันมาแล้วและไม่อยากให้รันซ้ำ ให้ทำเครื่องหมายว่าใช้แล้ว: `npx supabase migration repair --status applied 20261022000000 20261022010000 20261022020000`
+   - การเปลี่ยนแปลงฐานข้อมูลครั้งต่อไปให้เพิ่มเป็นไฟล์ใหม่ใน `supabase/migrations/` (ชื่อขึ้นต้นด้วยวันเวลา เช่น `20261101000000_ชื่อ.sql`) อย่าแก้ไฟล์เดิม
+   - (ไม่บังคับ) เปิด extension **pg_cron** ที่ Database → Extensions ก่อนรัน เพื่อให้ระบบส่งแจ้งเตือนนัดซ่อมของวันนั้นทุกเช้า 07:00 ถ้าเปิดทีหลังให้รันไฟล์ซ้ำอีกครั้ง
+   - ส่วน Realtime ในไฟล์ทำให้หน้าเว็บอัปเดตเองเมื่อมีคนแก้ข้อมูล ถ้าไม่ได้รัน เว็บทำงานตามเดิมแต่ไม่อัปเดตเอง
 2. สร้างบัญชีแอดมินคนแรกที่ **Authentication → Users** แล้วเพิ่มแถวใน `profiles` (`id` = id ของผู้ใช้, `role` = `admin`)
 3. ปิดการยืนยันอีเมล (Authentication → Providers → Email → Confirm email) หรือใช้ Edge Function ซึ่งยืนยันให้อัตโนมัติ
 4. Deploy Edge Functions:
@@ -93,7 +100,7 @@ src/
   lib/          ตัวช่วย (Supabase client, การคำนวณใบแจ้งหนี้, สิทธิ์ผู้ใช้, แจ้งเตือน)
   data/         ค่าคงที่ (เมนู, อัตราค่าบริการ, ข้อความแจ้งเตือน)
 supabase/
-  *.sql         โครงสร้างตาราง สิทธิ์ (RLS) และที่เก็บไฟล์
+  migrations/   ไฟล์ SQL โครงสร้างตาราง สิทธิ์ (RLS) และที่เก็บไฟล์
   functions/    Edge Functions (create-tenant, admin-users)
 ```
 

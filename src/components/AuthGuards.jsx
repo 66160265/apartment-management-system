@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { homeFor } from '../lib/auth'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
@@ -32,15 +32,16 @@ function useSession() {
                 if (active) setSession(null)
                 return
             }
-            // ถามเซิร์ฟเวอร์ว่าเซสชันนี้ยังใช้ได้จริงไหม
+            // แสดงหน้าทันทีจากเซสชันในเครื่อง ไม่รอไปถามเซิร์ฟเวอร์ก่อน (ลดเวลารอตอนเปิดเว็บหนึ่งรอบเดินทางเครือข่าย)
+            if (active) setSession(local)
+            // แล้วถามเซิร์ฟเวอร์ใน background ว่าเซสชันนี้ยังใช้ได้จริงไหม บัญชีถูกลบหรือเซสชันใช้ไม่ได้ = ออกจากระบบ
+            // (ข้อมูลจริงถูกคุมด้วย RLS อยู่แล้ว ช่วงสั้น ๆ ก่อนตรวจเสร็จเห็นแค่โครงหน้า)
             const { error } = await supabase.auth.getUser()
             // ปฏิเสธเฉพาะกรณีเซิร์ฟเวอร์ตอบว่าเซสชันใช้ไม่ได้ ถ้าแค่เน็ตหลุดให้ใช้เซสชันเดิมไปก่อน
             if (error && (error.status === 401 || error.status === 403 || error.status === 404)) {
                 await supabase.auth.signOut()
                 if (active) setSession(null)
-                return
             }
-            if (active) setSession(local)
         })()
 
         // ติดตามการ login/logout/ต่ออายุเซสชันหลังจากนี้
@@ -76,6 +77,16 @@ export function RequireRole({ role, children }) {
     // อ่านสิทธิ์ไม่ได้ (ไม่มีแถวใน profiles) ส่งกลับหน้า login กันวนไปมา
     if (!me.role) return <Navigate to="/" replace />
     if (me.role !== role) return <Navigate to={homeFor(me.role)} replace />
+    return children
+}
+
+// บัญชีที่ถูกตั้งให้ต้องเปลี่ยนรหัสผ่าน (แอดมินสร้าง/รีเซ็ตรหัสให้) ใช้ได้แค่หน้าบัญชีจนกว่าจะตั้งรหัสใหม่
+// ไม่รอข้อมูลผู้ใช้ก่อนแสดงหน้า (ไม่ให้หน้าแรกช้าลง) พอโหลดเสร็จและต้องเปลี่ยนรหัสจึงพาไปหน้าบัญชี
+export function RequireFreshPassword({ children }) {
+    const me = useCurrentUser()
+    const { pathname } = useLocation()
+
+    if (me?.mustChangePassword && pathname !== '/account') return <Navigate to="/account" replace />
     return children
 }
 

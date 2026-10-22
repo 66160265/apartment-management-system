@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { DEFAULT_SETTINGS } from '../data/billing'
+import { useRealtimeReload } from './realtime'
 import { supabase } from './supabaseClient'
 
 // ตั้งค่าหอพักจากตาราง app_settings แถวเดียว (id = 1) ใช้ค่าเริ่มต้นถ้ายังไม่มีตาราง/ยังไม่ได้ตั้งค่า
@@ -23,11 +24,13 @@ const columns = {
     lateFeePerDay: 'late_fee_per_day',
     lateFeeGraceDays: 'late_fee_grace_days',
     lateFeeCap: 'late_fee_cap',
+    slipQuota: 'slip_quota',
 }
 // ค่าที่เป็นตัวเลข (ต้องแปลงเป็น Number ทั้งตอนอ่านและบันทึก)
 const numeric = new Set(['dueDay', 'rateWater', 'rateElectric', 'commonFee', 'lateFeePerDay', 'lateFeeGraceDays'])
 
-// เพดานค่าปรับ: ว่าง ('' ในฟอร์ม / null ในฐานข้อมูล) = ไม่จำกัด
+// ช่องตัวเลขที่เว้นว่างได้ ('' ในฟอร์ม / null ในฐานข้อมูล): เพดานค่าปรับ (ว่าง = ไม่จำกัด) และโควตาตรวจสลิป (ว่าง = ไม่ตั้ง)
+const nullableNumber = new Set(['lateFeeCap', 'slipQuota'])
 const capToRow = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
 
 // แปลงแถวจากตาราง app_settings เป็นออบเจ็กต์ตั้งค่า (ช่องที่ว่างใช้ค่าเริ่มต้น)
@@ -38,7 +41,7 @@ export function settingsFromRow(row) {
         const value = row[column]
         if (value === null || value === undefined) continue
         // ช่องข้อความที่ว่างไว้ ให้ใช้ค่าเริ่มต้นแทน ส่วนตัวเลขยอมรับ 0 ได้
-        if (numeric.has(key) || key === 'lateFeeCap') result[key] = Number(value)
+        if (numeric.has(key) || nullableNumber.has(key)) result[key] = Number(value)
         else if (String(value).trim() !== '') result[key] = value
     }
     return result
@@ -49,7 +52,7 @@ export function settingsToRow(values) {
     const row = {}
     for (const [key, column] of Object.entries(columns)) {
         if (values[key] === undefined) continue
-        if (key === 'lateFeeCap') row[column] = capToRow(values[key])
+        if (nullableNumber.has(key)) row[column] = capToRow(values[key])
         else row[column] = numeric.has(key) ? Number(values[key]) : String(values[key]).trim()
     }
     return row
@@ -80,10 +83,11 @@ export function loadSettings(force = false) {
 
 // คอลัมน์ของ app_settings ที่มาจากไฟล์ SQL รุ่นหลัง: ค่าเริ่มต้น (ใช้ตัดสินว่าข้ามได้ไหม) และไฟล์ที่ต้องรัน
 const optionalColumns = {
-    slip_verify_mode: { isDefault: (v) => v === undefined || v === 'off', sql: 'supabase/slip-verify.sql' },
-    late_fee_per_day: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/payments.sql' },
-    late_fee_grace_days: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/payments.sql' },
-    late_fee_cap: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/payments.sql' },
+    slip_verify_mode: { isDefault: (v) => v === undefined || v === 'off', sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-verify)' },
+    late_fee_per_day: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
+    late_fee_grace_days: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
+    late_fee_cap: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
+    slip_quota: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/migrations/20261022030000_slip_quota.sql' },
 }
 
 // บันทึกการตั้งค่า (เฉพาะแอดมิน) คืนค่า null เมื่อสำเร็จ หรือข้อความ error
@@ -116,6 +120,21 @@ supabase.auth.onAuthStateChange((event) => {
     }
 })
 
+// โหลดค่าตั้งค่าใหม่แล้วแจ้งทุกหน้า (หลายหน้าฟังพร้อมกัน แต่โหลดครั้งเดียว) ใช้ตอนมีคนแก้การตั้งค่าที่เครื่องอื่น
+let reloading = null
+function reloadSettings() {
+    reloading ??= loadSettings(true)
+        .then((result) => {
+            listeners.forEach((l) => l(result))
+            return result
+        })
+        .catch(() => {})
+        .finally(() => {
+            reloading = null
+        })
+    return reloading
+}
+
 // hook อ่านค่าตั้งค่าหอพัก และอัปเดตอัตโนมัติเมื่อมีการบันทึกใหม่
 export function useSettings() {
     const [settings, setSettings] = useState(cached ?? DEFAULT_SETTINGS)
@@ -132,6 +151,9 @@ export function useSettings() {
             listeners.delete(setSettings)
         }
     }, [])
+
+    // อัปเดตเองเมื่อแอดมินแก้การตั้งค่า (เช่น เปลี่ยนบัญชีรับเงิน อัตราค่าน้ำไฟ) ผู้เช่าที่เปิดหน้าอยู่เห็นค่าใหม่ทันที
+    useRealtimeReload(['app_settings'], reloadSettings)
 
     return settings
 }

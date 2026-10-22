@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { auditActionOf, auditActorName, auditDetailRows, auditGroups, matchesAudit } from '../lib/audit'
 import { formatDateTime } from '../lib/billing'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 
 // ประวัติการแก้ไขข้อมูลสำคัญ (เฉพาะแอดมิน): ใครทำอะไรเมื่อไหร่ เรื่องเงิน ค่าซ่อม ผู้เช่า และการตั้งค่า
-// ฐานข้อมูลบันทึกเองด้วย trigger (supabase/audit.sql) แก้หรือลบจากหน้าเว็บไม่ได้
+// ฐานข้อมูลบันทึกเองด้วย trigger (supabase/migrations/20261022000000_initial_schema.sql (ส่วน audit)) แก้หรือลบจากหน้าเว็บไม่ได้
 const PAGE_SIZE = 100
 
 function AuditLogPage() {
@@ -26,7 +27,7 @@ function AuditLogPage() {
         const { data, error: err } = await query
         setLoading(false)
         if (err) {
-            setError(/audit_log/.test(err.message) ? 'ยังไม่ได้รัน supabase/audit.sql ใน SQL Editor จึงยังไม่มีประวัติการแก้ไข' : `โหลดไม่สำเร็จ: ${err.message}`)
+            setError(/audit_log/.test(err.message) ? 'ยังไม่ได้รัน supabase/migrations/20261022000000_initial_schema.sql (ส่วน audit) ใน SQL Editor จึงยังไม่มีประวัติการแก้ไข' : `โหลดไม่สำเร็จ: ${err.message}`)
             return
         }
         setError('')
@@ -42,6 +43,9 @@ function AuditLogPage() {
             active = false
         }
     }, [load])
+
+    // รายการใหม่ขึ้นเอง ถ้าผู้ใช้โหลดรายการเก่าเพิ่มไว้แล้ว (เกินหนึ่งหน้า) ไม่รีเซ็ตให้ เพราะรายการที่ดูอยู่จะหาย
+    useRealtimeReload(['audit_log'], () => (rows.length <= PAGE_SIZE ? load(true) : undefined))
 
     const visible = rows.filter((r) => matchesAudit(r, search))
 

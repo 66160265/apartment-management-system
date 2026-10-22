@@ -10,7 +10,7 @@ describe('auditActionOf', () => {
         expect(auditActionOf('something.new')).toMatchObject({ label: 'something.new' })
     })
 
-    it('ทุก action ที่ฐานข้อมูลบันทึก (audit.sql) มีป้าย', () => {
+    it('ทุก action ที่ฐานข้อมูลบันทึก (ส่วน audit ของไฟล์ migration) มีป้าย', () => {
         for (const a of ['invoice.create', 'invoice.edit_total', 'invoice.status', 'invoice.delete', 'payment.confirm', 'refund.done', 'repair.cost',
             'repair_payment.paid', 'repair_payment.rejected', 'tenant.create', 'tenant.delete', 'settings.update']) {
             expect(auditActions[a]).toBeTruthy()

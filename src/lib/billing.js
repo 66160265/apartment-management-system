@@ -22,7 +22,7 @@ export const baht = (n) => `฿${Number(n).toLocaleString('th-TH')}`
 // ปัดเป็นสตางค์ กันเลขทศนิยมคลาดเคลื่อน (เช่น 0.1 + 0.2)
 const round2 = (n) => Math.round(Number(n) * 100) / 100
 
-// ---- ค่าปรับชำระล่าช้า (ต้องตรงกับ invoice_late_fee ใน supabase/payments.sql) ----
+// ---- ค่าปรับชำระล่าช้า (ต้องตรงกับ invoice_late_fee ใน supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)) ----
 // ใบแจ้งหนี้จำค่าตั้งค่าไว้ตอนออกใบ: due_date วันครบกำหนด, late_fee_rate บาท/วัน, late_fee_grace วันผ่อนผัน, late_fee_cap เพดาน (null = ไม่จำกัด)
 // ค่าปรับ = อัตรา x max(0, (วันที่คิด - วันครบกำหนด) - วันผ่อนผัน) ไม่เกินเพดาน อัตรา 0 หรือไม่มี due_date = ไม่คิด
 
@@ -49,10 +49,13 @@ export function lateFeeOf(invoice, now = new Date()) {
     return lateFeeAt(invoice, thaiDateOf(now))
 }
 
-// เกินกำหนดชำระกี่วัน (0 = ยังไม่เกิน หรือชำระแล้ว หรือบิลเก่าที่ไม่มีวันครบกำหนด)
-export function daysLate(invoice, now = new Date()) {
-    if (invoice.status === 'paid' || !invoice.due_date) return 0
-    return Math.max(0, daysBetween(invoice.due_date, thaiDateOf(now)))
+// เกินกำหนดชำระกี่วัน (0 = ยังไม่เกิน หรือชำระแล้ว หรือไม่รู้วันครบกำหนด)
+// ใบที่ออกตอนไม่ได้เปิดค่าปรับไม่มี due_date: ส่ง dueDay (วันครบกำหนดจากหน้าตั้งค่า) เพื่อคำนวณจากเดือนของใบแทน ไม่ส่ง = นับว่าไม่รู้
+export function daysLate(invoice, now = new Date(), dueDay) {
+    if (invoice.status === 'paid') return 0
+    const due = invoice.due_date || (dueDay ? dueDateIso(invoice.month, dueDay) : null)
+    if (!due) return 0
+    return Math.max(0, daysBetween(due, thaiDateOf(now)))
 }
 
 // วันที่ที่ใช้คิดค่าปรับของสลิปที่ส่งมา = วันที่ส่งสลิป หรือวันที่โอนในผลตรวจสลิป อย่างใดอย่างหนึ่งที่เร็วกว่า (ต้องตรงกับ asof_date ในฐานข้อมูล)
@@ -84,7 +87,7 @@ export function lateFeeSnapshot(settings, month) {
     }
 }
 
-// ยอดที่ได้รับแล้วของใบแจ้งหนี้ (ผู้เช่าโอนหลายครั้งได้ ดู supabase/payments.sql) ใบเก่าที่ไม่มีช่องนี้ถือว่า 0
+// ยอดที่ได้รับแล้วของใบแจ้งหนี้ (ผู้เช่าโอนหลายครั้งได้ ดู supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)) ใบเก่าที่ไม่มีช่องนี้ถือว่า 0
 export const paidOf = (invoice) => round2(invoice.paid_amount ?? 0)
 
 // ยอดคงเหลือที่ต้องชำระ ณ ตอนนี้ (ไม่ติดลบ) = ยอดบิล + ค่าปรับล่าช้าวันนี้ - ที่ได้รับแล้ว ใช้เป็นยอดใน QR พร้อมเพย์และข้อความ "ยอดที่ต้องชำระ"

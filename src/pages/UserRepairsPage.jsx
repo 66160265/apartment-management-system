@@ -7,6 +7,7 @@ import { AppointmentBox, ConfirmDialog, RepairImage, RepairImagePicker, RepairSt
 import { repairCategories, repairProgressKeys, repairStatuses, repairStatusKeys } from '../data/repairs'
 import { baht, formatDateTime } from '../lib/billing'
 import { formatSlot, formatThaiDate, removeRepairImage, upcomingSlots, uploadRepairImage, validateAvailability } from '../lib/repairs'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
 
@@ -101,6 +102,9 @@ function UserRepairsPage() {
 
     // โหลดซ้ำหลังแจ้ง/แก้ไข/ยกเลิก
     const load = async () => setData(await fetchRepairs(userId))
+
+    // อัปเดตเองเมื่อผู้ดูแลรับเรื่อง เสนอนัด เปลี่ยนสถานะ หรือใส่ค่าซ่อม
+    useRealtimeReload(['repairs'], load, { enabled: Boolean(userId) })
 
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {

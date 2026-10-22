@@ -8,6 +8,7 @@ export const menuItems = [
     { label: 'แจ้งซ่อม', path: '/repairs', icon: 'wrench', group: 'main' },
     { label: 'แชท', path: '/chat', icon: 'chat', group: 'main' },
     { label: 'แจ้งเตือน', path: '/notifications', icon: 'bell', group: 'main' },
+    { label: 'รายงาน', path: '/admin/reports', icon: 'fileText', group: 'main', adminOnly: true },
     { label: 'บัญชีผู้ใช้', path: '/admin/users', icon: 'key', group: 'system', adminOnly: true },
     { label: 'ประวัติการแก้ไข', path: '/admin/audit', icon: 'clock', group: 'system', adminOnly: true },
     { label: 'ตั้งค่า', path: '/settings', icon: 'settings', group: 'system', adminOnly: true },

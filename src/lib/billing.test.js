@@ -157,6 +157,29 @@ describe('ค่าปรับของใบแจ้งหนี้ตอน�
     })
 })
 
+describe('daysLate เมื่อใบไม่มี due_date', () => {
+    const now = new Date('2026-11-10T10:00:00+07:00')
+    const base = { month: '2026-10', status: 'pending' }
+
+    it('ไม่มี due_date และไม่ส่ง dueDay = 0 (ไม่รู้วันครบกำหนด)', () => {
+        expect(daysLate(base, now)).toBe(0)
+    })
+
+    it('ส่ง dueDay: คำนวณจากวันที่ dueDay ของเดือนถัดไป', () => {
+        expect(daysLate(base, now, 5)).toBe(5)
+        expect(daysLate(base, now, 10)).toBe(0)
+        expect(daysLate(base, now, 28)).toBe(0)
+    })
+
+    it('มี due_date ของใบ ใช้ของใบ ไม่สนใจ dueDay', () => {
+        expect(daysLate({ ...base, due_date: '2026-11-08' }, now, 5)).toBe(2)
+    })
+
+    it('ชำระแล้ว = 0 เสมอ', () => {
+        expect(daysLate({ ...base, status: 'paid' }, now, 5)).toBe(0)
+    })
+})
+
 describe('slipAsOf / balanceAtSlip', () => {
     const base = { total: 1000, due_date: '2026-11-05', late_fee_rate: 50, late_fee_grace: 0, status: 'review' }
 

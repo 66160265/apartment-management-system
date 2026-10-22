@@ -14,7 +14,7 @@ export async function requestSlipVerify(id, kind = 'invoice') {
     }
 }
 
-// ป้ายและข้อความของสถานะการตรวจสลิป (ค่าตรงกับ invoices.verify_status ใน supabase/slip-verify.sql)
+// ป้ายและข้อความของสถานะการตรวจสลิป (ค่าตรงกับ invoices.verify_status ใน supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-verify))
 export const verifyStatuses = {
     checking: { label: 'กำลังตรวจสลิป...', color: 'bg-sky-50 text-sky-900 ring-sky-200' },
     ok: { label: 'ตรวจแล้ว: ยอดตรงกับยอดคงเหลือ ไม่พบสิ่งผิดปกติ', color: 'bg-emerald-50 text-emerald-900 ring-emerald-200' },

@@ -1,5 +1,8 @@
-import AdminInvoices from '../components/AdminInvoices'
-import TenantInvoices from '../components/TenantInvoices'
+import { lazy } from 'react'
+
+// โหลดเฉพาะฝั่งที่ใช้ (ผู้เช่าไม่ต้องโหลดโค้ดฝั่งแอดมิน)
+const AdminInvoices = lazy(() => import('../components/AdminInvoices'))
+const TenantInvoices = lazy(() => import('../components/TenantInvoices'))
 import { useCurrentUser } from '../lib/useCurrentUser'
 
 // แอดมินสร้าง/ตรวจสอบใบแจ้งหนี้ ผู้เช่าดูใบแจ้งหนี้ของตัวเองและแนบสลิป

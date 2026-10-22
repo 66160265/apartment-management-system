@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import PageHeader from '../components/PageHeader'
 import { baht } from '../lib/billing'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 
 // ค่าเริ่มต้นของฟอร์มเพิ่มห้องใหม่
@@ -176,6 +177,9 @@ function RoomsPage() {
 
     // โหลดรายการห้องใหม่ (ใช้หลังบันทึก/ลบ)
     const load = async () => applyResult(await fetchRooms())
+
+    // อัปเดตเองเมื่อห้องหรือผู้เช่าเปลี่ยน (เช่น เพิ่ม/ลบผู้เช่า เปลี่ยนสถานะห้อง)
+    useRealtimeReload(['rooms', 'tenants'], load)
 
     // โหลดรายการห้องครั้งแรกเมื่อเปิดหน้า
     useEffect(() => {

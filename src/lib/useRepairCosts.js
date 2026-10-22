@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { useRealtimeReload } from './realtime'
 import { supabase } from './supabaseClient'
 import { unpaidRepairCosts } from './repairPayments'
 import { useCurrentUser } from './useCurrentUser'
@@ -34,7 +35,7 @@ async function load(userId) {
     ])
     inflight = null
     if (current !== userId) return
-    // โหลดไม่สำเร็จ (เช่น ยังไม่ได้รัน repair-payments.sql) ไม่แสดงค่าซ่อมค้าง เพราะผู้เช่าจะชำระไม่ได้
+    // โหลดไม่สำเร็จ (เช่น ยังไม่ได้รัน ส่วน repair-payments ของไฟล์ migration) ไม่แสดงค่าซ่อมค้าง เพราะผู้เช่าจะชำระไม่ได้
     const items = repairsRes.error || paymentsRes.error ? EMPTY : unpaidRepairCosts(repairsRes.data ?? [], paymentsRes.data ?? [])
     state = { userId, items }
     listeners.forEach((l) => l())
@@ -62,6 +63,9 @@ export function useRepairCosts() {
             if (current === userId) current = null
         }
     }, [userId])
+
+    // อัปเดตเองเมื่อผู้ดูแลใส่/แก้ค่าซ่อม หรือสลิปค่าซ่อมถูกยืนยัน/ปฏิเสธ (ป้ายที่เมนูและแถบเตือนเปลี่ยนทันที)
+    useRealtimeReload(['repairs', 'repair_payments'], () => userId && load(userId), { enabled: Boolean(userId) })
 
     return userId && snap.userId === userId ? snap.items : EMPTY
 }

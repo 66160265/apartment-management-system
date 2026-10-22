@@ -5,6 +5,7 @@ import Icon from '../components/Icon'
 import { CopyButton } from '../components/InvoiceParts'
 import TenantDetail from '../components/TenantDetail'
 import { Avatar, ContractBadge } from '../components/TenantParts'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { createTenantAccount, makeDefaultPassword, makeUsername } from '../lib/tenantAccount'
 import { REQUIRED_DOCS, contractStatus, formatDate } from '../lib/tenants'
@@ -21,6 +22,8 @@ const fromRow = (r) => ({
     startDate: r.start_date,
     endDate: r.end_date,
     userId: r.user_id,
+    // เงินประกัน (คอลัมน์มีเมื่อรัน supabase/migrations/20261022000000_initial_schema.sql (ส่วน move-out) แล้ว ยังไม่มี = 0)
+    deposit: Number(r.deposit ?? 0),
 })
 
 // คลาส Tailwind ของช่องกรอกในฟอร์ม
@@ -35,7 +38,7 @@ function newForm() {
     const end = new Date(start)
     end.setFullYear(end.getFullYear() + 1)
     end.setDate(end.getDate() - 1)
-    return { name: '', phone: '', room: '', startDate: isoDate(start), endDate: isoDate(end) }
+    return { name: '', phone: '', room: '', startDate: isoDate(start), endDate: isoDate(end), deposit: '' }
 }
 
 // แท็บกรองรายชื่อ: ทั้งหมด / ใกล้หมดสัญญา / หมดสัญญา / เอกสารไม่ครบ
@@ -82,6 +85,10 @@ function AddTenantModal({ rooms, onSave, onClose }) {
             setError('วันสิ้นสุดสัญญาต้องไม่ก่อนวันเริ่มสัญญา')
             return
         }
+        if (form.deposit !== '' && (Number.isNaN(Number(form.deposit)) || Number(form.deposit) < 0)) {
+            setError('เงินประกันต้องเป็นตัวเลขที่ไม่ติดลบ')
+            return
+        }
         // สร้างผู้เช่า สำเร็จแล้วเก็บข้อมูลบัญชีไว้แสดงให้แอดมินแจ้งผู้เช่า
         setSaving(true)
         const err = await onSave({
@@ -90,6 +97,7 @@ function AddTenantModal({ rooms, onSave, onClose }) {
             room: form.room,
             startDate: form.startDate,
             endDate: form.endDate,
+            deposit: form.deposit === '' ? 0 : Number(form.deposit),
         })
         setSaving(false)
         if (err) setError(err)
@@ -160,6 +168,12 @@ function AddTenantModal({ rooms, onSave, onClose }) {
                             </div>
                         </div>
 
+                        {/* เงินประกัน (ไม่บังคับ แก้ภายหลังได้ในหน้ารายละเอียดผู้เช่า) */}
+                        <label className="text-sm text-muted">
+                            เงินประกัน (บาท) <span className="text-xs">ไม่บังคับ</span>
+                            <input className={inputClass} type="number" min="0" step="0.01" value={form.deposit} onChange={set('deposit')} placeholder="0" />
+                        </label>
+
                         {/* ตัวอย่างบัญชีเข้าสู่ระบบที่จะถูกสร้าง */}
                         <div className="rounded-xl bg-mist/40 border border-mist px-4 py-3 text-sm flex items-start gap-3">
                             <Icon name="key" className="w-5 h-5 mt-0.5 text-primary" />
@@ -210,6 +224,8 @@ function TenantsPage() {
     const [tab, setTab] = useState('all')
     // null = ปิด, 'new' = เพิ่มผู้เช่า, ออบเจ็กต์ผู้เช่า = หน้ารายละเอียด
     const [modal, setModal] = useState(null)
+    // ข้อความแจ้งเตือนหลังเพิ่มผู้เช่า (เช่น ตั้งเงินประกันไม่สำเร็จ)
+    const [notice, setNotice] = useState('')
 
     // นำผลการโหลดไปตั้งค่า state: เรียงผู้เช่าตามห้อง และนับเอกสารหลักของแต่ละห้อง
     const applyResult = useCallback(([tenantsRes, roomsRes, docsRes]) => {
@@ -234,6 +250,9 @@ function TenantsPage() {
     // โหลดข้อมูลผู้เช่าใหม่ (ใช้หลังเพิ่ม/แก้ไข/ลบ)
     const load = async () => applyResult(await fetchTenantsData())
 
+    // อัปเดตเองเมื่อผู้เช่าหรือห้องเปลี่ยน
+    useRealtimeReload(['tenants', 'rooms'], load)
+
     // โหลดข้อมูลผู้เช่าครั้งแรกเมื่อเปิดหน้า
     useEffect(() => {
         let active = true
@@ -246,9 +265,15 @@ function TenantsPage() {
     }, [applyResult])
 
     // เพิ่มผู้เช่าผ่าน Edge Function create-tenant แล้วโหลดรายการใหม่
-    const handleCreate = async (data) => {
+    const handleCreate = async ({ deposit, ...data }) => {
         const err = await createTenantAccount(data)
         if (err) return err
+        // เงินประกัน: Edge Function create-tenant ไม่รู้จักช่องนี้ จึงตั้งค่าตามหลังด้วยการอัปเดตแถวผู้เช่า (ไม่ต้อง deploy ฟังก์ชันใหม่)
+        // ถ้าตั้งไม่สำเร็จ (เช่น ยังไม่ได้รัน ส่วน move-out ของไฟล์ migration) ผู้เช่าถูกสร้างแล้ว จึงแจ้งเตือนให้ไปแก้ในหน้ารายละเอียดแทนการแจ้งว่าล้มเหลว
+        if (deposit > 0) {
+            const { error } = await supabase.from('tenants').update({ deposit }).eq('room', data.room)
+            if (error) setNotice(`เพิ่มผู้เช่าห้อง ${data.room} แล้ว แต่ตั้งเงินประกันไม่สำเร็จ (${error.message}) กรุณาแก้ในหน้ารายละเอียดผู้เช่า`)
+        }
         await load()
         return null
     }
@@ -314,6 +339,12 @@ function TenantsPage() {
                 } />
 
             <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
+                {notice && (
+                    <div role="status" className="rounded-xl bg-amber-50 ring-1 ring-amber-200 text-amber-900 text-sm px-4 py-3 flex items-start justify-between gap-3">
+                        <span>{notice}</span>
+                        <button type="button" onClick={() => setNotice('')} aria-label="ปิดข้อความ" className="shrink-0 text-amber-700">✕</button>
+                    </div>
+                )}
                 {/* การ์ดสรุป: ผู้เช่าทั้งหมด ใกล้หมดสัญญา หมดสัญญา ห้องว่าง */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {summary.map((c) => {
@@ -351,7 +382,7 @@ function TenantsPage() {
                             รายชื่อผู้เช่า
                             <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
                         </h2>
-                        <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:bg-white">
+                        <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                             <Icon name="search" className="w-4 h-4 text-muted" />
                             <input
                                 type="text"

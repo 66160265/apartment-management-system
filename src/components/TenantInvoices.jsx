@@ -4,6 +4,7 @@ import Icon from './Icon'
 import DownloadInvoiceButton from './DownloadInvoiceButton'
 import { CopyButton, InvoiceBreakdown, InvoiceStepper, PaymentHistory, PromptPayCard, SlipImage, StatusBadge } from './InvoiceParts'
 import { balanceOf, baht, daysLate, formatDateTime, formatMonth, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
+import { useRealtimeReload } from '../lib/realtime'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
@@ -221,7 +222,7 @@ function InvoiceDetail({ invoice, userId, onBack, onChanged }) {
                         </div>
                     )}
 
-                    <PaymentHistory invoiceId={invoice.id} refreshKey={invoice.paid_amount} />
+                    <PaymentHistory invoiceId={invoice.id} refreshKey={invoice.paid_amount} invoice={invoice} />
                 </div>
             </div>
         </div>
@@ -251,6 +252,9 @@ function TenantInvoices({ userId }) {
 
     // โหลดซ้ำหลังส่งสลิป
     const load = useCallback(async () => applyResult(await fetchInvoices()), [applyResult])
+
+    // อัปเดตเองเมื่อมีใบใหม่ ผู้ดูแลยืนยัน/ปฏิเสธสลิป หรือมีการรับเงิน
+    useRealtimeReload(['invoices', 'invoice_payments'], load)
 
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {
