@@ -260,3 +260,28 @@ describe('คอลัมน์ส่งออก', () => {
         expect(b).toBe('2026-10-21,,,,5,แอดมิน,')
     })
 })
+
+describe('utilityHistory', () => {
+    const inv = (month, w, e) => ({ month, water_prev: 0, water_curr: w, elec_prev: 0, elec_curr: e })
+
+    it('เรียงจากเก่าไปใหม่ ย้อนหลังตามจำนวนเดือน รวมเดือนสุดท้าย', async () => {
+        const { utilityHistory } = await import('./reports')
+        const rows = utilityHistory([], '2026-02', 4)
+        expect(rows.map((r) => r.month)).toEqual(['2025-11', '2025-12', '2026-01', '2026-02'])
+    })
+
+    it('รวมหน่วยทุกห้องของเดือนเดียวกัน เดือนที่ไม่มีใบเป็น 0', async () => {
+        const { utilityHistory } = await import('./reports')
+        const rows = utilityHistory([inv('2026-01', 10, 100), inv('2026-01', 5, 50), inv('2026-03', 7, 70), inv('2025-01', 99, 99)], '2026-03', 3)
+        expect(rows).toEqual([
+            { month: '2026-01', water: 15, electric: 150, invoices: 2 },
+            { month: '2026-02', water: 0, electric: 0, invoices: 0 },
+            { month: '2026-03', water: 7, electric: 70, invoices: 1 },
+        ])
+    })
+
+    it('มิเตอร์ถอยหลัง (ค่าปัจจุบันน้อยกว่าก่อนหน้า) นับเป็น 0 ไม่ติดลบ', async () => {
+        const { utilityHistory } = await import('./reports')
+        expect(utilityHistory([{ month: '2026-03', water_prev: 50, water_curr: 10, elec_prev: 0, elec_curr: 5 }], '2026-03', 1)[0]).toMatchObject({ water: 0, electric: 5 })
+    })
+})

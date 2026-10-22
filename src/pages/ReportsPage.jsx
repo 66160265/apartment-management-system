@@ -7,10 +7,11 @@ import { formatDate } from '../lib/tenants'
 import { downloadCsv } from '../lib/downloadCsv'
 import {
     csvFileName, invoiceColumns, monthlyColumns, monthlyRows, monthlySummary, monthOf, moveOutColumns, occupancy, outstandingColumns, outstandingRows,
-    owedFromMoveOuts, paymentColumns, pendingDepositRefund, recentMonths, roomUsage, toCsv, utilityColumns, utilityStats,
+    owedFromMoveOuts, paymentColumns, pendingDepositRefund, recentMonths, roomUsage, toCsv, utilityColumns, utilityHistory, utilityStats,
 } from '../lib/reports'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
+import MonthlyColumns from '../components/MonthlyColumns'
 import { useSettings } from '../lib/useSettings'
 
 // รายงานสำหรับแอดมิน: อัตราเข้าพัก รายรับ-ยอดค้างรายเดือน และส่งออก CSV (เปิดใน Excel/ส่งให้นักบัญชีได้)
@@ -112,6 +113,10 @@ function ReportsPage() {
     const monthInvoices = useMemo(() => data.invoices.filter((i) => i.month === month), [data.invoices, month])
     const utility = useMemo(() => utilityStats(monthInvoices), [monthInvoices])
     const usageRows = useMemo(() => roomUsage(monthInvoices), [monthInvoices])
+    // แนวโน้มหน่วยน้ำ-ไฟ 12 เดือนล่าสุด (นับถึงเดือนที่เลือก) ใช้ใบแจ้งหนี้ทั้งหมดที่โหลดมา
+    const history = useMemo(() => utilityHistory(data.invoices, month, 12), [data.invoices, month])
+    const waterRows = useMemo(() => history.map((h) => ({ key: h.month, label: formatMonth(h.month), value: h.water })), [history])
+    const electricRows = useMemo(() => history.map((h) => ({ key: h.month, label: formatMonth(h.month), value: h.electric })), [history])
     const exportUtility = () => downloadCsv(csvFileName('การใช้น้ำไฟ', month), toCsv(usageRows, utilityColumns))
     const exportMoveOuts = () => downloadCsv(csvFileName('ย้ายออกและเงินประกัน', now.toISOString().slice(0, 10)), toCsv(data.moveOuts, moveOutColumns))
     const exportMonthly = () => downloadCsv(csvFileName('สรุปรายเดือน', `${months.at(-1)}_${months[0]}`), toCsv([...rows12].reverse(), monthlyColumns))
@@ -188,6 +193,15 @@ function ReportsPage() {
                                 </table>
                             </div>
                             <p className="text-xs text-muted">รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ใบเดือนก่อนที่เพิ่งได้รับเงินจะไปอยู่ในเดือนที่รับ ส่วนยอดค้างคือยอดของใบเดือนนั้นที่ยังไม่ชำระ ณ วันนี้</p>
+                        </section>
+
+                        {/* แนวโน้มการใช้น้ำ-ไฟย้อนหลัง (แยกสองกราฟ เพราะคนละหน่วยและคนละสเกล) */}
+                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                            <h2 className="font-medium text-primary-dark">แนวโน้มการใช้น้ำ-ไฟ 12 เดือนล่าสุด (ถึง {formatMonth(month)})</h2>
+                            <div className="grid gap-6 lg:grid-cols-2">
+                                <MonthlyColumns title="หน่วยน้ำรวมทุกห้อง" unit="หน่วย" color="#2a78d6" rows={waterRows} />
+                                <MonthlyColumns title="หน่วยไฟรวมทุกห้อง" unit="หน่วย" color="#eb6834" rows={electricRows} />
+                            </div>
                         </section>
 
                         {/* การใช้น้ำ-ไฟของเดือนที่เลือก */}

@@ -216,3 +216,15 @@ export const moveOutColumns = [
 
 // ชื่อไฟล์ปลอดภัย เช่น ใบแจ้งหนี้-2026-10.csv
 export const csvFileName = (name, suffix) => `${name}-${suffix}.csv`
+
+// หน่วยน้ำ-ไฟรวมรายเดือนย้อนหลัง count เดือน นับจาก endMonth (รวมเดือนนั้น) เรียงจากเก่าไปใหม่ ใช้วาดกราฟแนวโน้ม
+// เดือนที่ไม่มีใบแจ้งหนี้ได้ 0 หน่วย และ invoices = 0 (กราฟแสดงเป็นแท่งว่าง)
+export function utilityHistory(invoices, endMonth, count = 12) {
+    return recentMonths(endMonth, count)
+        .reverse()
+        .map((month) => {
+            const list = invoices.filter((i) => i.month === month)
+            const stats = utilityStats(list)
+            return { month, water: stats.waterUnits, electric: stats.elecUnits, invoices: list.length }
+        })
+}
