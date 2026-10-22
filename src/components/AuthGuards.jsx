@@ -32,15 +32,16 @@ function useSession() {
                 if (active) setSession(null)
                 return
             }
-            // ถามเซิร์ฟเวอร์ว่าเซสชันนี้ยังใช้ได้จริงไหม
+            // แสดงหน้าทันทีจากเซสชันในเครื่อง ไม่รอไปถามเซิร์ฟเวอร์ก่อน (ลดเวลารอตอนเปิดเว็บหนึ่งรอบเดินทางเครือข่าย)
+            if (active) setSession(local)
+            // แล้วถามเซิร์ฟเวอร์ใน background ว่าเซสชันนี้ยังใช้ได้จริงไหม บัญชีถูกลบหรือเซสชันใช้ไม่ได้ = ออกจากระบบ
+            // (ข้อมูลจริงถูกคุมด้วย RLS อยู่แล้ว ช่วงสั้น ๆ ก่อนตรวจเสร็จเห็นแค่โครงหน้า)
             const { error } = await supabase.auth.getUser()
             // ปฏิเสธเฉพาะกรณีเซิร์ฟเวอร์ตอบว่าเซสชันใช้ไม่ได้ ถ้าแค่เน็ตหลุดให้ใช้เซสชันเดิมไปก่อน
             if (error && (error.status === 401 || error.status === 403 || error.status === 404)) {
                 await supabase.auth.signOut()
                 if (active) setSession(null)
-                return
             }
-            if (active) setSession(local)
         })()
 
         // ติดตามการ login/logout/ต่ออายุเซสชันหลังจากนี้

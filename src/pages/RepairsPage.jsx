@@ -1,5 +1,8 @@
-import AdminRepairs from '../components/AdminRepairs'
-import UserRepairsPage from './UserRepairsPage'
+import { lazy } from 'react'
+
+// โหลดเฉพาะฝั่งที่ใช้ (ผู้เช่าไม่ต้องโหลดโค้ดฝั่งแอดมิน)
+const AdminRepairs = lazy(() => import('../components/AdminRepairs'))
+const UserRepairsPage = lazy(() => import('./UserRepairsPage'))
 import { useCurrentUser } from '../lib/useCurrentUser'
 
 // แอดมินจัดการรายการแจ้งซ่อมทั้งหมด ผู้เช่าแจ้งซ่อมและติดตามสถานะของห้องตัวเอง

@@ -1,13 +1,19 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Icon from './Icon.jsx'
 import Sidebar from './Sidebar.jsx'
+import { prefetchPages } from '../lib/pages.js'
+import { useCurrentUser } from '../lib/useCurrentUser.js'
 
 // โครงหน้าหลักหลัง login: เมนูข้าง (Sidebar) + เนื้อหาของแต่ละหน้า (Outlet) และปุ่มเปิดเมนูบนจอเล็ก
 function Layout() {
     // เมนูข้างบนจอเล็กเปิดอยู่หรือไม่ และ path ปัจจุบัน
     const [menuOpen, setMenuOpen] = useState(false)
     const { pathname } = useLocation()
+    const role = useCurrentUser()?.role
+
+    // รู้สิทธิ์แล้ว ดึงโค้ดหน้าที่น่าจะเปิดต่อไว้ล่วงหน้าตอนเครื่องว่าง (ไปหน้าอื่นแล้วเปิดทันที ไม่ต้องรอโหลดไฟล์)
+    useEffect(() => (role ? prefetchPages(role) : undefined), [role])
 
     // เปลี่ยนหน้าแล้วปิดเมนูบนจอเล็ก
     useEffect(() => {
@@ -51,7 +57,10 @@ function Layout() {
                 </div>
                 {/* จำกัดความกว้างเนื้อหาบนจอใหญ่มาก ให้อ่านง่ายและเรียงตรงกลาง */}
                 <div className="mx-auto w-full max-w-[1500px]">
-                    <Outlet />
+                    {/* เมนูข้างอยู่ค้างไว้ ระหว่างโหลดโค้ดของหน้าที่เปิดครั้งแรกแสดงเฉพาะส่วนเนื้อหาว่าง ๆ */}
+                    <Suspense fallback={<div className="p-6 text-muted flex items-center gap-3"><span className="w-4 h-4 rounded-full border-2 border-mist border-t-primary animate-spin" />กำลังโหลด...</div>}>
+                        <Outlet />
+                    </Suspense>
                 </div>
             </main>
         </div>

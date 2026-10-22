@@ -1,20 +1,24 @@
 import { RedirectIfAuthed, RequireAuth, RequireRole } from './components/AuthGuards.jsx'
 import { Navigate, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout.jsx'
-import AdminDashboardPage from './pages/AdminDashboardPage.jsx'
-import InvoicesPage from './pages/InvoicesPage.jsx'
-import RepairsPage from './pages/RepairsPage.jsx'
-import RoomsPage from './pages/RoomsPage.jsx'
-import TenantsPage from './pages/TenantsPage.jsx'
+import { lazy } from 'react'
 import LoginPage from './pages/LoginPage.jsx'
-import UserDashboardPage from './pages/UserDashboardPage.jsx'
-import AccountPage from './pages/AccountPage.jsx'
-import AdminUsersPage from './pages/AdminUsersPage.jsx'
-import AuditLogPage from './pages/AuditLogPage.jsx'
-import ReportsPage from './pages/ReportsPage.jsx'
-import NotificationsPage from './pages/NotificationsPage.jsx'
-import SettingsPage from './pages/SettingsPage.jsx'
-import ChatPage from './pages/ChatPage.jsx'
+import { pageLoaders } from './lib/pages.js'
+
+// หน้าที่เหลือโหลดแบบ lazy (แยกไฟล์ต่อหน้า โหลดเมื่อเข้าหน้านั้น) หน้า login โหลดทันทีเพราะเป็นหน้าแรก ดู lib/pages.js
+const AdminDashboardPage = lazy(pageLoaders.adminDashboard)
+const InvoicesPage = lazy(pageLoaders.invoices)
+const RepairsPage = lazy(pageLoaders.repairs)
+const RoomsPage = lazy(pageLoaders.rooms)
+const TenantsPage = lazy(pageLoaders.tenants)
+const UserDashboardPage = lazy(pageLoaders.userDashboard)
+const AccountPage = lazy(pageLoaders.account)
+const AdminUsersPage = lazy(pageLoaders.adminUsers)
+const AuditLogPage = lazy(pageLoaders.audit)
+const ReportsPage = lazy(pageLoaders.reports)
+const NotificationsPage = lazy(pageLoaders.notifications)
+const SettingsPage = lazy(pageLoaders.settings)
+const ChatPage = lazy(pageLoaders.chat)
 
 // กำหนดเส้นทาง (route) ทั้งหมดของแอป: หน้า login, หน้าของแอดมิน, หน้าของผู้เช่า และหน้าที่ใช้ร่วมกัน
 function App() {
