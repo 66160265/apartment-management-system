@@ -14,7 +14,8 @@ const cellInput = 'w-20 border border-line bg-white rounded-lg px-2 py-1 text-ri
 const prevInput = 'w-16 border border-transparent bg-transparent rounded px-1 py-1 text-right text-xs text-muted tabular-nums outline-none hover:border-line focus:border-secondary focus:bg-white'
 const rateInput = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
 
-function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
+// repairFees = ค่าซ่อมที่ยังไม่ได้เรียกเก็บ { ห้อง: ยอด } (ฐานข้อมูลบวกเข้าใบให้ตอนสร้าง ที่นี่ใช้แสดงยอดตัวอย่าง)
+function BulkInvoiceForm({ tenants, rents, invoices, settings, repairFees = {}, onDone }) {
     const [month, setMonth] = useState(currentMonth())
     // อัตราที่ใช้กับทุกห้องในรอบนี้ (ค่าเริ่มต้นจากหน้าตั้งค่า แก้ได้)
     const [rates, setRates] = useState({ waterRate: String(settings.rateWater), elecRate: String(settings.rateElectric), commonFee: String(settings.commonFee) })
@@ -176,7 +177,12 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
                                                 value={input.elecCurr ?? ''} onChange={(e) => setCell(r.room, 'elecCurr', e.target.value)} onKeyDown={(e) => onEnter(e, 'elec')} />
                                         </td>
                                         <td className="px-3 py-2 text-right tabular-nums text-muted">{ev.state === 'ready' ? ev.calc.elecUnits : unitsOf(input.elecCurr, input.elecPrev ?? r.elecPrev)}</td>
-                                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-primary-dark">{ev.state === 'ready' ? baht(ev.calc.total) : ''}</td>
+                                        <td className="px-3 py-2 text-right tabular-nums font-semibold text-primary-dark">{ev.state === 'ready' && (
+                                            <>
+                                                {baht(ev.calc.total + (repairFees[r.room] ?? 0))}
+                                                {repairFees[r.room] > 0 && <div className="text-xs font-normal text-rose-700">รวมค่าซ่อม {baht(repairFees[r.room])}</div>}
+                                            </>
+                                        )}</td>
                                     </tr>
                                 )
                             })}
@@ -190,7 +196,7 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
             {/* แถบสรุปและปุ่มสร้าง (ต้องกดยืนยันอีกครั้ง เพราะผู้เช่าทุกคนจะได้รับแจ้งเตือนใบแจ้งหนี้ใหม่ทันที) */}
             <div className="sticky bottom-4 px-4 sm:px-5 py-3 bg-white rounded-2xl border border-line shadow-card flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm">
-                    <span className="font-medium text-primary-dark">พร้อมสร้าง {summary.records.length} ใบ รวม {baht(summary.total)}</span>
+                    <span className="font-medium text-primary-dark">พร้อมสร้าง {summary.records.length} ใบ รวม {baht(summary.total + summary.records.reduce((sum, rec) => sum + (repairFees[rec.room] ?? 0), 0))}</span>
                     {errorCount > 0 && <span className="text-red-600"> · มีแถวที่กรอกไม่ถูกต้อง {errorCount} ห้อง</span>}
                 </div>
                 <div className="flex gap-2">

@@ -52,7 +52,7 @@ export function attentionItems(input) {
     return [
         { key: 'invoice-slips', label: 'สลิปค่าห้องรอตรวจสอบ', count: input.reviewInvoices ?? 0, to: '/invoices', tone: 'sky' },
         { key: 'repair-slips', label: 'สลิปค่าซ่อมรอตรวจสอบ', count: input.repairReviews ?? 0, to: '/repairs', tone: 'sky' },
-        { key: 'repairs', label: 'เรื่องแจ้งซ่อมรอนัดหมาย', count: input.pendingRepairs ?? 0, to: '/repairs', tone: 'amber' },
+        { key: 'repairs', label: 'เรื่องแจ้งซ่อมรอดำเนินการ', count: input.pendingRepairs ?? 0, to: '/repairs', tone: 'amber' },
         { ...money('refunds', 'ผู้เช่าโอนเกิน รอโอนคืน', input.refundInvoices), to: '/invoices', tone: 'violet' },
         { ...money('deposits', 'เงินประกันรอคืนผู้เช่า', input.depositRefunds), to: '/tenants', tone: 'violet' },
         { key: 'uninvoiced', label: 'ห้องที่ยังไม่ออกบิลเดือนนี้', count: input.uninvoicedRooms ?? 0, to: '/invoices', tone: 'amber' },

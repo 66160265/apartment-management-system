@@ -5,6 +5,7 @@ vi.mock('./supabaseClient', () => ({ supabase: {} }))
 const {
     formatSize, validateImage, repairTimeOptions, normalizePeriod, parsePeriod, isValidPeriod, formatPeriod,
     periodsOverlap, formatSlot, isInSlots, upcomingSlots, validateAvailability, todayIso,
+    periodAt, toSlotPeriod, isBooked,
 } = await import('./repairs')
 
 // ตรึงเวลาเป็น 20 ต.ค. 2026 เที่ยงวัน (เวลาท้องถิ่น) ให้ผลของ "วันนี้" คงที่
@@ -30,11 +31,16 @@ describe('ไฟล์รูป', () => {
 })
 
 describe('ช่วงเวลาเข้าซ่อม', () => {
-    it('ตัวเลือกเวลา 09:00-20:00 ทีละ 30 นาที', () => {
+    it('ตัวเลือกเวลาเริ่ม 09:00-17:00 ทีละ 1 ชั่วโมง', () => {
         expect(repairTimeOptions[0]).toBe('09:00')
-        expect(repairTimeOptions.at(-1)).toBe('20:00')
-        expect(repairTimeOptions).toHaveLength(23)
-        expect(repairTimeOptions).toContain('13:30')
+        expect(repairTimeOptions.at(-1)).toBe('17:00')
+        expect(repairTimeOptions).toHaveLength(9)
+        expect(repairTimeOptions).not.toContain('13:30')
+    })
+
+    it('periodAt: เวลาเริ่ม -> นัด 1 ชั่วโมง', () => {
+        expect(periodAt('09:00')).toBe('09:00-10:00')
+        expect(periodAt('17:00')).toBe('17:00-18:00')
     })
 
     it('แปลงค่าแบบเดิม (morning/afternoon/evening) เป็นช่วงเวลา', () => {
@@ -44,8 +50,11 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
         expect(parsePeriod('afternoon')).toEqual({ start: '13:00', end: '17:00' })
     })
 
-    it('isValidPeriod: เริ่มก่อนสิ้นสุด และอยู่ในเวลาทำการ', () => {
-        expect(isValidPeriod('09:00-12:00')).toBe(true)
+    it('isValidPeriod: ต้องเป็นนัด 1 ชั่วโมงที่เริ่มตามเวลาที่เลือกได้', () => {
+        expect(isValidPeriod('09:00-10:00')).toBe(true)
+        expect(isValidPeriod('17:00-18:00')).toBe(true)
+        expect(isValidPeriod('09:00-12:00')).toBe(false)
+        expect(isValidPeriod('18:00-19:00')).toBe(false)
         expect(isValidPeriod('13:00-13:00')).toBe(false)
         expect(isValidPeriod('15:00-13:00')).toBe(false)
         expect(isValidPeriod('08:00-10:00')).toBe(false)
@@ -55,6 +64,7 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
     })
 
     it('formatPeriod / formatSlot', () => {
+        expect(formatPeriod('09:00-10:00')).toBe('09:00 น.')
         expect(formatPeriod('13:00-15:30')).toBe('13:00-15:30 น.')
         expect(formatPeriod('')).toBe('')
         expect(formatSlot('2026-10-20', '13:00-15:30')).toContain('13:00-15:30 น.')
@@ -76,14 +86,27 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
         expect(isInSlots(null, '2026-10-21', '10:00-11:00')).toBe(false)
     })
 
-    it('upcomingSlots: ทิ้งวันที่ผ่านแล้ว เรียงตามวันและเวลา แปลงค่าแบบเดิม', () => {
+    it('upcomingSlots: ทิ้งวันที่ผ่านแล้ว แปลงเป็นนัด 1 ชั่วโมง และเก็บแค่วันเวลาที่ใกล้ที่สุด (เลือกได้ 1 เวลา)', () => {
         const result = upcomingSlots([
             { date: '2026-10-25', period: 'evening' },
             { date: '2026-10-19', period: '09:00-12:00' },
             { date: '2026-10-21', period: '13:00-15:00' },
             { date: '2026-10-20', period: '09:00-10:00' },
         ])
-        expect(result.map((s) => `${s.date} ${s.period}`)).toEqual(['2026-10-20 09:00-10:00', '2026-10-21 13:00-15:00', '2026-10-25 17:00-20:00'])
+        expect(result.map((s) => `${s.date} ${s.period}`)).toEqual(['2026-10-20 09:00-10:00'])
+    })
+
+    it('toSlotPeriod: ช่วงแบบเดิม -> นัด 1 ชั่วโมงตามต้นช่วง', () => {
+        expect(toSlotPeriod('13:00-15:30')).toBe('13:00-14:00')
+        expect(toSlotPeriod('evening')).toBe('17:00-18:00')
+        expect(toSlotPeriod('10:00-11:00')).toBe('10:00-11:00')
+    })
+
+    it('isBooked: เวลาที่ห้องอื่นใช้แล้วเลือกไม่ได้', () => {
+        const booked = [{ date: '2026-10-21', period: '09:00-10:00' }]
+        expect(isBooked(booked, '2026-10-21', '09:00-10:00')).toBe(true)
+        expect(isBooked(booked, '2026-10-21', '10:00-11:00')).toBe(false)
+        expect(isBooked(booked, '2026-10-22', '09:00-10:00')).toBe(false)
     })
 })
 
@@ -94,28 +117,34 @@ describe('todayIso', () => {
 })
 
 describe('validateAvailability', () => {
-    const ok = { slots: [{ date: '2026-10-21', period: '09:00-12:00' }], allowEntry: false, urgency: 'normal' }
+    const ok = { slots: [{ date: '2026-10-21', period: '09:00-10:00' }], allowEntry: false, urgency: 'normal' }
 
     it('ข้อมูลถูกต้อง = ไม่มี error', () => {
         expect(validateAvailability(ok)).toBe('')
     })
 
     it('ช่องว่าง วันหรือเวลาไม่ครบ', () => {
-        expect(validateAvailability({ ...ok, slots: [{ date: '', period: '09:00-12:00' }] })).toContain('ให้ครบ')
+        expect(validateAvailability({ ...ok, slots: [{ date: '', period: '09:00-10:00' }] })).toContain('ให้ครบ')
         expect(validateAvailability({ ...ok, slots: [{ date: '2026-10-21', period: '' }] })).toContain('ให้ครบ')
     })
 
-    it('เวลาเริ่มไม่ก่อนเวลาสิ้นสุด', () => {
-        expect(validateAvailability({ ...ok, slots: [{ date: '2026-10-21', period: '12:00-09:00' }] })).toContain('เวลาเริ่ม')
+    it('เวลาไม่ใช่นัด 1 ชั่วโมงในเวลาที่เลือกได้', () => {
+        expect(validateAvailability({ ...ok, slots: [{ date: '2026-10-21', period: '12:00-09:00' }] })).toContain('กรุณาเลือกเวลาระหว่าง')
+        expect(validateAvailability({ ...ok, slots: [{ date: '2026-10-21', period: '18:00-19:00' }] })).toContain('กรุณาเลือกเวลาระหว่าง')
     })
 
     it('วันที่ผ่านมาแล้ว', () => {
-        expect(validateAvailability({ ...ok, slots: [{ date: '2026-10-19', period: '09:00-12:00' }] })).toContain('ผ่านมาแล้ว')
+        expect(validateAvailability({ ...ok, slots: [{ date: '2026-10-19', period: '09:00-10:00' }] })).toContain('ผ่านมาแล้ว')
     })
 
     it('ช่วงเวลาซ้ำกัน', () => {
-        const s = { date: '2026-10-21', period: '09:00-12:00' }
+        const s = { date: '2026-10-21', period: '09:00-10:00' }
         expect(validateAvailability({ ...ok, slots: [s, s] })).toContain('ซ้ำกัน')
+    })
+
+    it('เวลาที่ห้องอื่นนัดหรือเลือกไว้แล้ว', () => {
+        expect(validateAvailability({ ...ok, booked: [{ date: '2026-10-21', period: '09:00-10:00' }] })).toContain('ห้องอื่น')
+        expect(validateAvailability({ ...ok, booked: [{ date: '2026-10-21', period: '10:00-11:00' }] })).toBe('')
     })
 
     it('ไม่เลือกช่วงเวลาเลย: ต้องอนุญาตให้ช่างเข้าได้ หรือเป็นเรื่องฉุกเฉิน', () => {

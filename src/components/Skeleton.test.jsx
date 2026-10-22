@@ -3,7 +3,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-    Skeleton, SkeletonApp, SkeletonCard, SkeletonCardGrid, SkeletonCards, SkeletonChat, SkeletonForm, SkeletonList, SkeletonPage, SkeletonRegion, SkeletonTable, SkeletonText,
+    Skeleton, SkeletonApp, SkeletonCard, SkeletonCardGrid, SkeletonCards, SkeletonForm, SkeletonList, SkeletonPage, SkeletonRegion, SkeletonTable, SkeletonText,
 } from './Skeleton.jsx'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -75,12 +75,6 @@ describe('Skeleton: รูปทรง', () => {
         expect(container.querySelectorAll('[role="status"] > div[aria-hidden="true"]')).toHaveLength(2)
         await render(<SkeletonCard lines={1} />)
         expect(container.querySelectorAll('.shadow-card')).toHaveLength(1)
-    })
-
-    it('SkeletonChat: ฟองสลับซ้ายขวา', async () => {
-        await render(<SkeletonChat rows={4} />)
-        const rows = container.querySelectorAll('[role="status"] > div[aria-hidden="true"]')
-        expect([...rows].map((r) => r.className.includes('justify-end'))).toEqual([false, true, false, true])
     })
 
     it('SkeletonForm: การ์ดตามจำนวนส่วน ช่องตามจำนวนช่อง', async () => {

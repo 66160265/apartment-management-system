@@ -4,7 +4,7 @@ vi.mock('./supabaseClient', () => ({ supabase: {} }))
 
 const {
     monthOf, recentMonths, monthlySummary, monthlyRows, outstandingRows, occupancy, toCsv, invoiceColumns, outstandingColumns, monthlyColumns, paymentColumns,
-    pendingDepositRefund, owedFromMoveOuts, moveOutColumns, utilityStats, roomUsage, utilityColumns,
+    owedFromMoveOuts, moveOutColumns, utilityStats, roomUsage, utilityColumns, vacancyRows, expiringContracts, repairStats,
 } = await import('./reports')
 
 const now = new Date('2026-11-10T10:00:00+07:00')
@@ -49,6 +49,20 @@ describe('monthlySummary', () => {
         ],
     }
 
+    it('ค่าซ่อมที่หอพักจ่าย: งานที่เสร็จในเดือนนั้น ไม่นับที่ผู้เช่าจ่าย', () => {
+        const repairs = [
+            { status: 'done', cost: 500, cost_payer: 'tenant', completed_at: '2026-10-05T10:00:00+07:00' },
+            { status: 'done', cost: 300, cost_payer: 'owner', completed_at: '2026-10-20T10:00:00+07:00' },
+            { status: 'done', cost: 0, cost_payer: 'owner', completed_at: '2026-10-21T10:00:00+07:00' },
+            { status: 'in_progress', cost: 999, cost_payer: 'owner', completed_at: null },
+            { status: 'done', cost: 700, cost_payer: 'owner', completed_at: '2026-11-01T10:00:00+07:00' },
+        ]
+        const oct = monthlySummary({ ...data, repairs }, '2026-10', now)
+        expect(oct.repairCount).toBe(2)
+        expect(oct.repairCost).toBe(300)
+        expect(monthlySummary(data, '2026-10', now).repairCost).toBe(0)
+    })
+
     it('นับรายรับตามวันที่ได้รับเงินจริง ไม่ใช่เดือนของใบ', () => {
         const oct = monthlySummary(data, '2026-10', now)
         // ตุลาคม: a 1100 + b 500 + d 999 (ใบเดือนก.ย. แต่ได้รับเงินเดือนต.ค.)
@@ -57,7 +71,6 @@ describe('monthlySummary', () => {
         const nov = monthlySummary(data, '2026-11', now)
         expect(nov.received).toBe(3300)
         expect(nov.repairReceived).toBe(200)
-        expect(nov.refunded).toBe(300)
     })
 
     it('ยอดเรียกเก็บ ค่าปรับ และใบที่ออกในเดือน', () => {
@@ -201,11 +214,6 @@ describe('ย้ายออกและเงินประกัน', () => {
         refund_status: 'pending', refunded_at: null, deductions: [{ label: 'ค่าทำความสะอาด', amount: 500 }, { label: 'ค่าซ่อมประตู', amount: 700 }], ...over,
     })
 
-    it('รวมเฉพาะเงินประกันที่รอคืน', () => {
-        expect(pendingDepositRefund([m(), m({ refund_amount: 1000, refund_status: 'done' }), m({ refund_amount: 200 }), m({ refund_amount: 0, refund_status: 'none' })])).toBe(4000)
-        expect(pendingDepositRefund([])).toBe(0)
-    })
-
     it('รวมยอดที่ผู้เช่าต้องจ่ายเพิ่ม', () => {
         expect(owedFromMoveOuts([m({ owed_amount: 800 }), m({ owed_amount: 0 }), m({ owed_amount: 150.5 })])).toBe(950.5)
     })
@@ -243,7 +251,7 @@ describe('คอลัมน์ส่งออก', () => {
 
     it('รายเดือน', () => {
         const row = monthlySummary({ invoices: [inv()], invoicePayments: [], repairPayments: [] }, '2026-10', now)
-        expect(toCsv([row], monthlyColumns).split('\r\n')[1]).toBe('2026-10,1,4200,0,0,0,0,1,4200')
+        expect(toCsv([row], monthlyColumns).split('\r\n')[1]).toBe('2026-10,1,4200,0,0,0,0,0,0,1,4200')
     })
 
     it('การรับเงิน: ดึงห้อง/ผู้เช่าจากใบแจ้งหนี้ ใบที่ไม่พบเป็นช่องว่าง', () => {
@@ -283,5 +291,70 @@ describe('utilityHistory', () => {
     it('มิเตอร์ถอยหลัง (ค่าปัจจุบันน้อยกว่าก่อนหน้า) นับเป็น 0 ไม่ติดลบ', async () => {
         const { utilityHistory } = await import('./reports')
         expect(utilityHistory([{ month: '2026-03', water_prev: 50, water_curr: 10, elec_prev: 0, elec_curr: 5 }], '2026-03', 1)[0]).toMatchObject({ water: 0, electric: 5 })
+    })
+})
+
+describe('คงเหลือรายเดือน', () => {
+    it('รับเงินจริง (ค่าห้อง + ค่าซ่อม) ลบค่าซ่อมที่หอพักจ่าย', () => {
+        const data = {
+            invoices: [],
+            invoicePayments: [{ amount: 5000, confirmed_at: '2026-10-05T10:00:00+07:00' }],
+            repairPayments: [{ status: 'paid', amount: 300, reviewed_at: '2026-10-06T10:00:00+07:00' }],
+            repairs: [
+                { status: 'done', cost: 800, cost_payer: 'owner', completed_at: '2026-10-07T10:00:00+07:00' },
+                { status: 'done', cost: 500, cost_payer: 'tenant', completed_at: '2026-10-08T10:00:00+07:00' },
+            ],
+        }
+        expect(monthlySummary(data, '2026-10', now).net).toBe(4500)
+    })
+})
+
+describe('ห้องว่าง', () => {
+    it('ว่างนับจากวันย้ายออกล่าสุด ค่าเช่าที่ไม่ได้รับคิดเดือนละ 30 วัน ห้องที่ไม่มีบันทึกย้ายออก = ไม่ทราบ', () => {
+        const rooms = [
+            { number: '101', status: 'vacant', rent: 3000 },
+            { number: '102', status: 'occupied', rent: 3000 },
+            { number: '103', status: 'vacant', rent: 4500 },
+        ]
+        const moveOuts = [{ room: '101', move_out_date: '2026-09-01' }, { room: '101', move_out_date: '2026-10-11' }]
+        const rows = vacancyRows(rooms, moveOuts, now)
+        expect(rows).toEqual([
+            { room: '101', rent: 3000, since: '2026-10-11', days: 30, lost: 3000 },
+            { room: '103', rent: 4500, since: null, days: null, lost: null },
+        ])
+    })
+})
+
+describe('สัญญาใกล้หมด', () => {
+    it('เฉพาะที่หมดแล้วหรือหมดภายในกำหนด เรียงจากใกล้หมดที่สุด', () => {
+        const tenants = [
+            { room: '101', name: 'ก', end_date: '2027-06-01' },
+            { room: '102', name: 'ข', end_date: '2026-12-10' },
+            { room: '103', name: 'ค', end_date: '2026-11-01' },
+        ]
+        expect(expiringContracts(tenants, now, 90)).toEqual([
+            { room: '103', name: 'ค', endDate: '2026-11-01', daysLeft: -9 },
+            { room: '102', name: 'ข', endDate: '2026-12-10', daysLeft: 30 },
+        ])
+    })
+})
+
+describe('สถิติแจ้งซ่อม', () => {
+    it('นับตามประเภทและห้อง เวลาซ่อมเฉลี่ย และงานค้างเกิน 7 วัน ไม่นับที่ยกเลิก', () => {
+        const repairs = [
+            { id: 'a', room: '101', category: 'aircon', status: 'done', created_at: '2026-10-01T10:00:00+07:00', completed_at: '2026-10-03T10:00:00+07:00' },
+            { id: 'b', room: '101', category: 'aircon', status: 'done', created_at: '2026-10-05T10:00:00+07:00', completed_at: '2026-10-06T10:00:00+07:00' },
+            { id: 'c', room: '102', category: 'plumbing', status: 'pending', problem: 'ก๊อกรั่ว', created_at: '2026-10-25T10:00:00+07:00' },
+            { id: 'd', room: '103', category: 'electric', status: 'in_progress', problem: 'ไฟดับ', created_at: '2026-11-08T10:00:00+07:00' },
+            { id: 'e', room: '104', category: 'door', status: 'cancelled', created_at: '2026-10-01T10:00:00+07:00' },
+        ]
+        const s = repairStats(repairs, now)
+        expect(s.total).toBe(4)
+        expect(s.doneCount).toBe(2)
+        expect(s.openCount).toBe(2)
+        expect(s.avgDays).toBe(1.5)
+        expect(s.byCategory[0]).toEqual({ key: 'aircon', count: 2 })
+        expect(s.byRoom[0]).toEqual({ key: '101', count: 2 })
+        expect(s.overdue).toEqual([{ id: 'c', room: '102', problem: 'ก๊อกรั่ว', status: 'pending', days: 16 }])
     })
 })

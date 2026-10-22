@@ -1,6 +1,6 @@
 -- โครงสร้างฐานข้อมูลทั้งหมดของระบบจัดการหอพัก ไฟล์เดียวครบ (รวมจากไฟล์ SQL เดิมเรียงตามลำดับที่ต้องรัน)
--- ส่วนในไฟล์: profiles, schema, invoices, repairs, tenant-documents, settings, payments, slip-verify, repair-payments, move-out, audit, chat,
---             notifications, performance, slip-quota, contracts-announcements, hardening, rls-performance
+-- ส่วนในไฟล์: profiles, schema, invoices, repairs, tenant-documents, settings, payments, slip-verify, repair-payments, move-out, audit,
+--             notifications, performance, slip-quota, contracts-announcements, repair-updates, hardening, rls-performance
 -- รันได้ทั้งฐานข้อมูลใหม่และฐานข้อมูลที่เคยรันไฟล์เดิมมาแล้ว (รันซ้ำได้ ข้อมูลเดิมไม่หาย)
 -- วิธีใช้: วางทั้งไฟล์ใน Supabase SQL Editor แล้วกด Run หรือใช้ Supabase CLI `npx supabase db push`
 -- ส่วนที่ไม่บังคับ: เปิด extension pg_cron (Database > Extensions) ก่อนรัน เพื่อให้ระบบเตือนนัดซ่อมและใกล้ครบกำหนดทำงานทุกเช้า
@@ -206,7 +206,8 @@ create table if not exists public.repairs (
 -- ---------------------------------------------------------------------------
 -- ข้อมูลเพิ่มเติมสำหรับนัดวันเวลาเข้าซ่อม (ใช้ alter เพื่อให้ฐานข้อมูลเดิมที่มีตารางอยู่แล้วได้คอลัมน์ใหม่ด้วย)
 -- ---------------------------------------------------------------------------
-
+-- สถานะ: pending รอดำเนินการ -> in_progress กำลังดำเนินการ (มีวันนัดเข้าซ่อม) -> done เสร็จสิ้น, cancelled ยกเลิก/ไม่รับเรื่อง
+-- (scheduled นัดหมายแล้ว = สถานะเดิม เลิกใช้แล้ว รายการเก่าถูกย้ายเป็น in_progress ในส่วน repair-updates)
 -- สถานะ: pending รอนัดหมาย -> scheduled นัดหมายแล้ว -> in_progress กำลังซ่อม -> done เสร็จสิ้น, cancelled ยกเลิก/ไม่รับเรื่อง
 alter table public.repairs drop constraint if exists repairs_status_check;
 alter table public.repairs add constraint repairs_status_check
@@ -392,7 +393,7 @@ begin
       new.appointment_state := null;
     end if;
     -- ห้องว่าง (ไม่มีผู้เช่า) ไม่มีใครต้องยืนยันนัด
-    if new.status = 'scheduled' and new.user_id is null then
+    if new.status = 'in_progress' and new.appointment_date is not null and new.user_id is null then
       new.appointment_state := 'confirmed';
     end if;
   end if;
@@ -460,7 +461,7 @@ as $$
 begin
   perform set_config('app.repair_tenant_action', 'on', true);
   update public.repairs set appointment_state = 'confirmed', tenant_message = ''
-  where id = p_id and user_id = auth.uid() and status = 'scheduled' and appointment_state = 'proposed';
+  where id = p_id and user_id = auth.uid() and status = 'in_progress' and appointment_state = 'proposed';
   if not found then raise exception 'ไม่พบนัดหมายที่รอการยืนยัน'; end if;
   perform set_config('app.repair_tenant_action', 'off', true);
 end;
@@ -482,7 +483,7 @@ begin
   update public.repairs
   set status = 'pending', appointment_date = null, appointment_period = null, appointment_state = null,
       available_slots = p_slots, allow_entry = p_allow_entry, tenant_message = left(coalesce(p_note, ''), 500)
-  where id = p_id and user_id = auth.uid() and status = 'scheduled' and appointment_state = 'proposed';
+  where id = p_id and user_id = auth.uid() and status = 'in_progress' and appointment_state = 'proposed';
   if not found then raise exception 'ยืนยันนัดหมายแล้ว ไม่สามารถเปลี่ยนเวลาได้ กรุณาติดต่อผู้ดูแล'; end if;
   perform set_config('app.repair_tenant_action', 'off', true);
 end;
@@ -1958,192 +1959,6 @@ create trigger audit_settings after update on public.app_settings
   for each row execute function public.audit_settings();
 
 -- ============================================================
--- chat
--- ============================================================
-
--- ระบบแชทผู้เช่า <-> ผู้ดูแล แบบเรียลไทม์: รันใน Supabase SQL Editor หลังรัน schema.sql (ต้องมีฟังก์ชัน is_admin())
--- รันซ้ำได้ ไม่ทำให้ข้อมูลเดิมหาย
---
--- แนวคิด: ผู้เช่า 1 คน = 1 ห้องแชท (ระบุด้วย tenant_user_id = id บัญชีผู้เช่า) ผู้ดูแลทุกคนเห็นและตอบได้ทุกห้อง
--- read_at = เวลาที่ "อีกฝั่ง" อ่านข้อความนั้นแล้ว (ข้อความผู้เช่า -> ผู้ดูแลอ่าน, ข้อความผู้ดูแล -> ผู้เช่าอ่าน)
-
-create table if not exists public.chat_messages (
-  id uuid primary key default gen_random_uuid(),
-  tenant_user_id uuid not null references auth.users (id) on delete cascade,
-  sender_id uuid references auth.users (id) on delete set null,
-  -- ส่งจากฝั่งผู้เช่าหรือไม่ (กำหนดตอนเพิ่มข้อความ ไม่ขึ้นกับบัญชีผู้ส่งที่อาจถูกลบภายหลัง)
-  from_tenant boolean not null default false,
-  body text not null default '',
-  read_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
--- รูปที่แนบในแชท (path ใน bucket chat: <tenant_user_id>/<ไฟล์>) ข้อความต้องมีตัวอักษรหรือรูปอย่างใดอย่างหนึ่ง
-alter table public.chat_messages add column if not exists image_path text;
-alter table public.chat_messages alter column body set default '';
--- แก้ไข/ลบข้อความ (ลบแบบซ่อน: ล้างเนื้อหาแต่เก็บแถวไว้ แสดงเป็น "ข้อความนี้ถูกลบแล้ว")
-alter table public.chat_messages add column if not exists edited_at timestamptz;
-alter table public.chat_messages add column if not exists deleted_at timestamptz;
-alter table public.chat_messages drop constraint if exists chat_messages_body_check;
-alter table public.chat_messages add constraint chat_messages_body_check
-  check (char_length(body) <= 2000 and (deleted_at is not null or btrim(body) <> '' or image_path is not null));
-
-create index if not exists chat_messages_thread_idx on public.chat_messages (tenant_user_id, created_at desc);
-create index if not exists chat_messages_unread_idx on public.chat_messages (tenant_user_id, from_tenant) where read_at is null;
-
-alter table public.chat_messages enable row level security;
-
--- ผู้ดูแลเห็นทุกห้อง ผู้เช่าเห็นเฉพาะห้องแชทของตัวเอง
-drop policy if exists "chat read" on public.chat_messages;
-create policy "chat read" on public.chat_messages for select to authenticated
-  using (public.is_admin() or tenant_user_id = auth.uid());
-
--- ส่งข้อความได้เฉพาะในห้องที่ตัวเองมีสิทธิ์ (ผู้ส่ง/เวลา/ฝั่ง ถูกกำหนดโดย trigger ด้านล่าง)
-drop policy if exists "chat insert" on public.chat_messages;
-create policy "chat insert" on public.chat_messages for insert to authenticated
-  with check (public.is_admin() or tenant_user_id = auth.uid());
-
--- แก้/ลบตารางตรง ๆ ไม่ได้ ต้องผ่านฟังก์ชัน chat_mark_read / chat_edit_message / chat_delete_message
-revoke update, delete on table public.chat_messages from anon, authenticated;
-
--- กำหนดผู้ส่ง ฝั่งผู้ส่ง และเวลาเอง ไม่เชื่อค่าที่ส่งมาจากเว็บ
-create or replace function public.chat_messages_before_insert()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-begin
-  if auth.uid() is not null then
-    new.sender_id := auth.uid();
-    new.from_tenant := not public.is_admin();
-  end if;
-  new.body := btrim(coalesce(new.body, ''));
-  -- รูปต้องอยู่ในโฟลเดอร์ของห้องแชทนี้เท่านั้น
-  if new.image_path is not null and split_part(new.image_path, '/', 1) <> new.tenant_user_id::text then
-    raise exception 'ที่อยู่รูปไม่ถูกต้อง';
-  end if;
-  new.read_at := null;
-  new.edited_at := null;
-  new.deleted_at := null;
-  new.created_at := now();
-  return new;
-end;
-$$;
-
-drop trigger if exists chat_messages_before_insert on public.chat_messages;
-create trigger chat_messages_before_insert before insert on public.chat_messages
-  for each row execute function public.chat_messages_before_insert();
-
--- ทำเครื่องหมายว่าอ่านข้อความของอีกฝั่งในห้องนี้แล้ว
-create or replace function public.chat_mark_read(p_tenant uuid)
-returns void
-language plpgsql
-security definer set search_path = public
-as $$
-declare
-  v_admin boolean := public.is_admin();
-begin
-  if not v_admin and p_tenant is distinct from auth.uid() then
-    raise exception 'ไม่มีสิทธิ์เข้าถึงห้องแชทนี้';
-  end if;
-  update public.chat_messages
-  set read_at = now()
-  where tenant_user_id = p_tenant and read_at is null and from_tenant = v_admin;
-end;
-$$;
-
--- แก้ไขข้อความของตัวเอง (แก้ได้เฉพาะตัวอักษร รูปแก้ไม่ได้)
-create or replace function public.chat_edit_message(p_id uuid, p_body text)
-returns void
-language plpgsql
-security definer set search_path = public
-as $$
-begin
-  update public.chat_messages
-  set body = btrim(coalesce(p_body, '')), edited_at = now()
-  where id = p_id and sender_id = auth.uid() and deleted_at is null;
-  if not found then raise exception 'แก้ไขได้เฉพาะข้อความของตัวเองที่ยังไม่ถูกลบ'; end if;
-end;
-$$;
-
--- ลบข้อความของตัวเอง: ล้างข้อความและรูป คืน path รูปเดิมให้เว็บลบไฟล์ออกจาก storage
-create or replace function public.chat_delete_message(p_id uuid)
-returns text
-language plpgsql
-security definer set search_path = public
-as $$
-declare
-  v_image text;
-begin
-  select image_path into v_image from public.chat_messages
-  where id = p_id and sender_id = auth.uid() and deleted_at is null
-  for update;
-  if not found then raise exception 'ลบได้เฉพาะข้อความของตัวเองที่ยังไม่ถูกลบ'; end if;
-  update public.chat_messages set body = '', image_path = null, deleted_at = now() where id = p_id;
-  return v_image;
-end;
-$$;
-
--- รายการห้องแชทสำหรับผู้ดูแล: ข้อความล่าสุด และจำนวนข้อความจากผู้เช่าที่ยังไม่อ่าน
-create or replace function public.chat_conversations()
-returns table (tenant_user_id uuid, last_body text, last_at timestamptz, last_from_tenant boolean, unread bigint)
-language sql
-stable
-security definer set search_path = public
-as $$
-  select distinct on (m.tenant_user_id)
-    m.tenant_user_id,
-    case when m.deleted_at is not null then 'ข้อความถูกลบแล้ว' else coalesce(nullif(m.body, ''), '[รูปภาพ]') end,
-    m.created_at, m.from_tenant,
-    count(*) filter (where m.from_tenant and m.read_at is null and m.deleted_at is null) over (partition by m.tenant_user_id)
-  from public.chat_messages m
-  where public.is_admin()
-  order by m.tenant_user_id, m.created_at desc;
-$$;
-
-revoke all on function public.chat_mark_read(uuid) from public, anon;
-revoke all on function public.chat_conversations() from public, anon;
-grant execute on function public.chat_mark_read(uuid) to authenticated;
-grant execute on function public.chat_conversations() to authenticated;
-revoke all on function public.chat_edit_message(uuid, text) from public, anon;
-revoke all on function public.chat_delete_message(uuid) from public, anon;
-grant execute on function public.chat_edit_message(uuid, text) to authenticated;
-grant execute on function public.chat_delete_message(uuid) to authenticated;
-
--- ---------------------------------------------------------------------------
--- รูปในแชท: bucket ส่วนตัว แยกโฟลเดอร์ตามห้องแชท (<tenant_user_id>/...) ไม่เกิน 5 MB
--- ผู้เช่าอัปโหลด/ดูได้เฉพาะโฟลเดอร์ตัวเอง ผู้ดูแลได้ทุกโฟลเดอร์
--- ---------------------------------------------------------------------------
-
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('chat', 'chat', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
-on conflict (id) do nothing;
-
-drop policy if exists "chat upload own or admin" on storage.objects;
-create policy "chat upload own or admin" on storage.objects for insert to authenticated
-  with check (bucket_id = 'chat' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_admin()));
-
-drop policy if exists "chat read own or admin" on storage.objects;
-create policy "chat read own or admin" on storage.objects for select to authenticated
-  using (bucket_id = 'chat' and ((storage.foldername(name))[1] = auth.uid()::text or public.is_admin()));
-
--- ลบได้เฉพาะไฟล์ที่ตัวเองอัปโหลด (ใช้ตอนส่งข้อความไม่สำเร็จ หรือลบข้อความที่มีรูป)
-drop policy if exists "chat delete own upload" on storage.objects;
-create policy "chat delete own upload" on storage.objects for delete to authenticated
-  using (bucket_id = 'chat' and owner_id = auth.uid()::text);
-
--- ให้เว็บรับข้อความใหม่/สถานะอ่านแล้วแบบเรียลไทม์
-do $$
-begin
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'chat_messages'
-  ) then
-    alter publication supabase_realtime add table public.chat_messages;
-  end if;
-end $$;
-
--- ============================================================
 -- notifications
 -- ============================================================
 
@@ -2265,9 +2080,9 @@ language sql
 immutable
 as $$
   select case s
-    when 'pending' then 'รอนัดหมาย'
+    when 'pending' then 'รอดำเนินการ'
     when 'scheduled' then 'นัดหมายแล้ว'
-    when 'in_progress' then 'กำลังซ่อม'
+    when 'in_progress' then 'กำลังดำเนินการ'
     when 'done' then 'เสร็จสิ้น'
     when 'cancelled' then 'ยกเลิก'
     else s end;
@@ -2283,7 +2098,11 @@ as $$
     when 'morning' then '09:00-12:00 น.'
     when 'afternoon' then '13:00-17:00 น.'
     when 'evening' then '17:00-20:00 น.'
-    else coalesce(p || ' น.', '') end;
+    else case
+      -- ตรวจรูปแบบก่อนแปลงเป็นเวลา (case ตรวจตามลำดับ ไม่แปลงค่าที่รูปแบบไม่ถูก)
+      when p !~ '^\d\d:\d\d-\d\d:\d\d$' then coalesce(p || ' น.', '')
+      when split_part(p, '-', 2)::time - split_part(p, '-', 1)::time = interval '1 hour' then split_part(p, '-', 1) || ' น.'
+      else p || ' น.' end end;
 $$;
 
 -- 2026-10-20 -> จ. 20 ต.ค. 69
@@ -2345,12 +2164,12 @@ begin
     if v_admin then
       perform public.notify(
         new.user_id, 'repair',
-        case when new.status = 'scheduled' and new.appointment_state = 'proposed'
+        case when new.status = 'in_progress' and new.appointment_state = 'proposed'
              then 'ผู้ดูแลบันทึกเรื่องแจ้งซ่อมและเสนอวันเข้าซ่อม กรุณายืนยัน'
              else 'ผู้ดูแลบันทึกเรื่องแจ้งซ่อมให้คุณ' end,
         'ห้อง ' || new.room || ' · ' || new.problem,
         'รายการ: ' || new.problem || case when new.detail <> '' then E'\n' || new.detail else '' end
-          || case when new.status = 'scheduled'
+          || case when new.status = 'in_progress' and new.appointment_date is not null
                   then E'\nวันนัด: ' || public.repair_appointment_text(new.appointment_date, new.appointment_period)
                   else '' end,
         '/repairs', 'ดูรายการแจ้งซ่อม');
@@ -2375,38 +2194,47 @@ begin
 
     if v_admin then
       v_text := 'รายการ: ' || new.problem || E'\nสถานะ: ' || public.repair_status_label(new.status);
-      if new.status = 'scheduled' then
+      if new.status = 'in_progress' and new.appointment_date is not null then
         v_text := v_text || E'\nวันนัด: ' || public.repair_appointment_text(new.appointment_date, new.appointment_period)
           || case when new.technician <> '' then E'\nช่าง: ' || new.technician else '' end
           || E'\nช่างจะโทรไปคอนเฟิร์มอีกครั้งก่อนถึงเวลานัด 30 นาที';
       end if;
-      if new.status in ('in_progress', 'done') and new.cost > 0 then
-        v_text := v_text || E'\nค่าใช้จ่าย: ' || public.fmt_baht(new.cost)
-          || case when new.cost_payer = 'tenant' then ' (ผู้เช่าเป็นผู้ชำระ)' else ' (หอพักรับผิดชอบ)' end
-          || case when new.cost_payer = 'tenant' and new.status = 'done' then E'\nชำระค่าซ่อมและแนบสลิปได้ที่หน้าแจ้งซ่อม' else '' end;
+      -- ค่าใช้จ่ายแจ้งเฉพาะที่ผู้เช่าต้องชำระ (หอพักรับผิดชอบไม่ต้องแจ้ง)
+      if new.status in ('in_progress', 'done') and new.cost > 0 and new.cost_payer = 'tenant' then
+        v_text := v_text || E'\nค่าใช้จ่าย: ' || public.fmt_baht(new.cost) || ' (ผู้เช่าเป็นผู้ชำระ)'
+          || case when new.status = 'done' then E'\nค่าซ่อมจะรวมในใบแจ้งหนี้ค่าห้องรอบถัดไป ไม่ต้องชำระแยก' else '' end;
       end if;
       if new.admin_note <> '' then
         v_text := v_text || E'\n\nข้อความจากผู้ดูแล: ' || new.admin_note;
       end if;
 
-      if new.status = 'scheduled' and new.appointment_state = 'proposed'
-         and (v_appt_changed or old.status is distinct from 'scheduled' or old.appointment_state is distinct from 'proposed') then
+      -- ผู้ดูแลกด "ให้ผู้เช่าเลือกเวลาใหม่" (ล้างเวลาที่ผู้เช่าเลือกไว้ เช่น ช่างไม่ว่าง)
+      if new.status = 'pending' and new.available_slots = '[]'::jsonb and not new.allow_entry
+         and (old.available_slots <> '[]'::jsonb or old.allow_entry) then
+        v_title := 'กรุณาเลือกวันเวลาเข้าซ่อมใหม่';
+        v_text := 'รายการ: ' || new.problem
+          || E'\nช่างไม่สะดวกตามเวลาที่คุณเลือกไว้'
+          || coalesce(E'\n' || nullif(public.repair_slots_text(old.available_slots, false, ''), ''), '')
+          || case when new.admin_note <> '' then E'\nสาเหตุ: ' || new.admin_note else '' end
+          || E'\n\nกรุณากด "แก้ไข" ในหน้าแจ้งซ่อมเพื่อเลือกวันและเวลาที่สะดวกใหม่';
+      elsif new.status = 'in_progress' and new.appointment_date is not null and new.appointment_state = 'proposed'
+         and (v_appt_changed or old.status is distinct from 'in_progress' or old.appointment_state is distinct from 'proposed') then
         v_title := 'ผู้ดูแลเสนอวันเข้าซ่อม กรุณายืนยัน';
         v_text := v_text || E'\n\nหากไม่สะดวก กด "ขอเปลี่ยนเวลา" ในหน้าแจ้งซ่อมเพื่อเลือกวันใหม่';
-      elsif new.status = 'scheduled' and (v_appt_changed or old.status is distinct from 'scheduled'
+      elsif new.status = 'in_progress' and new.appointment_date is not null and (v_appt_changed or old.status is distinct from 'in_progress'
             or old.appointment_state is distinct from new.appointment_state) then
         v_title := 'นัดเข้าซ่อม ' || public.repair_appointment_text(new.appointment_date, new.appointment_period);
       elsif new.status is distinct from old.status then
         v_title := case new.status
           when 'done' then case when new.cost_payer = 'tenant' and new.cost > 0
-                                then 'ซ่อมเสร็จแล้ว มีค่าซ่อมที่ต้องชำระ ' || public.fmt_baht(new.cost)
+                                then 'ซ่อมเสร็จแล้ว ค่าซ่อม ' || public.fmt_baht(new.cost) || ' จะรวมในค่าห้องรอบถัดไป'
                                 else 'ซ่อมเสร็จแล้ว กรุณาตรวจสอบและยืนยัน' end
           when 'cancelled' then 'เรื่องแจ้งซ่อมถูกยกเลิก'
           when 'pending' then 'ต้องนัดวันเข้าซ่อมใหม่'
           else 'สถานะแจ้งซ่อมเปลี่ยนเป็น "' || public.repair_status_label(new.status) || '"' end;
       elsif new.status = 'done' and new.cost_payer = 'tenant' and new.cost > 0
             and (new.cost is distinct from old.cost or new.cost_payer is distinct from old.cost_payer) then
-        v_title := 'มีค่าซ่อมที่ต้องชำระ ' || public.fmt_baht(new.cost);
+        v_title := 'ค่าซ่อม ' || public.fmt_baht(new.cost) || ' จะรวมในค่าห้องรอบถัดไป';
       elsif new.admin_note is distinct from old.admin_note or new.technician is distinct from old.technician then
         v_title := 'ผู้ดูแลส่งข้อความเกี่ยวกับงานซ่อม';
       end if;
@@ -2422,7 +2250,7 @@ begin
         'ผู้เช่าห้อง ' || new.room || ' ยืนยันนัด ' || public.repair_appointment_text(new.appointment_date, new.appointment_period)
           || E'\nรายการ: ' || new.problem,
         '/repairs', 'ไปที่ระบบแจ้งซ่อม');
-    elsif old.status = 'scheduled' and new.status = 'pending' then
+    elsif old.status = 'in_progress' and new.status = 'pending' then
       perform public.notify_admins(
         'repair', 'ผู้เช่าขอเปลี่ยนวันนัดซ่อม', v_head,
         'ผู้เช่าห้อง ' || new.room || ' ไม่สะดวกวันนัด ' || public.repair_appointment_text(old.appointment_date, old.appointment_period)
@@ -2487,7 +2315,7 @@ declare
 begin
   for r in
     select * from public.repairs
-    where status = 'scheduled' and appointment_state = 'confirmed' and appointment_date = public.today_th()
+    where status = 'in_progress' and appointment_state = 'confirmed' and appointment_date = public.today_th()
   loop
     perform public.notify(
       r.user_id, 'repair', 'วันนี้มีนัดเข้าซ่อม ' || public.repair_period_label(r.appointment_period),
@@ -2505,25 +2333,6 @@ begin
         || case when r.contact_phone <> '' then E'\nเบอร์ผู้เช่า: ' || r.contact_phone else '' end,
       '/repairs', 'ไปที่ระบบแจ้งซ่อม');
   end loop;
-
-  -- ค่าซ่อมที่ผู้เช่ายังไม่ชำระ: เตือนทุก 3 วันนับจากวันที่ซ่อมเสร็จ (วันที่ 3, 6, 9, ...) ไม่เตือนเรื่องที่ส่งสลิปแล้วหรือชำระแล้ว
-  -- ตาราง repair_payments มาจาก repair-payments.sql ถ้ายังไม่ได้รันให้ข้ามส่วนนี้ (ใช้ dynamic SQL กัน error ตอนยังไม่มีตาราง)
-  if to_regclass('public.repair_payments') is not null then
-    for r in execute
-      'select r.* from public.repairs r
-        where r.status = ''done'' and r.cost_payer = ''tenant'' and r.cost > 0
-          and r.user_id is not null and r.completed_at is not null
-          and (public.today_th() - (r.completed_at at time zone ''Asia/Bangkok'')::date) >= 3
-          and (public.today_th() - (r.completed_at at time zone ''Asia/Bangkok'')::date) % 3 = 0
-          and not exists (select 1 from public.repair_payments p where p.repair_id = r.id and p.status in (''review'', ''paid''))'
-    loop
-      perform public.notify(
-        r.user_id, 'repair', 'ค่าซ่อมยังไม่ได้ชำระ ' || public.fmt_baht(r.cost),
-        'ห้อง ' || r.room || ' · ' || r.problem,
-        'ค่าซ่อม "' || r.problem || '" ยอด ' || public.fmt_baht(r.cost) || E' ยังไม่ได้ชำระ\nชำระและแนบสลิปได้ที่หน้าแจ้งซ่อม',
-        '/repairs', 'ชำระค่าซ่อม');
-    end loop;
-  end if;
 end;
 $$;
 
@@ -2618,7 +2427,7 @@ create trigger invoices_notify after insert or update of status on public.invoic
 -- 1) Realtime: เมื่อมีคนเพิ่ม/แก้/ลบแถวในตารางเหล่านี้ หน้าเว็บที่เปิดอยู่จะโหลดข้อมูลใหม่เอง (src/lib/realtime.js)
 --    Supabase ส่งเหตุการณ์เฉพาะให้ผู้ที่มีสิทธิ์อ่านแถวนั้นตาม RLS (ผู้เช่าได้เหตุการณ์ของตัวเอง แอดมินได้ทั้งหมด) และหน้าเว็บโหลดข้อมูลซ้ำผ่าน RLS
 --    ทุกครั้ง ไม่ใช้ข้อมูลในเหตุการณ์โดยตรง ข้อควรรู้: เหตุการณ์ "ลบ" ส่งเฉพาะรหัสแถว (uuid) ไปยังผู้ฟังตารางนั้น ไม่มีเนื้อหาของแถว
---    (แจ้งเตือนกับแชทเปิดไว้แล้วในไฟล์ของตัวเอง notifications.sql / chat.sql)
+--    (แจ้งเตือนเปิดไว้แล้วในส่วน notifications)
 -- 2) ดัชนี: ช่วยการอ่านที่เกิดบ่อย (ผู้เช่าเปิดหน้าใบแจ้งหนี้/แจ้งซ่อม ฯลฯ ที่กรองด้วย user_id และนโยบาย RLS ที่เทียบ user_id = ผู้ใช้)
 
 do $$
@@ -2933,6 +2742,268 @@ begin
 end $$;
 
 -- ============================================================
+-- repair-updates
+-- ============================================================
+-- ระบบแจ้งซ่อมรุ่นใหม่: เวลาเข้าซ่อมทีละ 1 ชั่วโมง กันเวลาซ้ำกับห้องอื่น สถานะ in_progress แทน scheduled และค่าซ่อมรวมในใบแจ้งหนี้ค่าห้อง
+-- (ฟังก์ชันเดิมที่เปลี่ยนไปอยู่ในส่วน repairs และ notifications ด้านบนแล้ว)
+
+-- ============================================================
+-- กันนัดซ่อมชนกัน: เวลาที่เป็นนัดของห้องหนึ่งแล้ว ห้องอื่นนัดซ้อนไม่ได้
+-- (เวลานัด 1 ครั้ง = "09:00-10:00" ค่าแบบเดิมอาจเป็นช่วงยาวกว่า หรือ morning/afternoon/evening)
+-- ============================================================
+
+-- "09:00-10:00" / morning -> array['09:00', '10:00'] (เวลาเริ่ม, เวลาสิ้นสุด)
+create or replace function public.repair_period_range(p text)
+returns text[]
+language sql
+immutable
+as $$
+  select case p
+    when 'morning' then array['09:00', '12:00']
+    when 'afternoon' then array['13:00', '17:00']
+    when 'evening' then array['17:00', '20:00']
+    else array[split_part(p, '-', 1), split_part(p, '-', 2)] end;
+$$;
+
+-- สองช่วงเวลาซ้อนกันไหม
+create or replace function public.repair_periods_overlap(a text, b text)
+returns boolean
+language sql
+immutable
+as $$
+  select (public.repair_period_range(a))[1] < (public.repair_period_range(b))[2]
+     and (public.repair_period_range(b))[1] < (public.repair_period_range(a))[2];
+$$;
+
+-- เวลาที่ไม่ว่างของทุกห้อง ให้หน้าเว็บปิดเวลานั้น (คืนแค่วันและเวลา ไม่มีข้อมูลห้อง/ผู้เช่า)
+-- นับ: นัดที่แอดมินกำหนดแล้ว + วันเวลาที่ผู้เช่าห้องอื่นเลือกไว้ในเรื่องที่ยังรอดำเนินการ
+-- p_exclude = รายการที่กำลังแก้ไขอยู่ (ไม่นับเวลาของตัวเอง)
+create or replace function public.repair_booked_times(p_exclude uuid default null)
+returns table (appointment_date date, appointment_period text)
+language sql
+stable
+security definer set search_path = public
+as $$
+  select r.appointment_date, r.appointment_period
+  from public.repairs r
+  where r.status = 'in_progress'
+    and r.appointment_date >= public.today_th()
+    and r.id is distinct from p_exclude
+  union
+  select (s ->> 'date')::date, s ->> 'period'
+  from public.repairs r, jsonb_array_elements(r.available_slots) s
+  where r.status = 'pending'
+    and (s ->> 'date') >= public.today_th()::text
+    and r.id is distinct from p_exclude;
+$$;
+
+revoke all on function public.repair_booked_times(uuid) from public, anon;
+grant execute on function public.repair_booked_times(uuid) to authenticated;
+
+-- วัน + เวลานี้ไม่ว่างไหม (นัดที่กำหนดแล้ว หรือเวลาที่ผู้เช่าห้องอื่นเลือกไว้) ไม่นับรายการ p_self
+create or replace function public.repair_time_taken(p_self uuid, p_date date, p_period text)
+returns boolean
+language sql
+stable
+security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.repairs r
+    where r.id <> p_self and r.status = 'in_progress'
+      and r.appointment_date = p_date
+      and public.repair_periods_overlap(r.appointment_period, p_period)
+  ) or exists (
+    select 1 from public.repairs r, jsonb_array_elements(r.available_slots) s
+    where r.id <> p_self and r.status = 'pending'
+      and s ->> 'date' = p_date::text
+      and public.repair_periods_overlap(s ->> 'period', p_period)
+  );
+$$;
+
+revoke all on function public.repair_time_taken(uuid, date, text) from public, anon, authenticated;
+
+-- กันเวลาซ้ำกับห้องอื่น (ล็อกตามวัน กันสองคนบันทึกเวลาเดียวกันพร้อมกัน)
+--   แอดมินตั้ง/เปลี่ยนนัด: ห้ามชนกับนัดที่กำหนดแล้ว
+--   ผู้เช่าเลือก/เปลี่ยนวันเวลาที่สะดวก: ห้ามชนกับนัดที่กำหนดแล้ว และเวลาที่ผู้เช่าห้องอื่นเลือกไว้
+create or replace function public.repairs_no_double_booking()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  s jsonb;
+  d text;
+begin
+  if new.status = 'in_progress' and new.appointment_date is not null
+     and (tg_op = 'INSERT'
+          or old.status is distinct from 'in_progress'
+          or new.appointment_date is distinct from old.appointment_date
+          or new.appointment_period is distinct from old.appointment_period) then
+    perform pg_advisory_xact_lock(hashtext('repair-appointment-' || new.appointment_date::text));
+    if exists (
+      select 1 from public.repairs r
+      where r.id <> new.id
+        and r.status = 'in_progress'
+        and r.appointment_date = new.appointment_date
+        and public.repair_periods_overlap(r.appointment_period, new.appointment_period)
+    ) then
+      raise exception 'เวลานี้มีนัดซ่อมของห้องอื่นแล้ว กรุณาเลือกเวลาอื่น';
+    end if;
+  end if;
+
+  if new.status = 'pending' and jsonb_array_length(new.available_slots) > 0
+     and (tg_op = 'INSERT' or old.status is distinct from 'pending' or new.available_slots is distinct from old.available_slots) then
+    -- ล็อกทุกวันที่เลือก (เรียงวันก่อน กันล็อกค้างกันเอง)
+    for d in select distinct x ->> 'date' from jsonb_array_elements(new.available_slots) x order by 1 loop
+      perform pg_advisory_xact_lock(hashtext('repair-appointment-' || d));
+    end loop;
+    for s in select * from jsonb_array_elements(new.available_slots) loop
+      if (s ->> 'date') >= public.today_th()::text
+         and public.repair_time_taken(new.id, (s ->> 'date')::date, s ->> 'period') then
+        raise exception 'เวลานี้มีห้องอื่นเลือกไว้แล้ว กรุณาเลือกเวลาอื่น';
+      end if;
+    end loop;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists repairs_no_double_booking on public.repairs;
+create trigger repairs_no_double_booking before insert or update on public.repairs
+  for each row execute function public.repairs_no_double_booking();
+
+-- เลิกใช้สถานะ "นัดหมายแล้ว" (scheduled): ย้ายรายการเดิมเป็น "กำลังดำเนินการ" (in_progress) โดยเก็บวันนัดไว้
+-- (เปิด app.repair_tenant_action ชั่วคราวเพื่อข้ามการล็อกคอลัมน์ใน trigger, ไม่มีผู้ใช้จึงไม่ส่งแจ้งเตือน)
+select set_config('app.repair_tenant_action', 'on', false);
+update public.repairs set status = 'in_progress' where status = 'scheduled';
+select set_config('app.repair_tenant_action', 'off', false);
+
+-- ============================================================
+-- ค่าซ่อมรวมในใบแจ้งหนี้ค่าห้อง
+-- ============================================================
+--
+-- แนวคิด: ค่าซ่อมที่ผู้เช่าต้องชำระ (ซ่อมเสร็จแล้ว, cost_payer = tenant, cost > 0) ไม่ต้องจ่ายแยก
+--   ตอนสร้างใบแจ้งหนี้ใหม่ของห้องนั้น (ทีละใบหรือทั้งเดือน) ระบบรวมค่าซ่อมที่ยังไม่ได้เรียกเก็บเข้าไปในใบอัตโนมัติ
+--   เก็บยอดไว้ใน invoices.repair_fee (รวมอยู่ใน total แล้ว) และจำว่าเรื่องซ่อมไหนอยู่ในใบไหนที่ repairs.invoice_id
+--   ลบใบแจ้งหนี้ = เรื่องซ่อมกลับไปรอเรียกเก็บในใบถัดไป (on delete set null)
+-- เรื่องเก่าที่ผู้เช่าส่งสลิปค่าซ่อมแยกไปแล้ว (รอตรวจ/ชำระแล้ว ใน repair_payments) ไม่ถูกนำมาเรียกเก็บซ้ำ
+
+alter table public.invoices add column if not exists repair_fee numeric(12, 2) not null default 0;
+alter table public.invoices drop constraint if exists invoices_repair_fee_check;
+alter table public.invoices add constraint invoices_repair_fee_check check (repair_fee >= 0);
+
+alter table public.repairs add column if not exists invoice_id uuid references public.invoices (id) on delete set null;
+create index if not exists repairs_invoice_idx on public.repairs (invoice_id) where invoice_id is not null;
+
+-- เรื่องซ่อมของห้อง/ผู้เช่านี้ที่ต้องเรียกเก็บในใบแจ้งหนี้ใบถัดไป
+create or replace function public.repair_unbilled(p_room text, p_user uuid)
+returns setof public.repairs
+language sql
+stable
+security definer set search_path = public
+as $$
+  select r.* from public.repairs r
+  where r.room = p_room
+    and r.user_id is not distinct from p_user
+    and r.status = 'done' and r.cost_payer = 'tenant' and r.cost > 0
+    and r.invoice_id is null
+    and not exists (select 1 from public.repair_payments p where p.repair_id = r.id and p.status in ('review', 'paid'));
+$$;
+
+revoke all on function public.repair_unbilled(text, uuid) from public, anon, authenticated;
+
+-- ก่อนเพิ่มใบแจ้งหนี้: บวกค่าซ่อมที่ยังไม่ได้เรียกเก็บเข้ายอดรวม (ล็อกแถวไว้ กันสองใบดึงค่าซ่อมเดียวกัน)
+create or replace function public.invoices_add_repair_fee()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_fee numeric;
+begin
+  perform 1 from public.repairs r where r.id in (select id from public.repair_unbilled(new.room, new.user_id)) for update;
+  select coalesce(sum(cost), 0) into v_fee from public.repair_unbilled(new.room, new.user_id);
+  new.repair_fee := v_fee;
+  new.total := new.total + v_fee;
+  return new;
+end;
+$$;
+
+drop trigger if exists invoices_add_repair_fee on public.invoices;
+create trigger invoices_add_repair_fee before insert on public.invoices
+  for each row execute function public.invoices_add_repair_fee();
+
+-- หลังเพิ่มใบแจ้งหนี้: ผูกเรื่องซ่อมที่ถูกรวมไว้กับใบนี้
+create or replace function public.invoices_link_repairs()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new.repair_fee > 0 then
+    update public.repairs set invoice_id = new.id
+    where id in (select id from public.repair_unbilled(new.room, new.user_id));
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists invoices_link_repairs on public.invoices;
+create trigger invoices_link_repairs after insert on public.invoices
+  for each row execute function public.invoices_link_repairs();
+
+-- เรื่องที่รวมในใบแจ้งหนี้แล้ว ห้ามแก้ยอดค่าใช้จ่ายหรือผู้ชำระ (ไม่งั้นยอดในใบกับเรื่องซ่อมไม่ตรงกัน)
+create or replace function public.repairs_lock_billed_cost()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if old.invoice_id is not null and new.invoice_id is not distinct from old.invoice_id
+     and (new.cost is distinct from old.cost or new.cost_payer is distinct from old.cost_payer) then
+    raise exception 'ค่าซ่อมนี้รวมในใบแจ้งหนี้แล้ว แก้ไขค่าใช้จ่ายไม่ได้ (ลบใบแจ้งหนี้นั้นก่อนถ้าต้องการแก้)';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists repairs_lock_billed_cost on public.repairs;
+create trigger repairs_lock_billed_cost before update of cost, cost_payer on public.repairs
+  for each row execute function public.repairs_lock_billed_cost();
+
+-- ล็อกการแก้ไขเรื่องแจ้งซ่อมของแอดมิน (ผู้เช่าล็อกไว้แล้วใน repairs_before_update)
+--   เสร็จสิ้นแล้ว: แก้อะไรไม่ได้อีก (ยกเว้นระบบผูกเรื่องกับใบแจ้งหนี้ invoice_id และการกระทำของผู้เช่า เช่น แจ้งว่ายังไม่หาย)
+--   เรื่องที่ผู้เช่าแจ้ง: แอดมินแก้ปัญหา รายละเอียด และรูปของผู้เช่าไม่ได้
+create or replace function public.repairs_admin_lock()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if current_setting('app.repair_tenant_action', true) = 'on' or not public.is_admin() then
+    return new;
+  end if;
+  if old.status = 'done'
+     and (new.status, new.problem, new.detail, new.image_path, new.category, new.urgency, new.admin_note, new.technician,
+          new.cost, new.cost_payer, new.appointment_date, new.appointment_period, new.available_slots, new.allow_entry)
+         is distinct from
+         (old.status, old.problem, old.detail, old.image_path, old.category, old.urgency, old.admin_note, old.technician,
+          old.cost, old.cost_payer, old.appointment_date, old.appointment_period, old.available_slots, old.allow_entry) then
+    raise exception 'เรื่องนี้ซ่อมเสร็จสิ้นแล้ว แก้ไขไม่ได้';
+  end if;
+  if old.user_id is not null
+     and (new.problem, new.detail, new.image_path) is distinct from (old.problem, old.detail, old.image_path) then
+    raise exception 'แก้ไขปัญหา รายละเอียด หรือรูปที่ผู้เช่าแจ้งไม่ได้';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists repairs_admin_lock on public.repairs;
+create trigger repairs_admin_lock before update on public.repairs
+  for each row execute function public.repairs_admin_lock();
+
+-- ============================================================
 -- hardening
 -- ============================================================
 -- ปิดฟังก์ชันที่คนนอกเรียกได้ ตั้ง search_path ให้ฟังก์ชันช่วย และระบบบังคับเปลี่ยนรหัสผ่านครั้งแรก
@@ -2982,7 +3053,8 @@ begin
        and p.proname in (
          'repair_valid_period', 'today_th', 'repair_valid_slots', 'invoices_lock_total', 'thai_month', 'fmt_baht',
          'repair_status_label', 'repair_period_label', 'thai_date', 'repair_appointment_text', 'repair_slots_text',
-         'invoices_reset_verify', 'invoice_late_fee', 'audit_log_immutable', 'asof_date', 'audit_status_label'
+         'invoices_reset_verify', 'invoice_late_fee', 'audit_log_immutable', 'asof_date', 'audit_status_label',
+         'repair_period_range', 'repair_periods_overlap'
        )
   loop
     execute format('alter function %s set search_path = public', f.sig);
@@ -3058,7 +3130,6 @@ end $$;
 -- 2) ดัชนีให้ foreign key ที่ยังไม่มี (ลบ/แก้แถวต้นทางจะไม่ต้องสแกนทั้งตาราง)
 -- ============================================================
 
-create index if not exists chat_messages_sender_idx on public.chat_messages (sender_id);
 create index if not exists invoice_payments_confirmed_by_idx on public.invoice_payments (confirmed_by);
 create index if not exists move_outs_created_by_idx on public.move_outs (created_by);
 create index if not exists repair_payments_reviewed_by_idx on public.repair_payments (reviewed_by);

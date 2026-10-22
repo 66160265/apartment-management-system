@@ -5,6 +5,7 @@ import PageHeader from './PageHeader'
 import MonthPicker from './MonthPicker'
 import { InvoiceBreakdown, StatusBadge } from './InvoiceParts'
 import { invoiceStatuses } from '../data/billing'
+import { loadUnbilledRepairFees } from '../lib/repairPayments'
 import { baht, calcInvoice, currentMonth, formatMonth, lateFeeSnapshot, paidOf } from '../lib/billing'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
@@ -53,6 +54,8 @@ function AdminInvoices() {
     const [tenants, setTenants] = useState([])
     const [rents, setRents] = useState({})
     const [invoices, setInvoices] = useState([])
+    // ค่าซ่อมที่ยังไม่ได้เรียกเก็บ { ห้อง: ยอด } จะรวมเข้าใบแจ้งหนี้ใบถัดไปของห้องนั้นอัตโนมัติ (ใช้แสดงยอดตัวอย่าง)
+    const [repairFees, setRepairFees] = useState({})
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
     const settings = useSettings()
@@ -86,7 +89,10 @@ function AdminInvoices() {
     }, [])
 
     // โหลดซ้ำหลังบันทึก/ลบ
-    const load = useCallback(async () => applyResult(await fetchData()), [applyResult])
+    const load = useCallback(async () => {
+        loadUnbilledRepairFees().then(setRepairFees)
+        applyResult(await fetchData())
+    }, [applyResult])
 
     // อัปเดตเองเมื่อผู้เช่าส่งสลิป มีการยืนยันรับเงิน หรือข้อมูลห้อง/ผู้เช่าเปลี่ยน
     useRealtimeReload(['invoices', 'invoice_payments', 'tenants', 'rooms'], load)
@@ -94,6 +100,7 @@ function AdminInvoices() {
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {
         let active = true
+        loadUnbilledRepairFees().then((fees) => active && setRepairFees(fees))
         fetchData().then((result) => {
             if (active) applyResult(result)
         })
@@ -148,6 +155,8 @@ function AdminInvoices() {
         commonFee: Number(view.commonFee),
     }
     const calc = calcInvoice({ rent, ...numbers })
+    // ค่าซ่อมในใบ: ตอนแก้ไขใช้ยอดที่รวมไว้แล้ว ใบใหม่ใช้ค่าซ่อมที่ยังไม่ได้เรียกเก็บของห้อง (ฐานข้อมูลบวกให้ตอนสร้างใบ)
+    const repairFee = editing ? Number(editing.repair_fee ?? 0) : (repairFees[form.room] ?? 0)
 
     // เริ่มแก้ไขใบแจ้งหนี้: เติมข้อมูลเดิมลงในฟอร์ม
     const startEdit = (invoice) => {
@@ -204,7 +213,8 @@ function AdminInvoices() {
             elec_curr: numbers.elecCurr,
             elec_rate: numbers.elecRate,
             common_fee: numbers.commonFee,
-            total: calc.total,
+            // แก้ไขใบเดิม: ยอดรวมต้องรวมค่าซ่อมที่อยู่ในใบด้วย (ใบใหม่ฐานข้อมูลบวกค่าซ่อมให้เอง)
+            total: calc.total + (editingId ? repairFee : 0),
         }
         setSaving(true)
         // แก้ไขได้ทุกสถานะ (สถานะและสลิปคงเดิม) ค่าเช่าใช้ค่าที่บันทึกไว้เดิม
@@ -261,6 +271,7 @@ function AdminInvoices() {
                     rents={rents}
                     invoices={invoices}
                     settings={settings}
+                    repairFees={repairFees}
                     onDone={async (count) => {
                         await load()
                         setBulk(false)
@@ -322,10 +333,11 @@ function AdminInvoices() {
                 water: acc.water + c.water,
                 elec: acc.elec + c.elec,
                 common: acc.common + Number(i.common_fee),
+                repair: acc.repair + Number(i.repair_fee ?? 0),
                 total: acc.total + Number(i.total),
             }
         },
-        { rent: 0, water: 0, elec: 0, common: 0, total: 0 }
+        { rent: 0, water: 0, elec: 0, common: 0, repair: 0, total: 0 }
     )
 
     return (
@@ -451,7 +463,8 @@ function AdminInvoices() {
                                 elec_curr: form.elecCurr === '' ? numbers.elecPrev : numbers.elecCurr,
                                 elec_rate: numbers.elecRate || 0,
                                 common_fee: numbers.commonFee || 0,
-                                total: calc.total || 0,
+                                repair_fee: repairFee,
+                                total: (calc.total || 0) + repairFee,
                             }}
                         />
                         {/* เตือนเมื่อแก้ใบที่ส่งสลิปหรือจ่ายแล้ว */}
@@ -533,7 +546,7 @@ function AdminInvoices() {
                     </div>
                     <div className="xl:overflow-auto xl:max-h-[32rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
                         {/* จอใหญ่: ตารางใบแจ้งหนี้ (ใบที่รอตรวจพื้นสีฟ้า) กดแถวเพื่อดูรายละเอียด */}
-                        <table className="hidden xl:table w-full min-w-[60rem] border-collapse text-sm">
+                        <table className="hidden xl:table w-full min-w-[66rem] border-collapse text-sm">
                             <thead className="sticky top-0 z-10">
                                 <tr className="bg-primary-dark text-white">
                                     <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center w-12">#</th>
@@ -544,6 +557,7 @@ function AdminInvoices() {
                                     <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-right">ค่าน้ำ</th>
                                     <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-right">ค่าไฟ</th>
                                     <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-right">ส่วนกลาง</th>
+                                    <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-right">ค่าซ่อม</th>
                                     <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-right">ยอดรวม</th>
                                     <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">สถานะ</th>
                                     <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">จัดการ</th>
@@ -570,6 +584,7 @@ function AdminInvoices() {
                                             <td className="px-3 py-3 border-x border-line/60 text-right tabular-nums" title={`${c.waterUnits} หน่วย`}>{baht(c.water)}</td>
                                             <td className="px-3 py-3 border-x border-line/60 text-right tabular-nums" title={`${c.elecUnits} หน่วย`}>{baht(c.elec)}</td>
                                             <td className="px-3 py-3 border-x border-line/60 text-right tabular-nums text-muted">{baht(i.common_fee)}</td>
+                                            <td className="px-3 py-3 border-x border-line/60 text-right tabular-nums text-muted">{baht(i.repair_fee ?? 0)}</td>
                                             <td className="px-3 py-3 border-x border-line/60 text-right font-semibold text-primary-dark tabular-nums bg-primary/5">{baht(i.total)}</td>
                                             <td className="px-3 py-3 border-x border-line/60 text-center"><StatusBadge status={i.status} /></td>
                                             <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -597,6 +612,7 @@ function AdminInvoices() {
                                         <td className="px-3 py-3 border-x border-line/60 text-right tabular-nums">{baht(totals.water)}</td>
                                         <td className="px-3 py-3 border-x border-line/60 text-right tabular-nums">{baht(totals.elec)}</td>
                                         <td className="px-3 py-3 border-x border-line/60 text-right tabular-nums">{baht(totals.common)}</td>
+                                        <td className="px-3 py-3 border-x border-line/60 text-right tabular-nums">{baht(totals.repair)}</td>
                                         <td className="px-3 py-3 border-x border-line/60 text-right tabular-nums">{baht(totals.total)}</td>
                                         <td colSpan="2" className="px-3 py-3 border-x border-line/60" />
                                     </tr>
@@ -630,7 +646,7 @@ function AdminInvoices() {
                                             </div>
                                         </button>
                                         <div className="text-xs text-muted tabular-nums">
-                                            ค่าเช่า {baht(i.rent)} · น้ำ {baht(c.water)} · ไฟ {baht(c.elec)}{Number(i.common_fee) > 0 ? ` · ส่วนกลาง ${baht(i.common_fee)}` : ''}
+                                            ค่าเช่า {baht(i.rent)} · น้ำ {baht(c.water)} · ไฟ {baht(c.elec)}{Number(i.common_fee) > 0 ? ` · ส่วนกลาง ${baht(i.common_fee)}` : ''}{Number(i.repair_fee) > 0 ? ` · ค่าซ่อม ${baht(i.repair_fee)}` : ''}
                                         </div>
                                         <div className="flex gap-2">
                                             <button

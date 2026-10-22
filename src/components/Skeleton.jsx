@@ -30,7 +30,7 @@ export function SkeletonText({ lines = 3, className = '' }) {
     )
 }
 
-// รายการแถวละหนึ่งรายการ: วงกลมซ้าย ข้อความสองบรรทัด และป้ายขวา (ใช้กับแจ้งเตือน รายการแชท เอกสาร)
+// รายการแถวละหนึ่งรายการ: วงกลมซ้าย ข้อความสองบรรทัด และป้ายขวา (ใช้กับแจ้งเตือน เอกสาร)
 export function SkeletonList({ rows = 5, avatar = true, className = '' }) {
     return (
         <SkeletonRegion className={`flex flex-col divide-y divide-line/60 ${className}`}>
@@ -101,19 +101,6 @@ export function SkeletonCards({ count = 3, lines = 3, className = '' }) {
         <SkeletonRegion className={`flex flex-col gap-4 ${className}`}>
             {Array.from({ length: count }, (_, i) => (
                 <SkeletonCard key={i} lines={lines} />
-            ))}
-        </SkeletonRegion>
-    )
-}
-
-// ฟองข้อความแชท สลับซ้ายขวา
-export function SkeletonChat({ rows = 5 }) {
-    return (
-        <SkeletonRegion className="flex flex-col gap-4 py-2">
-            {Array.from({ length: rows }, (_, i) => (
-                <div key={i} aria-hidden="true" className={`flex ${i % 2 ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`${bar} h-12 rounded-2xl! ${i % 3 === 0 ? 'w-2/3' : i % 3 === 1 ? 'w-1/2' : 'w-2/5'}`} />
-                </div>
             ))}
         </SkeletonRegion>
     )

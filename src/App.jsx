@@ -19,7 +19,6 @@ const ReportsPage = lazy(pageLoaders.reports)
 const NotificationsPage = lazy(pageLoaders.notifications)
 const AnnouncementsPage = lazy(pageLoaders.announcements)
 const SettingsPage = lazy(pageLoaders.settings)
-const ChatPage = lazy(pageLoaders.chat)
 
 // กำหนดเส้นทาง (route) ทั้งหมดของแอป: หน้า login, หน้าของแอดมิน, หน้าของผู้เช่า และหน้าที่ใช้ร่วมกัน
 function App() {
@@ -47,7 +46,6 @@ function App() {
           {/* ทั้งสองสิทธิ์ใช้ร่วมกัน */}
           <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/repairs" element={<RepairsPage />} />
-          <Route path="/chat" element={<ChatPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/announcements" element={<AnnouncementsPage />} />

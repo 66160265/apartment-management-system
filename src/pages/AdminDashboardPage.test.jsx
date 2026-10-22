@@ -93,7 +93,7 @@ describe('หน้าภาพรวมแอดมิน (เรนเดอ�
         const t = text()
         expect(t).toContain('สลิปค่าห้องรอตรวจสอบ')
         expect(t).toContain('สลิปค่าซ่อมรอตรวจสอบ')
-        expect(t).toContain('เรื่องแจ้งซ่อมรอนัดหมาย')
+        expect(t).toContain('เรื่องแจ้งซ่อมรอดำเนินการ')
         expect(t).toContain('ผู้เช่าโอนเกิน รอโอนคืน')
         expect(t).toContain('เงินประกันรอคืนผู้เช่า')
         expect(t).toContain('฿300')

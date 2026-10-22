@@ -18,10 +18,19 @@ export function recentMonths(endMonth, count = 12) {
 const sum = (list, pick) => Math.round(list.reduce((acc, x) => acc + Number(pick(x) || 0), 0) * 100) / 100
 
 // สรุปรายเดือน
-// data = { invoices, invoicePayments, repairPayments } (invoicePayments: invoice_payments, repairPayments: เฉพาะที่ชำระแล้วจาก repair_payments)
+// data = { invoices, invoicePayments, repairPayments, repairs } (invoicePayments: invoice_payments, repairPayments: เฉพาะที่ชำระแล้วจาก repair_payments,
+//        repairs: เรื่องแจ้งซ่อม ใช้ทำสถิติยอดซ่อม ไม่ส่งมา = ไม่มี)
 export function monthlySummary(data, month, now = new Date()) {
+    const base = summaryBase(data, month, now)
+    // คงเหลือ = เงินที่ได้รับจริงในเดือนนี้ (ค่าห้อง + ค่าซ่อม) − ค่าซ่อมที่หอพักจ่ายของเดือนนี้
+    return { ...base, net: Math.round((base.received + base.repairReceived - base.repairCost) * 100) / 100 }
+}
+
+function summaryBase(data, month, now) {
     const issued = data.invoices.filter((i) => i.month === month)
     const unpaid = issued.filter((i) => i.status !== 'paid')
+    // งานซ่อมที่หอพักรับผิดชอบค่าใช้จ่าย และเสร็จในเดือนนี้ (ตามวันที่ซ่อมเสร็จ เวลาไทย) ค่าซ่อมที่ผู้เช่าจ่ายไม่นับ
+    const repairsDone = (data.repairs ?? []).filter((r) => r.status === 'done' && r.cost_payer !== 'tenant' && monthOf(r.completed_at) === month)
     return {
         month,
         issuedCount: issued.length,
@@ -31,8 +40,9 @@ export function monthlySummary(data, month, now = new Date()) {
         // เงินที่ได้รับจริงในเดือนนี้ (ค่าห้อง รวมค่าปรับ) และค่าซ่อม
         received: sum(data.invoicePayments.filter((p) => monthOf(p.confirmed_at) === month), (p) => p.amount),
         repairReceived: sum(data.repairPayments.filter((p) => p.status === 'paid' && monthOf(p.reviewed_at) === month), (p) => p.amount),
-        // โอนคืนยอดเกินที่ทำจริงในเดือนนี้
-        refunded: sum(data.invoices.filter((i) => i.refund_status === 'done' && monthOf(i.refunded_at) === month), (i) => i.refund_amount),
+        // ค่าซ่อมที่หอพักจ่าย ของงานที่เสร็จในเดือนนี้
+        repairCount: repairsDone.length,
+        repairCost: sum(repairsDone, (r) => r.cost),
         // ยอดค้างของใบเดือนนี้ ณ ตอนนี้ (รวมค่าปรับของวันนี้)
         outstanding: sum(unpaid, (i) => balanceOf(i, now)),
         unpaidCount: unpaid.length,
@@ -174,7 +184,9 @@ export const monthlyColumns = [
     { header: 'ยอดที่เรียกเก็บ', value: (r) => r.billed },
     { header: 'รับเงินค่าห้อง (รวมค่าปรับ)', value: (r) => r.received },
     { header: 'รับเงินค่าซ่อม', value: (r) => r.repairReceived },
-    { header: 'โอนคืนยอดเกิน', value: (r) => r.refunded },
+    { header: 'งานซ่อมที่หอพักจ่าย', value: (r) => r.repairCount },
+    { header: 'ค่าซ่อมที่หอพักจ่าย', value: (r) => r.repairCost },
+    { header: 'คงเหลือ (รับเงินจริง − ค่าซ่อมที่หอพักจ่าย)', value: (r) => r.net },
     { header: 'ค่าปรับของใบเดือนนี้ที่ชำระแล้ว', value: (r) => r.lateFees },
     { header: 'ใบที่ยังค้าง', value: (r) => r.unpaidCount },
     { header: 'ยอดค้าง ณ วันนี้', value: (r) => r.outstanding },
@@ -194,9 +206,6 @@ export const paymentColumns = (invoiceById) => [
 // ---- การย้ายออกและเงินประกัน (supabase/migrations/20261022000000_initial_schema.sql (ส่วน move-out)) ----
 
 const refundLabels = { pending: 'รอคืนเงิน', done: 'คืนแล้ว', none: 'ไม่มียอดคืน' }
-
-// เงินประกันที่ยังต้องคืนผู้เช่า (บันทึกย้ายออกที่สถานะรอคืน)
-export const pendingDepositRefund = (moveOuts) => sum(moveOuts.filter((m) => m.refund_status === 'pending'), (m) => m.refund_amount)
 
 // ยอดที่ผู้เช่าต้องจ่ายเพิ่มเพราะหักเกินเงินประกัน (ระบบไม่ติดตามต่อ ใช้เตือนให้เรียกเก็บนอกระบบ)
 export const owedFromMoveOuts = (moveOuts) => sum(moveOuts, (m) => m.owed_amount)
@@ -227,4 +236,59 @@ export function utilityHistory(invoices, endMonth, count = 12) {
             const stats = utilityStats(list)
             return { month, water: stats.waterUnits, electric: stats.elecUnits, invoices: list.length }
         })
+}
+
+// ---- ห้องว่าง สัญญาใกล้หมด และสถิติแจ้งซ่อม ----
+
+// จำนวนวันจากวันที่ a ถึง b (YYYY-MM-DD)
+const daysFrom = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000)
+
+// ห้องว่าง: ว่างมาตั้งแต่วันที่ย้ายออกล่าสุดของห้องนั้น (ไม่มีบันทึกย้ายออก = ไม่ทราบ) และค่าเช่าที่ไม่ได้รับ (คิดเดือนละ 30 วัน)
+export function vacancyRows(rooms, moveOuts, now = new Date()) {
+    const today = thaiDateOf(now)
+    return rooms
+        .filter((r) => r.status === 'vacant')
+        .map((r) => {
+            const since = moveOuts.filter((m) => m.room === r.number && m.move_out_date <= today).map((m) => m.move_out_date).sort().at(-1) ?? null
+            const days = since ? daysFrom(since, today) : null
+            return { room: r.number, rent: Number(r.rent ?? 0), since, days, lost: days === null ? null : Math.round((Number(r.rent ?? 0) * days) / 30) }
+        })
+        .sort((a, b) => (b.days ?? -1) - (a.days ?? -1) || a.room.localeCompare(b.room, undefined, { numeric: true }))
+}
+
+// สัญญาที่หมดแล้วหรือจะหมดภายใน withinDays วัน เรียงจากใกล้หมดที่สุด (daysLeft ติดลบ = หมดแล้ว)
+export function expiringContracts(tenants, now = new Date(), withinDays = 90) {
+    const today = thaiDateOf(now)
+    return tenants
+        .filter((t) => t.end_date)
+        .map((t) => ({ room: t.room, name: t.name, endDate: t.end_date, daysLeft: daysFrom(today, t.end_date) }))
+        .filter((t) => t.daysLeft <= withinDays)
+        .sort((a, b) => a.daysLeft - b.daysLeft)
+}
+
+// สถิติแจ้งซ่อม (ไม่นับเรื่องที่ยกเลิก): จำนวนตามประเภท ห้องที่แจ้งบ่อย เวลาซ่อมเฉลี่ย (วันที่แจ้ง -> วันที่เสร็จ) และงานที่ค้างเกิน overdueDays วัน
+export function repairStats(repairs, now = new Date(), overdueDays = 7) {
+    const today = thaiDateOf(now)
+    const list = repairs.filter((r) => r.status !== 'cancelled')
+    const count = (pick) => {
+        const map = {}
+        for (const r of list) map[pick(r)] = (map[pick(r)] ?? 0) + 1
+        return Object.entries(map).map(([key, n]) => ({ key, count: n })).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key, undefined, { numeric: true }))
+    }
+    const done = list.filter((r) => r.status === 'done' && r.completed_at && r.created_at)
+    const durations = done.map((r) => Math.max(0, daysFrom(thaiDateOf(new Date(r.created_at)), thaiDateOf(new Date(r.completed_at)))))
+    const open = list.filter((r) => r.status === 'pending' || r.status === 'in_progress')
+    const overdue = open
+        .map((r) => ({ id: r.id, room: r.room, problem: r.problem, status: r.status, days: daysFrom(thaiDateOf(new Date(r.created_at)), today) }))
+        .filter((r) => r.days > overdueDays)
+        .sort((a, b) => b.days - a.days)
+    return {
+        total: list.length,
+        doneCount: done.length,
+        openCount: open.length,
+        avgDays: durations.length ? Math.round((durations.reduce((x, y) => x + y, 0) / durations.length) * 10) / 10 : null,
+        byCategory: count((r) => r.category ?? 'other'),
+        byRoom: count((r) => r.room),
+        overdue,
+    }
 }

@@ -65,7 +65,7 @@ function ReceiptDocument({ receipt, tenant, floor, settings }) {
         >
             {/* หัวเอกสาร: ข้อมูลหอพักและชื่อเอกสาร */}
             <div style={{ background: `linear-gradient(135deg, ${C.deep}, ${C.primary})`, color: '#FFFFFF', padding: '30px 44px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
+                <div style={{ flex: 1, minWidth: 0, marginRight: 24 }}>
                     <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>{settings.apartmentName}</div>
                     <div style={{ fontSize: 12, opacity: 0.8 }}>{settings.apartmentNameEn}</div>
                     <div style={{ fontSize: 11, opacity: 0.85, marginTop: 8, maxWidth: 360 }}>
@@ -75,7 +75,7 @@ function ReceiptDocument({ receipt, tenant, floor, settings }) {
                         {settings.email ? `${settings.phone ? ' · ' : ''}${settings.email}` : ''}
                     </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
+                <div style={{ textAlign: 'right', flexShrink: 0, whiteSpace: 'nowrap' }}>
                     <div style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.1 }}>ใบเสร็จรับเงิน</div>
                     <div style={{ fontSize: 12, letterSpacing: 3, opacity: 0.8, marginTop: 2 }}>RECEIPT</div>
                     {receipt.code && <div style={{ fontSize: 13, marginTop: 10, fontWeight: 600 }}>เลขที่ {receipt.code}</div>}
@@ -101,7 +101,7 @@ function ReceiptDocument({ receipt, tenant, floor, settings }) {
 
                 {/* สถานะ: ชำระครบ / รับบางส่วน */}
                 <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ padding: '4px 14px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: isFinal ? C.greenBg : C.amberBg, color: isFinal ? C.green : C.amber }}>
+                    <span style={{ display: 'inline-block', whiteSpace: 'nowrap', padding: '4px 14px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: isFinal ? C.greenBg : C.amberBg, color: isFinal ? C.green : C.amber }}>
                         {isFinal ? 'ชำระครบแล้ว' : 'รับชำระบางส่วน'}
                     </span>
                     {receipt.installment && (

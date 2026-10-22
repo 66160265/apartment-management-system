@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
@@ -8,7 +7,6 @@ import { balanceOf, baht, daysLate, formatDateTime, formatMonth, formatShortDate
 import { invoiceDueDate, tenantUnpaid } from '../lib/dashboard'
 import { generatePromptPayQR } from '../lib/promptpay'
 import AnnouncementBanner from '../components/AnnouncementBanner'
-import { RepairCostBanner } from '../components/RepairPayment'
 import { useRealtimeReload } from '../lib/realtime'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
@@ -281,6 +279,7 @@ function UserDashboardPage() {
             elecRate: Number(activeInvoice.elec_rate || 0),
             elecCost,
             commonFee: Number(activeInvoice.common_fee || 0),
+            repairFee: Number(activeInvoice.repair_fee || 0),
             total: Number(activeInvoice.total || 0),
         }
     }, [activeInvoice])
@@ -447,9 +446,6 @@ function UserDashboardPage() {
                         </section>
                     )}
 
-                    {/* ค่าซ่อมที่ยังไม่ได้ชำระ (ไม่แสดงถ้าไม่มี) */}
-                    <RepairCostBanner />
-
                     {/* สัญญาใกล้หมดหรือหมดแล้ว: บอกผู้เช่าให้ติดต่อผู้ดูแล (ต่อสัญญาทำโดยผู้ดูแล) */}
                     {contractRemainingDays !== null && contractRemainingDays <= 30 && (
                         <div role="status" className={`rounded-2xl ring-1 p-4 flex items-start gap-3 text-sm ${contractRemainingDays > 0 ? 'bg-amber-50 ring-amber-200 text-amber-950' : 'bg-red-50 ring-red-200 text-red-950'}`}>
@@ -609,6 +605,19 @@ function UserDashboardPage() {
                                         </span>
                                     </div>
 
+                                    {/* ค่าซ่อมที่รวมมาในใบนี้ (แสดงทุกใบเหมือนค่าส่วนกลาง ไม่มีค่าซ่อม = ฿0) */}
+                                    <div className="py-3.5 flex justify-between items-center text-sm">
+                                        <div className="flex items-center gap-3">
+                                            <span className="grid place-items-center w-8 h-8 rounded-lg bg-rose-50 text-rose-700">
+                                                <Icon name="wrench" className="w-4 h-4" />
+                                            </span>
+                                            <span className="text-gray-800 font-medium">ค่าซ่อม</span>
+                                        </div>
+                                        <span className="font-semibold text-gray-900 tabular-nums">
+                                            {baht(invoiceBreakdown.repairFee)}
+                                        </span>
+                                    </div>
+
                                     {/* รวมทั้งหมด */}
                                     <div className="pt-5 flex justify-between items-center">
                                         <span className="text-base font-bold text-ink">รวมทั้งหมด</span>
@@ -675,10 +684,6 @@ function UserDashboardPage() {
                                 ) : (
                                     <p className="text-xs text-muted">ไม่มีรายการที่ต้องดำเนินการ</p>
                                 )}
-
-                                <Link to="/invoices" className="text-center text-xs text-primary-dark hover:underline font-medium">
-                                    ดูประวัติใบแจ้งหนี้ทั้งหมด
-                                </Link>
 
                                 {/* ปุ่มดาวน์โหลดใบแจ้งหนี้ PDF */}
                                 {activeInvoice && (

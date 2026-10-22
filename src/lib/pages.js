@@ -13,7 +13,6 @@ export const pageLoaders = {
     userDashboard: () => import('../pages/UserDashboardPage.jsx'),
     invoices: () => import('../pages/InvoicesPage.jsx'),
     repairs: () => import('../pages/RepairsPage.jsx'),
-    chat: () => import('../pages/ChatPage.jsx'),
     account: () => import('../pages/AccountPage.jsx'),
     notifications: () => import('../pages/NotificationsPage.jsx'),
     announcements: () => import('../pages/AnnouncementsPage.jsx'),
@@ -21,8 +20,8 @@ export const pageLoaders = {
 
 // หน้าที่ prefetch ต่อสิทธิ์ (เรียงตามที่น่าจะเปิดบ่อย)
 export const prefetchOrder = {
-    admin: ['invoices', 'repairs', 'tenants', 'rooms', 'reports', 'notifications', 'announcements', 'chat', 'settings', 'audit', 'adminUsers', 'account'],
-    user: ['invoices', 'repairs', 'notifications', 'announcements', 'chat', 'account'],
+    admin: ['invoices', 'repairs', 'tenants', 'rooms', 'reports', 'notifications', 'announcements', 'settings', 'audit', 'adminUsers', 'account'],
+    user: ['invoices', 'repairs', 'notifications', 'announcements', 'account'],
 }
 
 // ดึงหน้าไว้ล่วงหน้าตอนเบราว์เซอร์ว่าง ทีละหน้า (ไม่แย่งแบนด์วิดท์กับหน้าที่กำลังใช้งาน) ข้ามถ้าผู้ใช้เปิดโหมดประหยัดข้อมูล

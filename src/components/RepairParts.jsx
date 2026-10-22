@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import DatePicker from './DatePicker'
-import { DEFAULT_PERIOD, MAX_SLOTS, repairStatuses, repairUrgencies } from '../data/repairs'
-import { formatSize, formatSlot, getRepairImageUrl, parsePeriod, repairTimeOptions, todayIso, validateImage } from '../lib/repairs'
+import { MAX_SLOTS, repairStatuses, repairUrgencies } from '../data/repairs'
+import { formatSize, formatSlot, getRepairImageUrl, isBooked, parsePeriod, periodAt, repairTimeOptions, todayIso, validateImage } from '../lib/repairs'
 
 // ป้ายสถานะงานซ่อม (รอดำเนินการ / กำลังดำเนินการ / เสร็จสิ้น) สีตามสถานะ ถ้าไม่รู้จักสถานะจะแสดงเป็นสีเทา
 export function RepairStatusBadge({ status }) {
@@ -160,7 +160,7 @@ export function UrgencyBadge({ urgency, showNormal = false }) {
 }
 
 // ปุ่มเลือกเวลา กดแล้วเปิดตารางเวลาแบบกะทัดรัด (แทน select ของเบราว์เซอร์ที่รายการยาวเกินไป)
-function TimeSelect({ value, options, isBlocked, onChange, disabled, label, align, className }) {
+function TimeSelect({ value, options, isBlocked, onChange, disabled, label, align, className, placeholder = 'เลือกเวลา' }) {
     const ref = useRef(null)
     const [open, setOpen] = useState(false)
 
@@ -189,7 +189,7 @@ function TimeSelect({ value, options, isBlocked, onChange, disabled, label, alig
                 aria-expanded={open}
                 className={`${className} flex items-center justify-between gap-1 text-left ${open ? 'border-secondary' : ''}`}
             >
-                <span>{value}</span>
+                <span className={value ? '' : 'text-muted'}>{value || placeholder}</span>
                 <Icon name="clock" className="w-4 h-4 text-primary shrink-0" />
             </button>
             {open && (
@@ -219,22 +219,19 @@ function TimeSelect({ value, options, isBlocked, onChange, disabled, label, alig
     )
 }
 
-// เลือกช่วงเวลาเอง (เริ่ม - สิ้นสุด) ระหว่าง 09:00-20:00 ค่าเป็น "HH:MM-HH:MM"
-export function TimeRangePicker({ value, onChange, disabled = false, selectClassName = 'w-full border border-line rounded-xl px-3 py-2 text-sm bg-white outline-none focus:border-secondary' }) {
-    const { start, end } = parsePeriod(value)
-    // เปลี่ยนเวลาเริ่มแล้วเลยเวลาสิ้นสุด: เลื่อนเวลาสิ้นสุดไปเป็นช่องถัดไป
-    const changeStart = (s) => onChange(`${s}-${end > s ? end : repairTimeOptions[repairTimeOptions.indexOf(s) + 1]}`)
+// เลือกเวลาเข้าซ่อม 09:00, 10:00, ..., 17:00 ค่าเป็นช่วงนัด 1 ครั้ง "09:00-10:00"
+// isBlocked(period) = เวลานี้เลือกไม่ได้ (มีนัดของห้องอื่นแล้ว)
+function TimePicker({ value, onChange, isBlocked, disabled = false, selectClassName = 'w-full border border-line rounded-xl px-3 py-2 text-sm bg-white outline-none focus:border-secondary' }) {
+    const { start } = parsePeriod(value)
     return (
-        <div className="flex-1 min-w-48 flex items-center gap-1.5">
-            <TimeSelect value={start} options={repairTimeOptions.slice(0, -1)} onChange={changeStart} disabled={disabled} label="เวลาเริ่ม" className={selectClassName} />
-            <span className="text-muted text-sm">ถึง</span>
+        <div className="w-36 shrink-0 flex items-center gap-1.5">
             <TimeSelect
-                value={end}
-                options={repairTimeOptions.slice(1)}
-                isBlocked={(t) => t <= start}
-                onChange={(t) => onChange(`${start}-${t}`)}
+                value={start}
+                options={repairTimeOptions}
+                isBlocked={isBlocked ? (t) => isBlocked(periodAt(t)) : undefined}
+                onChange={(t) => onChange(periodAt(t))}
                 disabled={disabled}
-                label="เวลาสิ้นสุด"
+                label="เวลาเข้าซ่อม"
                 align="right"
                 className={selectClassName}
             />
@@ -243,10 +240,11 @@ export function TimeRangePicker({ value, onChange, disabled = false, selectClass
     )
 }
 
-// ตัวเลือกช่วงเวลาที่สะดวกให้ช่างเข้า (สูงสุด MAX_SLOTS ช่วง) ค่าเป็น [{ date: 'YYYY-MM-DD', period: '13:00-15:30' }]
-export function SlotPicker({ slots, onChange, disabled = false }) {
+// ตัวเลือกวันและเวลาที่สะดวกให้ช่างเข้า (สูงสุด MAX_SLOTS ตัวเลือก) ค่าเป็น [{ date: 'YYYY-MM-DD', period: '09:00-10:00' }]
+// booked = เวลาที่มีนัดซ่อมของห้องอื่นแล้ว [{ date, period }] (เลือกไม่ได้)
+export function SlotPicker({ slots, onChange, booked = [], disabled = false }) {
     // แสดงช่องตัวเลือกที่ 1 ไว้เสมอ ถ้ายังไม่ได้เลือกวันจะยังไม่นับเป็นข้อมูล (ส่ง [] ออกไป แต่จำเวลาที่ตั้งไว้)
-    const [draftPeriod, setDraftPeriod] = useState(DEFAULT_PERIOD)
+    const [draftPeriod, setDraftPeriod] = useState('')
     const rows = slots.length > 0 ? slots : [{ date: '', period: draftPeriod }]
     const emit = (next) => {
         if (next.length === 1 && !next[0].date) {
@@ -258,7 +256,7 @@ export function SlotPicker({ slots, onChange, disabled = false }) {
     // แก้ค่าของช่วงที่ index
     const update = (index, key, value) => emit(rows.map((s, i) => (i === index ? { ...s, [key]: value } : s)))
     const remove = (index) => emit(rows.filter((_, i) => i !== index))
-    const add = () => emit([...rows, { date: '', period: DEFAULT_PERIOD }])
+    const add = () => emit([...rows, { date: '', period: '' }])
 
     return (
         <div className="flex flex-col gap-2">
@@ -268,12 +266,20 @@ export function SlotPicker({ slots, onChange, disabled = false }) {
                     <div className="flex-1 min-w-40">
                         <DatePicker value={s.date} onChange={(v) => update(i, 'date', v)} min={todayIso()} disabled={disabled} placeholder="เลือกวัน" />
                     </div>
-                    <TimeRangePicker value={s.period} onChange={(v) => update(i, 'period', v)} disabled={disabled} />
-                    {/* ช่องแรกลบไม่ได้ ลบได้เฉพาะช่องที่เพิ่มเอง */}
-                    {i > 0 && (
+                    <TimePicker
+                        value={s.period}
+                        onChange={(v) => update(i, 'period', v)}
+                        // ปิดเวลาที่มีนัดของห้องอื่นแล้ว และเวลาที่ตัวเลือกอื่นในวันเดียวกันเลือกไปแล้ว
+                        isBlocked={(p) => Boolean(s.date) && (isBooked(booked, s.date, p) || rows.some((o, j) => j !== i && o.date === s.date && o.period === p))}
+                        disabled={disabled}
+                    />
+                    {/* ช่องแรกลบไม่ได้ ลบได้เฉพาะช่องที่เพิ่มเอง (ช่องแรกเว้นที่ว่างเท่าปุ่ม ให้ช่องวันที่กว้างเท่ากันทุกแถว) */}
+                    {i > 0 ? (
                         <button type="button" onClick={() => remove(i)} disabled={disabled} aria-label="ลบช่วงเวลานี้" className="p-2 text-muted hover:text-red-600">
                             <Icon name="trash" className="w-4 h-4" />
                         </button>
+                    ) : (
+                        MAX_SLOTS > 1 && <span className="hidden sm:block w-8 shrink-0" aria-hidden="true" />
                     )}
                 </div>
             ))}
@@ -287,28 +293,18 @@ export function SlotPicker({ slots, onChange, disabled = false }) {
     )
 }
 
-// รายการช่วงเวลาที่ผู้เช่าสะดวก (อ่านอย่างเดียว) ถ้าส่ง onPick มา จะมีปุ่มเลือกช่วงนั้นเป็นวันนัด (ใช้ฝั่งแอดมิน)
-export function SlotList({ slots, allowEntry, note, onPick, picked }) {
+// รายการช่วงเวลาที่ผู้เช่าสะดวก (อ่านอย่างเดียว ใช้ทั้งฝั่งผู้เช่าและแอดมิน) วันที่ผ่านไปแล้วขีดฆ่า
+export function SlotList({ slots, allowEntry, note }) {
     const today = todayIso()
     return (
         <div className="flex flex-col gap-1.5 text-sm">
             {(slots ?? []).length === 0 && !allowEntry && <p className="text-muted">ผู้เช่าไม่ได้ระบุช่วงเวลา</p>}
             {(slots ?? []).map((s) => {
                 const past = s.date < today
-                const isPicked = picked && picked.date === s.date && picked.period === s.period
                 return (
                     <div key={`${s.date}-${s.period}`} className={`flex items-center gap-2 ${past ? 'text-muted line-through' : 'text-ink'}`}>
                         <Icon name="calendar" className="w-4 h-4 text-secondary shrink-0" />
                         <span className="flex-1">{formatSlot(s.date, s.period)}</span>
-                        {onPick && !past && (
-                            <button
-                                type="button"
-                                onClick={() => onPick(s)}
-                                className={`px-3 py-0.5 rounded-lg text-xs ${isPicked ? 'bg-primary text-white' : 'bg-mist/60 text-primary-dark hover:bg-mist'}`}
-                            >
-                                {isPicked ? 'เลือกแล้ว' : 'นัดช่วงนี้'}
-                            </button>
-                        )}
                     </div>
                 )
             })}

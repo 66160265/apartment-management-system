@@ -16,22 +16,15 @@ const json = (body: unknown, status = 200) =>
 // ความยาวรหัสผ่านขั้นต่ำตอนแอดมินตั้งรหัสใหม่ให้
 const MIN_PASSWORD = 6
 
-// ลบไฟล์ส่วนตัวของผู้เช่าออกจากที่เก็บ: เอกสารห้อง (tenant-docs) และรูปแชท (chat/<userId>/) คืนข้อความ error หรือ null
+// ลบไฟล์ส่วนตัวของผู้เช่าออกจากที่เก็บ: เอกสารห้อง (tenant-docs) คืนข้อความ error หรือ null
 // deno-lint-ignore no-explicit-any
-async function removePersonalFiles(admin: any, userId: string, room: string): Promise<string | null> {
+async function removePersonalFiles(admin: any, room: string): Promise<string | null> {
   const { data: docs, error: docsError } = await admin.from('tenant_documents').select('file_path').eq('room', room)
   if (docsError) return `อ่านรายการเอกสารไม่สำเร็จ: ${docsError.message}`
   const docPaths = (docs ?? []).map((d: { file_path: string }) => d.file_path)
   if (docPaths.length) {
     const { error } = await admin.storage.from('tenant-docs').remove(docPaths)
     if (error) return `ลบไฟล์เอกสารผู้เช่าไม่สำเร็จ: ${error.message}`
-  }
-  const { data: chatFiles, error: listError } = await admin.storage.from('chat').list(userId, { limit: 1000 })
-  if (listError) return `อ่านรายการรูปแชทไม่สำเร็จ: ${listError.message}`
-  const chatPaths = (chatFiles ?? []).filter((f: { id: string | null }) => f.id).map((f: { name: string }) => `${userId}/${f.name}`)
-  if (chatPaths.length) {
-    const { error } = await admin.storage.from('chat').remove(chatPaths)
-    if (error) return `ลบรูปแชทไม่สำเร็จ: ${error.message}`
   }
   return null
 }
@@ -119,9 +112,9 @@ Deno.serve(async (req) => {
     // ถ้าเป็นผู้เช่า ลบข้อมูลผู้เช่าและคืนสถานะห้องเป็นว่างด้วย
     const { data: tenant } = await admin.from('tenants').select('room').eq('user_id', userId).maybeSingle()
     if (tenant) {
-      // ลบไฟล์ส่วนตัวจริงออกจากที่เก็บก่อน (สำเนาบัตรประชาชน สัญญา และรูปในแชท) ไม่ปล่อยให้ค้างหลังบัญชีถูกลบ
+      // ลบไฟล์ส่วนตัวจริงออกจากที่เก็บก่อน (สำเนาบัตรประชาชน และสัญญา) ไม่ปล่อยให้ค้างหลังบัญชีถูกลบ
       // ลบไม่สำเร็จ = หยุดและยังไม่ลบบัญชี ให้ลองใหม่ได้ ส่วนสลิปโอนเงินและรูปแจ้งซ่อมเก็บไว้เป็นหลักฐานทางบัญชี
-      const cleanup = await removePersonalFiles(admin, userId, tenant.room)
+      const cleanup = await removePersonalFiles(admin, tenant.room)
       if (cleanup) return json({ error: cleanup }, 500)
       const { error } = await admin.from('tenants').delete().eq('user_id', userId)
       if (error) return json({ error: `ลบข้อมูลผู้เช่าไม่สำเร็จ: ${error.message}` }, 500)
