@@ -9,7 +9,7 @@ function Switch({ checked, onChange, children, badge, disabled = false }) {
             aria-checked={checked}
             disabled={disabled}
             onClick={() => onChange(!checked)}
-            className={`inline-flex items-center gap-2.5 rounded-xl border bg-white px-3 py-1.5 text-sm text-ink hover:bg-sand/60 disabled:opacity-60 disabled:cursor-not-allowed ${
+            className={`inline-flex items-center gap-2.5 rounded-xl border bg-white px-3 py-1.5 text-sm text-ink disabled:opacity-60 disabled:cursor-not-allowed ${
                 checked ? 'border-primary/40' : 'border-line'
             }`}
         >

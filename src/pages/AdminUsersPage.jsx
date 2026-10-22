@@ -249,7 +249,7 @@ function AdminUsersPage() {
                                 บัญชีทั้งหมด
                                 <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
                             </h2>
-                            <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:bg-white">
+                            <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                                 <Icon name="search" className="w-4 h-4 text-muted" />
                                 <input
                                     type="text"

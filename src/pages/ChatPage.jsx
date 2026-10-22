@@ -109,7 +109,7 @@ function AdminChat() {
                     {/* รายการห้องแชท (จอเล็ก: ซ่อนเมื่อเปิดห้องแชทอยู่) */}
                     <div className={`w-full lg:w-80 lg:shrink-0 lg:border-r border-line flex-col min-h-0 ${selectedId ? 'hidden lg:flex' : 'flex'}`}>
                         <div className="p-3 border-b border-line">
-                            <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 focus-within:border-secondary focus-within:bg-white">
+                            <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                                 <Icon name="search" className="w-4 h-4 text-muted" />
                                 <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาห้องหรือชื่อผู้เช่า" className="outline-none w-full bg-transparent text-sm" />
                             </div>

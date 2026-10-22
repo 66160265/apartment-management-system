@@ -110,7 +110,7 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
                     กรอกเลขมิเตอร์ปัจจุบันของห้องที่ต้องการออกใบ (มิเตอร์ก่อนหน้าดึงจากใบเดือนล่าสุดให้ แก้ได้ถ้าเปลี่ยนมิเตอร์) กด Enter เพื่อไปห้องถัดไป ห้องที่ไม่กรอกจะถูกข้าม
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 border border-line bg-white rounded-xl px-3 py-1.5 w-56 max-w-full focus-within:border-secondary">
+                    <div className="flex items-center gap-2 border border-line bg-white rounded-xl px-3 py-1.5 w-56 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15">
                         <Icon name="search" className="w-4 h-4 text-muted" />
                         <input type="text" placeholder="ค้นหาห้อง/ชื่อ" aria-label="ค้นหาห้องหรือชื่อผู้เช่า" className="outline-none w-full bg-transparent text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
                     </div>

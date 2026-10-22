@@ -639,7 +639,7 @@ function AdminRepairs({ adminId }) {
                                     <Icon name="calendar" className="w-4 h-4 text-muted" />
                                     {oldestFirst ? 'เก่าสุด → ใหม่สุด' : 'ใหม่สุด → เก่าสุด'}
                                 </button>
-                                <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-48 max-w-full focus-within:border-secondary focus-within:bg-white">
+                                <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-48 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                                     <Icon name="search" className="w-4 h-4 text-muted" />
                                     <input
                                         type="search"
