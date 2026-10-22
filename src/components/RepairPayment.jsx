@@ -103,9 +103,9 @@ export function RepairCostBanner({ onOpen }) {
     if (items.length === 0) return null
     const total = items.reduce((sum, r) => sum + Number(r.cost), 0)
     return (
-        <div role="alert" className="rounded-2xl bg-amber-50 ring-1 ring-amber-300 text-amber-950 p-4 flex flex-col gap-2">
+        <div role="alert" className="rounded-2xl bg-amber-100 ring-1 ring-amber-400 text-amber-950 p-4 flex flex-col gap-2">
             <div className="flex items-center gap-2 font-medium">
-                <Icon name="alert" className="w-5 h-5 shrink-0 text-amber-600" />
+                <Icon name="alert" className="w-5 h-5 shrink-0 text-amber-700" />
                 มีค่าซ่อมค้างชำระ {items.length} รายการ รวม {baht(total)}
             </div>
             <ul className="flex flex-col gap-1.5">
@@ -113,10 +113,10 @@ export function RepairCostBanner({ onOpen }) {
                     const label = (
                         <>
                             <span className="truncate">ห้อง {r.room} · {r.problem}</span>
-                            <span className="shrink-0 font-semibold tabular-nums">{baht(r.cost)} · ชำระ</span>
+                            <span className="shrink-0 font-semibold tabular-nums text-amber-900">{baht(r.cost)} · ชำระ</span>
                         </>
                     )
-                    const cls = 'w-full flex items-center justify-between gap-3 text-left text-sm bg-white/70 hover:bg-white rounded-xl px-3 py-2'
+                    const cls = 'w-full flex items-center justify-between gap-3 text-left text-sm bg-white hover:bg-amber-50 text-ink border border-amber-300 shadow-sm rounded-xl px-3 py-2'
                     return (
                         <li key={r.id}>
                             {onOpen ? (
