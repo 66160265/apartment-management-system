@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import AvatarMenu from '../components/AvatarMenu'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
 import { invoiceStatuses } from '../data/billing'
-import { balanceOf, baht, daysLate, formatDateTime, formatMonth, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
+import { balanceOf, baht, daysLate, formatDateTime, formatMonth, formatShortDate, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
+import { invoiceDueDate, tenantUnpaid } from '../lib/dashboard'
 import { generatePromptPayQR } from '../lib/promptpay'
 import { RepairCostBanner } from '../components/RepairPayment'
 import { useRealtimeReload } from '../lib/realtime'
@@ -29,13 +31,8 @@ const formatThaiToday = () => {
     return `วันที่ ${now.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}`
 }
 
-// วันที่ครบกำหนดชำระ (วันที่ 5 ของเดือนถัดไป เช่น "5 ต.ค. 69")
-const formatDueDate = (monthStr) => {
-    if (!monthStr) return '-'
-    const [y, m] = monthStr.split('-').map(Number)
-    const dueDate = new Date(y, m, 5)
-    return dueDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
-}
+// วันที่ครบกำหนดชำระของใบ เช่น "5 ต.ค. 69" (ตาม due_date ของใบ หรือวันครบกำหนดในหน้าตั้งค่า)
+const formatDueDate = (invoice, dueDay) => (invoice ? formatShortDate(invoiceDueDate(invoice, dueDay)) : '-')
 
 // ปุ่มคัดลอกข้อความ
 function CopyBtn({ text, label = 'คัดลอก' }) {
@@ -93,9 +90,6 @@ function UserDashboardPage() {
     const [uploadSuccess, setUploadSuccess] = useState(false)
     const fileInputRef = useRef(null)
 
-    // สถานะเปิดป็อปอัปดูประวัติใบแจ้งหนี้ทั้งหมด
-    const [showHistoryModal, setShowHistoryModal] = useState(false)
-
     // โหลดข้อมูล Dashboard
     // quiet = โหลดเงียบตามเหตุการณ์ real-time: ไม่ขึ้นหน้าจอกำลังโหลด ไม่แสดง error ถ้าพลาด (ใช้ข้อมูลเดิมต่อ) และคงใบแจ้งหนี้ที่ผู้ใช้เลือกดูอยู่
     const loadData = async ({ quiet = false } = {}) => {
@@ -128,8 +122,8 @@ function UserDashboardPage() {
             const invList = invData || []
             setInvoices(invList)
 
-            // เลือกใบแจ้งหนี้ที่สำคัญที่สุด: ค้างชำระ (pending) ก่อน -> หรือรอตรวจ (review) -> หรือใบล่าสุด
-            const pendingInv = invList.find((i) => i.status === 'pending')
+            // เลือกใบแจ้งหนี้ที่สำคัญที่สุด: ใบรอชำระที่เก่าสุดก่อน (ค้างนานสุดเร่งด่วนสุด) -> หรือรอตรวจ (review) -> หรือใบล่าสุด
+            const pendingInv = [...invList].reverse().find((i) => i.status === 'pending')
             const reviewInv = invList.find((i) => i.status === 'review')
             const targetInv = pendingInv || reviewInv || invList[0]
 
@@ -155,6 +149,9 @@ function UserDashboardPage() {
 
     // อัปเดตเองเมื่อผู้ดูแลยืนยันสลิป ออกใบใหม่ หรือแก้ข้อมูลห้อง (ไม่ต้องกดรีเฟรช)
     useRealtimeReload(['invoices', 'invoice_payments', 'rooms'], () => loadData({ quiet: true }), { enabled: Boolean(me?.tenant) })
+
+    // ใบที่ต้องจ่ายอยู่ทั้งหมด (เก่าสุดก่อน) ใช้แถบ "ต้องชำระ" เมื่อค้างหลายเดือน
+    const unpaid = useMemo(() => tenantUnpaid(invoices, new Date(), settings.dueDay), [invoices, settings.dueDay])
 
     // ใบแจ้งหนี้ที่กำลังแสดงผล
     const activeInvoice = useMemo(() => {
@@ -415,11 +412,46 @@ function UserDashboardPage() {
                     {/* ค่าซ่อมที่ยังไม่ได้ชำระ (ไม่แสดงถ้าไม่มี) */}
                     <RepairCostBanner />
 
-                    {/* การ์ดสรุปตัวเลข 2 ใบ ตามรูปแรก (พร้อมการ์ดที่ 3 สำหรับการแสดงผลบน Desktop) */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {/* ค้างชำระหลายใบ: แสดงรายการทั้งหมด เลือกใบที่จะดู/จ่ายได้ (ถ้ามีใบเดียว การ์ดการดำเนินการด้านล่างครอบคลุมแล้ว) */}
+                    {unpaid.length > 1 && (
+                        <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-col gap-3">
+                            <h3 className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
+                                <Icon name="alert" className="w-4 h-4" />
+                                มี {unpaid.length} ใบที่ยังต้องชำระ · รวม {baht(unpaid.reduce((sum, u) => sum + u.balance, 0))}
+                            </h3>
+                            <div className="flex flex-col divide-y divide-amber-200/70">
+                                {unpaid.map((u) => (
+                                    <div key={u.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-sm">
+                                        <div>
+                                            <span className="font-semibold text-gray-900">{formatMonth(u.month)}</span>
+                                            <span className={`ml-2 text-xs font-medium ${u.daysLate > 0 ? 'text-red-600' : 'text-gray-500'}`}>
+                                                {u.daysLate > 0 ? `เกินกำหนด ${u.daysLate} วัน` : `ครบกำหนด ${formatShortDate(u.dueDate)}`}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-bold tabular-nums text-gray-900">{baht(u.balance)}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedInvoiceId(u.id)
+                                                    setCurrentView('payment')
+                                                }}
+                                                className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-dark text-white text-xs font-semibold transition cursor-pointer"
+                                            >
+                                                ชำระ
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* การ์ดสรุปตัวเลข */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         {/* 1. ยอดเดือนนี้ */}
                         <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col justify-between">
-                            <span className="text-sm font-medium text-gray-600">ยอดเดือนนี้</span>
+                            <span className="text-sm font-medium text-gray-600">ยอดใบแจ้งหนี้</span>
                             <div className="mt-3">
                                 <div className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight tabular-nums">
                                     {activeInvoice ? baht(activeInvoice.total) : '฿0'}
@@ -468,32 +500,11 @@ function UserDashboardPage() {
                                         ) : activeInvoice.status === 'review' ? (
                                             `ส่งสลิปเมื่อ ${formatDateTime(activeInvoice.slip_uploaded_at)} (รอตรวจ)`
                                         ) : (
-                                            `ภายในวันที่ ${formatDueDate(activeInvoice.month)}`
+                                            `ภายในวันที่ ${formatDueDate(activeInvoice, settings.dueDay)}`
                                         )
                                     ) : (
                                         'ทุกรายการชำระครบถ้วนแล้ว'
                                     )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 3. สรุปการใช้พลังงาน (Desktop Complement) */}
-                        <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col justify-between">
-                            <span className="text-sm font-medium text-gray-600">การใช้น้ำและไฟฟ้าเดือนนี้</span>
-                            <div className="mt-3 grid grid-cols-2 divide-x divide-line text-center">
-                                <div className="pr-2">
-                                    <span className="text-xs text-sky-700 font-semibold block">น้ำประปา</span>
-                                    <span className="text-2xl font-bold text-gray-900 tabular-nums">
-                                        {invoiceBreakdown?.waterUnits ?? 0}
-                                    </span>
-                                    <span className="text-[11px] text-gray-400 block">หน่วย</span>
-                                </div>
-                                <div className="pl-2">
-                                    <span className="text-xs text-amber-700 font-semibold block">ไฟฟ้า</span>
-                                    <span className="text-2xl font-bold text-gray-900 tabular-nums">
-                                        {invoiceBreakdown?.elecUnits ?? 0}
-                                    </span>
-                                    <span className="text-[11px] text-gray-400 block">หน่วย</span>
                                 </div>
                             </div>
                         </div>
@@ -608,7 +619,7 @@ function UserDashboardPage() {
                                             <span className="font-semibold mb-0.5 flex items-center gap-1.5"><Icon name="alert" className="w-4 h-4" />{isPartiallyPaid(activeInvoice) ? 'ยังมียอดคงเหลือ' : 'มียอดรอชำระเงิน'}</span>
                                             {isPartiallyPaid(activeInvoice)
                                                 ? `ได้รับชำระแล้ว ${baht(paidOf(activeInvoice))} กรุณาโอนส่วนที่เหลือ ${baht(balanceOf(activeInvoice))} และแนบหลักฐานการโอน`
-                                                : `กรุณาชำระเงินและแนบหลักฐานการโอนภายในวันที่ ${formatDueDate(activeInvoice.month)}`}
+                                                : `กรุณาชำระเงินและแนบหลักฐานการโอนภายในวันที่ ${formatDueDate(activeInvoice, settings.dueDay)}`}
                                         </div>
 
                                         {/* ปุ่มชำระเงิน / อัปโหลดสลิป ตามรูปแรก เมื่อกดจะเปิดหน้าในรูปที่สอง */}
@@ -647,6 +658,10 @@ function UserDashboardPage() {
                                 ) : (
                                     <p className="text-xs text-gray-500">ไม่มีรายการที่ต้องดำเนินการ</p>
                                 )}
+
+                                <Link to="/invoices" className="text-center text-xs text-primary-dark hover:underline font-medium">
+                                    ดูประวัติใบแจ้งหนี้ทั้งหมด
+                                </Link>
 
                                 {/* ปุ่มดาวน์โหลดใบแจ้งหนี้ PDF */}
                                 {activeInvoice && (
@@ -701,7 +716,7 @@ function UserDashboardPage() {
                             </span>
                         )}
                         <span className="text-xs md:text-sm text-red-600 font-semibold mt-2">
-                            ภายในวันที่ {activeInvoice ? formatDueDate(activeInvoice.month) : '-'}
+                            ภายในวันที่ {activeInvoice ? formatDueDate(activeInvoice, settings.dueDay) : '-'}
                         </span>
                     </div>
 
@@ -877,130 +892,6 @@ function UserDashboardPage() {
                         </div>
                     </div>
                 </>
-            )}
-
-            {/* Modal ป็อปอัปแสดงประวัติใบแจ้งหนี้ทั้งหมด */}
-            {showHistoryModal && (
-                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-                    <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-line my-auto animate-in fade-in zoom-in-95">
-                        {/* Header ของป็อปอัป */}
-                        <div className="px-6 py-4 bg-sand/40 border-b border-line flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                                <span className="grid place-items-center w-9 h-9 rounded-xl bg-white shadow-xs text-primary">
-                                    <Icon name="receipt" className="w-5 h-5" />
-                                </span>
-                                <div>
-                                    <h3 className="text-base font-bold text-gray-900">
-                                        ประวัติใบแจ้งหนี้ทั้งหมด
-                                    </h3>
-                                    <p className="text-xs text-muted">
-                                        ห้อง {tenantInfo?.room} · ทั้งหมด {invoices.length} รอบบิล
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setShowHistoryModal(false)}
-                                className="w-8 h-8 rounded-full bg-white hover:bg-line/60 text-gray-500 hover:text-gray-800 transition flex items-center justify-center cursor-pointer border border-line text-sm"
-                            >
-                                <Icon name="close" className="w-4 h-4" />
-                            </button>
-                        </div>
-
-                        {/* รายการใบแจ้งหนี้ทั้งหมด */}
-                        <div className="p-6 max-h-[60vh] overflow-y-auto flex flex-col gap-2.5">
-                            {invoices.map((inv, idx) => {
-                                const isSelected = inv.id === activeInvoice?.id
-                                const isCurrent = idx === 0
-                                return (
-                                    <div
-                                        key={inv.id}
-                                        className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition ${
-                                            isSelected
-                                                ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
-                                                : 'border-line hover:bg-sand/30 bg-white'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <span className="grid place-items-center w-10 h-10 rounded-xl bg-sand text-primary-dark font-semibold text-xs tabular-nums shrink-0">
-                                                {idx + 1}
-                                            </span>
-                                            <div>
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="font-bold text-gray-900 text-sm">
-                                                        เดือน {formatMonth(inv.month)}
-                                                    </span>
-                                                    {isCurrent && (
-                                                        <span className="text-[10px] bg-primary text-white px-2 py-0.5 rounded-full font-medium">
-                                                            เดือนปัจจุบัน
-                                                        </span>
-                                                    )}
-                                                    {isSelected && (
-                                                        <span className="text-[10px] bg-sand border border-primary/30 text-primary-dark px-2 py-0.5 rounded-full font-medium">
-                                                            กำลังแสดงผล
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="text-xs text-muted mt-0.5">
-                                                    ออกใบแจ้งหนี้: {inv.created_at ? new Date(inv.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : inv.month}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-line/60">
-                                            <div className="text-right">
-                                                <div className="text-base font-bold text-gray-900 tabular-nums">
-                                                    {baht(inv.total)}
-                                                </div>
-                                                {isPartiallyPaid(inv) && (
-                                                    <div className="text-[11px] text-amber-700">ชำระแล้ว {baht(paidOf(inv))} · เหลือ {baht(balanceOf(inv))}</div>
-                                                )}
-                                                <span
-                                                    className={`inline-block text-[11px] px-2.5 py-0.5 rounded-full font-medium mt-0.5 ${
-                                                        inv.status === 'paid'
-                                                            ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                                                            : inv.status === 'review'
-                                                            ? 'bg-sky-50 text-sky-700 ring-1 ring-sky-200'
-                                                            : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                                                    }`}
-                                                >
-                                                    {invoiceStatuses[inv.status]?.label || inv.status}
-                                                </span>
-                                            </div>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedInvoiceId(inv.id)
-                                                    setShowHistoryModal(false)
-                                                }}
-                                                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shrink-0 ${
-                                                    isSelected
-                                                        ? 'bg-primary text-white shadow-xs'
-                                                        : 'border border-line bg-white hover:bg-mist/40 text-primary-dark'
-                                                }`}
-                                            >
-                                                {isSelected ? 'กำลังดูหน้านี้' : 'เลือกดูหน้านี้'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
-
-                        {/* Footer ของป็อปอัป */}
-                        <div className="px-6 py-3.5 bg-sand/30 border-t border-line flex justify-between items-center text-xs text-muted">
-                            <span>คลิก &quot;เลือกดูหน้านี้&quot; เพื่อเปลี่ยนรายละเอียดค่าใช้จ่ายใน Dashboard</span>
-                            <button
-                                type="button"
-                                onClick={() => setShowHistoryModal(false)}
-                                className="px-4 py-1.5 bg-white border border-line rounded-xl text-gray-700 hover:bg-sand/60 font-medium transition cursor-pointer"
-                            >
-                                ปิด
-                            </button>
-                        </div>
-                    </div>
-                </div>
             )}
         </div>
     )
