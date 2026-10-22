@@ -159,6 +159,44 @@ function ReportsPage() {
                             </div>
                         </section>
 
+                        {/* ยอดค้างชำระ */}
+                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <h2 className="font-medium text-primary-dark">ยอดค้างชำระ ({outstanding.length} ใบ)</h2>
+                                <ExportButton onClick={exportOutstanding}>ยอดค้างชำระ (CSV)</ExportButton>
+                            </div>
+                            {outstanding.length === 0 ? (
+                                <p className="text-sm text-muted py-4 text-center">ไม่มียอดค้างชำระ</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm min-w-[600px]">
+                                        <thead>
+                                            <tr className="text-left text-muted border-b border-line">
+                                                <th className="py-2 pr-3">ห้อง / ผู้เช่า</th>
+                                                <th className="py-2 px-3">เดือน</th>
+                                                <th className="py-2 px-3 text-right">ยอดบิล</th>
+                                                <th className="py-2 px-3 text-right">รับแล้ว</th>
+                                                <th className="py-2 px-3 text-right">ค้างชำระ</th>
+                                                <th className="py-2 pl-3 text-right">เกินกำหนด</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {outstanding.slice(0, 50).map((r) => (
+                                                <tr key={`${r.room}-${r.month}`} className="border-b border-line/60">
+                                                    <td className="py-2 pr-3 text-ink">{r.room} <span className="text-muted">· {r.tenant}</span></td>
+                                                    <td className="py-2 px-3">{formatMonth(r.month)}</td>
+                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(r.total)}</td>
+                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(r.paid)}</td>
+                                                    <td className="py-2 px-3 text-right tabular-nums font-medium text-amber-700">{baht(r.balance)}</td>
+                                                    <td className={`py-2 pl-3 text-right tabular-nums ${r.daysLate > 0 ? 'text-red-600 font-medium' : 'text-muted'}`}>{r.daysLate > 0 ? `${r.daysLate} วัน` : '-'}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    {outstanding.length > 50 && <p className="text-xs text-muted pt-2">แสดง 50 รายการแรก ดูทั้งหมดในไฟล์ CSV</p>}
+                                </div>
+                            )}
+                        </section>
                         {/* รายเดือนย้อนหลัง 12 เดือน */}
                         <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
                             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -289,44 +327,6 @@ function ReportsPage() {
                             </section>
                         )}
 
-                        {/* ยอดค้างชำระ */}
-                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <h2 className="font-medium text-primary-dark">ยอดค้างชำระ ({outstanding.length} ใบ)</h2>
-                                <ExportButton onClick={exportOutstanding}>ยอดค้างชำระ (CSV)</ExportButton>
-                            </div>
-                            {outstanding.length === 0 ? (
-                                <p className="text-sm text-muted py-4 text-center">ไม่มียอดค้างชำระ</p>
-                            ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm min-w-[600px]">
-                                        <thead>
-                                            <tr className="text-left text-muted border-b border-line">
-                                                <th className="py-2 pr-3">ห้อง / ผู้เช่า</th>
-                                                <th className="py-2 px-3">เดือน</th>
-                                                <th className="py-2 px-3 text-right">ยอดบิล</th>
-                                                <th className="py-2 px-3 text-right">รับแล้ว</th>
-                                                <th className="py-2 px-3 text-right">ค้างชำระ</th>
-                                                <th className="py-2 pl-3 text-right">เกินกำหนด</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {outstanding.slice(0, 50).map((r) => (
-                                                <tr key={`${r.room}-${r.month}`} className="border-b border-line/60">
-                                                    <td className="py-2 pr-3 text-ink">{r.room} <span className="text-muted">· {r.tenant}</span></td>
-                                                    <td className="py-2 px-3">{formatMonth(r.month)}</td>
-                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(r.total)}</td>
-                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(r.paid)}</td>
-                                                    <td className="py-2 px-3 text-right tabular-nums font-medium text-amber-700">{baht(r.balance)}</td>
-                                                    <td className={`py-2 pl-3 text-right tabular-nums ${r.daysLate > 0 ? 'text-red-600 font-medium' : 'text-muted'}`}>{r.daysLate > 0 ? `${r.daysLate} วัน` : '-'}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                    {outstanding.length > 50 && <p className="text-xs text-muted pt-2">แสดง 50 รายการแรก ดูทั้งหมดในไฟล์ CSV</p>}
-                                </div>
-                            )}
-                        </section>
                     </>
                 )}
             </div>
