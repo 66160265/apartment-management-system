@@ -5,6 +5,7 @@ import Icon from '../components/Icon'
 import { CopyButton } from '../components/InvoiceParts'
 import TenantDetail from '../components/TenantDetail'
 import { Avatar, ContractBadge } from '../components/TenantParts'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { createTenantAccount, makeDefaultPassword, makeUsername } from '../lib/tenantAccount'
 import { REQUIRED_DOCS, contractStatus, formatDate } from '../lib/tenants'
@@ -248,6 +249,9 @@ function TenantsPage() {
 
     // โหลดข้อมูลผู้เช่าใหม่ (ใช้หลังเพิ่ม/แก้ไข/ลบ)
     const load = async () => applyResult(await fetchTenantsData())
+
+    // อัปเดตเองเมื่อผู้เช่าหรือห้องเปลี่ยน
+    useRealtimeReload(['tenants', 'rooms'], load)
 
     // โหลดข้อมูลผู้เช่าครั้งแรกเมื่อเปิดหน้า
     useEffect(() => {

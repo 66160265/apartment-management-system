@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { useRealtimeReload } from './realtime'
 import { supabase } from './supabaseClient'
 import { unpaidRepairCosts } from './repairPayments'
 import { useCurrentUser } from './useCurrentUser'
@@ -62,6 +63,9 @@ export function useRepairCosts() {
             if (current === userId) current = null
         }
     }, [userId])
+
+    // อัปเดตเองเมื่อผู้ดูแลใส่/แก้ค่าซ่อม หรือสลิปค่าซ่อมถูกยืนยัน/ปฏิเสธ (ป้ายที่เมนูและแถบเตือนเปลี่ยนทันที)
+    useRealtimeReload(['repairs', 'repair_payments'], () => userId && load(userId), { enabled: Boolean(userId) })
 
     return userId && snap.userId === userId ? snap.items : EMPTY
 }

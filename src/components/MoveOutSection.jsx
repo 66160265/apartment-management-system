@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import DatePicker from './DatePicker'
 import { baht, formatDateTime } from '../lib/billing'
 import { buildDeductions, moveOutOutcome, reviewingInvoicesOf, settlement, unpaidInvoicesOf, validateCustoms } from '../lib/moveOut'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { formatDate } from '../lib/tenants'
 
@@ -54,6 +55,9 @@ function MoveOutSection({ tenant }) {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tenant.room, tenant.startDate])
+
+    // อัปเดตเองเมื่อบันทึกย้ายออกหรือใบแจ้งหนี้ของห้องเปลี่ยน (เช่น ผู้เช่าเพิ่งจ่าย)
+    useRealtimeReload(['move_outs', 'invoices'], load, { enabled: !unavailable })
 
     const unpaid = useMemo(() => unpaidInvoicesOf(invoices, tenant.room), [invoices, tenant.room])
     const reviewing = useMemo(() => reviewingInvoicesOf(invoices, tenant.room), [invoices, tenant.room])

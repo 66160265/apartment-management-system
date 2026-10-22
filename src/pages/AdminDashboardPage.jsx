@@ -5,6 +5,7 @@ import Icon from '../components/Icon'
 import MonthPicker from '../components/MonthPicker'
 import { invoiceStatuses } from '../data/billing'
 import { balanceOf, currentMonth, formatMonth, paidOf } from '../lib/billing'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
@@ -95,6 +96,10 @@ function AdminDashboardPage() {
             .catch(applyError)
             .finally(() => setLoading(false))
     }
+
+    // อัปเดตเองเมื่อมีการเปลี่ยนใบแจ้งหนี้ ห้อง หรือผู้เช่า (โหลดเงียบ ไม่ขึ้นหน้าจอกำลังโหลด และไม่ทับเดือนที่เลือกไว้)
+    const reloadQuiet = useCallback(() => fetchDashboardData().then(applyData).catch(() => {}), [applyData])
+    useRealtimeReload(['invoices', 'rooms', 'tenants'], reloadQuiet)
 
     // รายชื่อเดือนทั้งหมดที่มีใบแจ้งหนี้
     const monthsWithInvoices = useMemo(() => {

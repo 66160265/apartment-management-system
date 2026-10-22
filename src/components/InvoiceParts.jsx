@@ -4,6 +4,7 @@ import Icon from './Icon'
 import { invoiceStatuses } from '../data/billing'
 import { balanceOf, baht, calcInvoice, daysLate, formatDateTime, getSlipUrl, lateFeeOf, paidOf } from '../lib/billing'
 import { formatPromptPayId, generatePromptPayQR } from '../lib/promptpay'
+import { useRealtimeReload } from '../lib/realtime'
 import { buildInvoiceReceipt } from '../lib/receipts'
 import { supabase } from '../lib/supabaseClient'
 import { MAX_VERIFY_ATTEMPTS, verifyStatuses } from '../lib/slipVerify'
@@ -208,6 +209,10 @@ export function PaymentHistory({ invoiceId, refreshKey, invoice }) {
             active = false
         }
     }, [invoiceId, refreshKey])
+
+    // อัปเดตเองเมื่อมีการยืนยันรับเงินเพิ่ม
+    useRealtimeReload(['invoice_payments'], () =>
+        supabase.from('invoice_payments').select('*').eq('invoice_id', invoiceId).order('confirmed_at').then(({ data }) => setRows(data ?? [])))
 
     if (rows.length === 0) return null
     return (

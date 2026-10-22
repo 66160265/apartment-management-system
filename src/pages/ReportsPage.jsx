@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Icon from '../components/Icon'
 import MonthPicker from '../components/MonthPicker'
 import PageHeader from '../components/PageHeader'
@@ -9,6 +9,7 @@ import {
     csvFileName, invoiceColumns, monthlyColumns, monthlyRows, monthlySummary, monthOf, moveOutColumns, occupancy, outstandingColumns, outstandingRows,
     owedFromMoveOuts, paymentColumns, pendingDepositRefund, recentMonths, toCsv,
 } from '../lib/reports'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 
 // รายงานสำหรับแอดมิน: อัตราเข้าพัก รายรับ-ยอดค้างรายเดือน และส่งออก CSV (เปิดใน Excel/ส่งให้นักบัญชีได้)
@@ -43,8 +44,8 @@ function ReportsPage() {
     // เวลาที่ใช้คิดค่าปรับของยอดค้าง จำไว้ตอนโหลด (ไม่ให้ตัวเลขเปลี่ยนเองระหว่างดู)
     const [now, setNow] = useState(() => new Date())
 
-    useEffect(() => {
-        let active = true
+    // ดึงข้อมูลที่รายงานใช้ทั้งหมดพร้อมกัน
+    const fetchAll = () =>
         Promise.all([
             supabase.from('rooms').select('number, status'),
             supabase.from('invoices').select('*'),
@@ -53,29 +54,37 @@ function ReportsPage() {
             supabase.from('repair_payments').select('*').eq('status', 'paid'),
             // ตารางนี้มีเมื่อรัน move-out.sql แล้ว
             supabase.from('move_outs').select('*').order('move_out_date', { ascending: false }),
-        ]).then(([rooms, invoices, payments, repairPayments, moveOuts]) => {
-            if (!active) return
-            const err = rooms.error || invoices.error
-            if (err) {
-                setError(`โหลดข้อมูลไม่สำเร็จ: ${err.message}`)
-            } else {
-                setData({
-                    rooms: rooms.data,
-                    invoices: invoices.data,
-                    // ตารางรับเงินยังไม่มี (ยังไม่ได้รัน payments.sql) ให้รายงานแสดงเท่าที่มี
-                    invoicePayments: payments.error ? [] : payments.data,
-                    repairPayments: repairPayments.error ? [] : repairPayments.data,
-                    moveOuts: moveOuts.error ? [] : moveOuts.data,
-                })
-                setNow(new Date())
-                setError('')
-            }
-            setLoading(false)
-        })
+        ])
+
+    const apply = useCallback(([rooms, invoices, payments, repairPayments, moveOuts]) => {
+        const err = rooms.error || invoices.error
+        if (err) {
+            setError(`โหลดข้อมูลไม่สำเร็จ: ${err.message}`)
+        } else {
+            setData({
+                rooms: rooms.data,
+                invoices: invoices.data,
+                // ตารางรับเงินยังไม่มี (ยังไม่ได้รัน payments.sql) ให้รายงานแสดงเท่าที่มี
+                invoicePayments: payments.error ? [] : payments.data,
+                repairPayments: repairPayments.error ? [] : repairPayments.data,
+                moveOuts: moveOuts.error ? [] : moveOuts.data,
+            })
+            setNow(new Date())
+            setError('')
+        }
+        setLoading(false)
+    }, [])
+
+    useEffect(() => {
+        let active = true
+        fetchAll().then((results) => active && apply(results))
         return () => {
             active = false
         }
-    }, [])
+    }, [apply])
+
+    // อัปเดตเองเมื่อมีการเปลี่ยนใบแจ้งหนี้ การรับเงิน ค่าซ่อม การย้ายออก หรือห้อง
+    useRealtimeReload(['invoices', 'invoice_payments', 'repair_payments', 'move_outs', 'rooms'], () => fetchAll().then(apply))
 
     const months = useMemo(() => recentMonths(currentMonth(), 12), [])
     const summary = useMemo(() => monthlySummary(data, month, now), [data, month, now])

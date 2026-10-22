@@ -7,6 +7,7 @@ import { invoiceStatuses } from '../data/billing'
 import { balanceOf, baht, daysLate, formatDateTime, formatMonth, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
 import { generatePromptPayQR } from '../lib/promptpay'
 import { RepairCostBanner } from '../components/RepairPayment'
+import { useRealtimeReload } from '../lib/realtime'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
@@ -96,10 +97,11 @@ function UserDashboardPage() {
     const [showHistoryModal, setShowHistoryModal] = useState(false)
 
     // โหลดข้อมูล Dashboard
-    const loadData = async () => {
+    // quiet = โหลดเงียบตามเหตุการณ์ real-time: ไม่ขึ้นหน้าจอกำลังโหลด ไม่แสดง error ถ้าพลาด (ใช้ข้อมูลเดิมต่อ) และคงใบแจ้งหนี้ที่ผู้ใช้เลือกดูอยู่
+    const loadData = async ({ quiet = false } = {}) => {
         if (!me) return
-        setLoading(true)
-        setLoadError('')
+        if (!quiet) setLoading(true)
+        if (!quiet) setLoadError('')
 
         try {
             // บัญชีที่ยังไม่ผูกกับห้อง: ล้างข้อมูลแล้วจบ (หน้าจะแสดงข้อความให้ติดต่อผู้ดูแล)
@@ -115,21 +117,13 @@ function UserDashboardPage() {
 
             setTenantInfo(activeTenant)
 
-            // ดึงข้อมูลห้องพัก (ชั้น, ค่าเช่า)
-            const { data: rData } = await supabase
-                .from('rooms')
-                .select('*')
-                .eq('number', activeTenant.room)
-                .maybeSingle()
-            setRoomInfo(rData)
-
-            // ดึงข้อมูลใบแจ้งหนี้ของผู้เช่าห้องนี้
-            const { data: invData, error: invErr } = await supabase
-                .from('invoices')
-                .select('*')
-                .eq('room', activeTenant.room)
-                .order('month', { ascending: false })
+            // ดึงข้อมูลห้องพัก (ชั้น, ค่าเช่า) และใบแจ้งหนี้ของผู้เช่าห้องนี้พร้อมกัน (เดิมรอทีละอย่าง)
+            const [{ data: rData }, { data: invData, error: invErr }] = await Promise.all([
+                supabase.from('rooms').select('*').eq('number', activeTenant.room).maybeSingle(),
+                supabase.from('invoices').select('*').eq('room', activeTenant.room).order('month', { ascending: false }),
+            ])
             if (invErr) throw invErr
+            setRoomInfo(rData)
 
             const invList = invData || []
             setInvoices(invList)
@@ -140,10 +134,12 @@ function UserDashboardPage() {
             const targetInv = pendingInv || reviewInv || invList[0]
 
             if (targetInv) {
-                setSelectedInvoiceId(targetInv.id)
+                // โหลดเงียบ: ถ้าใบที่ผู้ใช้เลือกดูอยู่ยังอยู่ ไม่เปลี่ยนไปใบอื่น
+                setSelectedInvoiceId((current) => (quiet && invList.some((i) => i.id === current) ? current : targetInv.id))
             }
         } catch (err) {
             console.error('Error loading tenant dashboard:', err)
+            if (quiet) return
             setLoadError(`เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message || 'ไม่สามารถติดต่อฐานข้อมูลได้'}`)
         } finally {
             setLoading(false)
@@ -156,6 +152,9 @@ function UserDashboardPage() {
         loadData()
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [me])
+
+    // อัปเดตเองเมื่อผู้ดูแลยืนยันสลิป ออกใบใหม่ หรือแก้ข้อมูลห้อง (ไม่ต้องกดรีเฟรช)
+    useRealtimeReload(['invoices', 'invoice_payments', 'rooms'], () => loadData({ quiet: true }), { enabled: Boolean(me?.tenant) })
 
     // ใบแจ้งหนี้ที่กำลังแสดงผล
     const activeInvoice = useMemo(() => {

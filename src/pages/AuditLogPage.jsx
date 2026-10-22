@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { auditActionOf, auditActorName, auditDetailRows, auditGroups, matchesAudit } from '../lib/audit'
 import { formatDateTime } from '../lib/billing'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 
 // ประวัติการแก้ไขข้อมูลสำคัญ (เฉพาะแอดมิน): ใครทำอะไรเมื่อไหร่ เรื่องเงิน ค่าซ่อม ผู้เช่า และการตั้งค่า
@@ -42,6 +43,9 @@ function AuditLogPage() {
             active = false
         }
     }, [load])
+
+    // รายการใหม่ขึ้นเอง ถ้าผู้ใช้โหลดรายการเก่าเพิ่มไว้แล้ว (เกินหนึ่งหน้า) ไม่รีเซ็ตให้ เพราะรายการที่ดูอยู่จะหาย
+    useRealtimeReload(['audit_log'], () => (rows.length <= PAGE_SIZE ? load(true) : undefined))
 
     const visible = rows.filter((r) => matchesAudit(r, search))
 

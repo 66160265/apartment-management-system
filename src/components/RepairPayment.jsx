@@ -4,6 +4,7 @@ import DownloadReceiptButton from './DownloadReceiptButton'
 import Icon from './Icon'
 import { PromptPayCard, SlipImage, VerifyBox } from './InvoiceParts'
 import { baht, formatDateTime } from '../lib/billing'
+import { useRealtimeReload } from '../lib/realtime'
 import { owesRepairCost } from '../lib/repairPayments'
 import { buildRepairReceipt } from '../lib/receipts'
 import { refreshRepairCosts, useRepairCosts } from '../lib/useRepairCosts'
@@ -36,6 +37,8 @@ function useRepairPayments(repairId) {
         const { data, error } = await supabase.from('repair_payments').select('*').eq('repair_id', repairId).order('created_at')
         setPayments(error ? null : (data ?? []))
     }, [repairId])
+    // อัปเดตเองเมื่อสลิปค่าซ่อมถูกส่ง ยืนยัน หรือปฏิเสธ (ทั้งฝั่งผู้เช่าและแอดมิน)
+    useRealtimeReload(['repair_payments'], refresh)
     return [payments, refresh]
 }
 

@@ -7,6 +7,7 @@ import MonthPicker from './MonthPicker'
 import { CopyButton, InvoiceBreakdown, InvoiceStepper, PaymentHistory, SlipImage, StatusBadge, VerifyBox } from './InvoiceParts'
 import { invoiceStatuses } from '../data/billing'
 import { balanceAtSlip, baht, calcInvoice, currentMonth, daysLate, formatDateTime, formatMonth, lateFeeSnapshot, paidOf } from '../lib/billing'
+import { useRealtimeReload } from '../lib/realtime'
 import { requestSlipVerify, suggestedAmountOf } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
@@ -389,6 +390,9 @@ function AdminInvoices() {
 
     // โหลดซ้ำหลังบันทึก/ลบ
     const load = useCallback(async () => applyResult(await fetchData()), [applyResult])
+
+    // อัปเดตเองเมื่อผู้เช่าส่งสลิป มีการยืนยันรับเงิน หรือข้อมูลห้อง/ผู้เช่าเปลี่ยน
+    useRealtimeReload(['invoices', 'invoice_payments', 'tenants', 'rooms'], load)
 
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {

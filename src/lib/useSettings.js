@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { DEFAULT_SETTINGS } from '../data/billing'
+import { useRealtimeReload } from './realtime'
 import { supabase } from './supabaseClient'
 
 // ตั้งค่าหอพักจากตาราง app_settings แถวเดียว (id = 1) ใช้ค่าเริ่มต้นถ้ายังไม่มีตาราง/ยังไม่ได้ตั้งค่า
@@ -116,6 +117,21 @@ supabase.auth.onAuthStateChange((event) => {
     }
 })
 
+// โหลดค่าตั้งค่าใหม่แล้วแจ้งทุกหน้า (หลายหน้าฟังพร้อมกัน แต่โหลดครั้งเดียว) ใช้ตอนมีคนแก้การตั้งค่าที่เครื่องอื่น
+let reloading = null
+function reloadSettings() {
+    reloading ??= loadSettings(true)
+        .then((result) => {
+            listeners.forEach((l) => l(result))
+            return result
+        })
+        .catch(() => {})
+        .finally(() => {
+            reloading = null
+        })
+    return reloading
+}
+
 // hook อ่านค่าตั้งค่าหอพัก และอัปเดตอัตโนมัติเมื่อมีการบันทึกใหม่
 export function useSettings() {
     const [settings, setSettings] = useState(cached ?? DEFAULT_SETTINGS)
@@ -132,6 +148,9 @@ export function useSettings() {
             listeners.delete(setSettings)
         }
     }, [])
+
+    // อัปเดตเองเมื่อแอดมินแก้การตั้งค่า (เช่น เปลี่ยนบัญชีรับเงิน อัตราค่าน้ำไฟ) ผู้เช่าที่เปิดหน้าอยู่เห็นค่าใหม่ทันที
+    useRealtimeReload(['app_settings'], reloadSettings)
 
     return settings
 }

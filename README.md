@@ -52,8 +52,9 @@ npm run dev
 ## ตั้งค่า Supabase
 
 1. รันไฟล์ SQL ใน **SQL Editor** ตามลำดับนี้ (รันซ้ำได้):
-   `supabase/schema.sql` → `supabase/invoices.sql` → `supabase/repairs.sql` → `supabase/tenant-documents.sql` → `supabase/notifications.sql` → `supabase/settings.sql` → `supabase/payments.sql` → `supabase/slip-verify.sql` → `supabase/repair-payments.sql` → `supabase/move-out.sql` → `supabase/audit.sql` → `supabase/chat.sql` แล้วรัน `supabase/notifications.sql` อีกครั้ง (trigger แจ้งเตือนใบแจ้งหนี้อ่านคอลัมน์ที่ `payments.sql` เพิ่ม)
+   `supabase/schema.sql` → `supabase/invoices.sql` → `supabase/repairs.sql` → `supabase/tenant-documents.sql` → `supabase/notifications.sql` → `supabase/settings.sql` → `supabase/payments.sql` → `supabase/slip-verify.sql` → `supabase/repair-payments.sql` → `supabase/move-out.sql` → `supabase/audit.sql` → `supabase/chat.sql` → `supabase/performance.sql` แล้วรัน `supabase/notifications.sql` อีกครั้ง (trigger แจ้งเตือนใบแจ้งหนี้อ่านคอลัมน์ที่ `payments.sql` เพิ่ม)
    - ถ้าเคยรันไว้แล้ว หลังอัปเดตระบบนัดวันซ่อม ให้รัน `supabase/repairs.sql` แล้วตามด้วย `supabase/notifications.sql` อีกครั้ง (ข้อมูลเดิมไม่หาย)
+   - `performance.sql` เปิด Realtime ให้ตารางที่ใช้ (ใบแจ้งหนี้ การรับเงิน แจ้งซ่อม ห้อง ผู้เช่า ตั้งค่า ฯลฯ) ให้หน้าเว็บอัปเดตเองเมื่อมีคนแก้ข้อมูล และเพิ่มดัชนีให้โหลดเร็วขึ้น ถ้าเพิ่มตารางใหม่ภายหลัง (เช่น รันไฟล์ SQL ทีหลัง) ให้รันไฟล์นี้ซ้ำ ถ้าไม่ได้รัน เว็บทำงานตามเดิมแต่ไม่อัปเดตเอง
    - (ไม่บังคับ) เปิด extension **pg_cron** ที่ Database → Extensions ก่อนรัน `notifications.sql` เพื่อให้ระบบส่งแจ้งเตือนนัดซ่อมของวันนั้นทุกเช้า 07:00
 2. สร้างบัญชีแอดมินคนแรกที่ **Authentication → Users** แล้วเพิ่มแถวใน `profiles` (`id` = id ของผู้ใช้, `role` = `admin`)
 3. ปิดการยืนยันอีเมล (Authentication → Providers → Email → Confirm email) หรือใช้ Edge Function ซึ่งยืนยันให้อัตโนมัติ

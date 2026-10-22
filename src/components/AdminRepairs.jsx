@@ -8,6 +8,7 @@ import { DEFAULT_PERIOD, repairCategories, repairStatuses, repairStatusKeys } fr
 import { formatDateTime } from '../lib/billing'
 import { AdminRepairPayment } from './RepairPayment'
 import { formatSlot, formatThaiDate, isInSlots, normalizePeriod, periodsOverlap, removeRepairImage, todayIso, uploadRepairImage } from '../lib/repairs'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 
 // คลาส Tailwind ของช่องกรอก/ตัวเลือกในฟอร์ม (ใช้ร่วมกันทุกช่อง)
@@ -103,6 +104,9 @@ function AdminRepairs({ adminId }) {
 
     // โหลดซ้ำหลังบันทึก/ลบ
     const load = async () => setData(await fetchData())
+
+    // อัปเดตเองเมื่อผู้เช่าแจ้งซ่อมใหม่ ยืนยัน/ขอเปลี่ยนนัด หรือยืนยันผลซ่อม
+    useRealtimeReload(['repairs'], load)
 
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {
