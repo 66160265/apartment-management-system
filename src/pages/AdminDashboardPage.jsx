@@ -4,6 +4,7 @@ import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import MonthPicker from '../components/MonthPicker'
 import { baht, currentMonth, formatMonth } from '../lib/billing'
+import { fetchSlipUsage, quotaStatus } from '../lib/slipUsage'
 import { attentionItems, expiringContracts, notYetDueCount, overdueInvoices, uniqueRooms, uninvoicedRooms } from '../lib/dashboard'
 import { useRealtimeReload } from '../lib/realtime'
 import { monthlySummary, occupancy } from '../lib/reports'
@@ -17,7 +18,7 @@ import { useSettings } from '../lib/useSettings'
 // ดึงข้อมูลจากฐานข้อมูล (ไม่มีการ setState เพื่อให้เรียกซ้ำได้อย่างปลอดภัย)
 // ใบแจ้งหนี้และห้องจำเป็น พลาดแล้วโยน error ส่วนที่เหลือมาจาก SQL รุ่นหลัง ถ้ายังไม่มีตารางให้ถือว่าไม่มีข้อมูล หน้ายังใช้ได้
 async function fetchDashboardData() {
-    const [invoicesRes, roomsRes, paymentsRes, repairPaymentsRes, pendingRepairsRes, depositsRes, tenantsRes] = await Promise.all([
+    const [invoicesRes, roomsRes, paymentsRes, repairPaymentsRes, pendingRepairsRes, depositsRes, tenantsRes, slipUsage] = await Promise.all([
         supabase.from('invoices').select('*').order('created_at', { ascending: false }),
         supabase.from('rooms').select('number, status'),
         supabase.from('invoice_payments').select('amount, confirmed_at'),
@@ -25,6 +26,7 @@ async function fetchDashboardData() {
         supabase.from('repairs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('move_outs').select('refund_amount').eq('refund_status', 'pending'),
         supabase.from('tenants').select('room, end_date'),
+        fetchSlipUsage(),
     ])
 
     if (invoicesRes.error) throw invoicesRes.error
@@ -38,10 +40,11 @@ async function fetchDashboardData() {
         pendingRepairs: pendingRepairsRes.error ? 0 : pendingRepairsRes.count || 0,
         pendingDeposits: depositsRes.error ? [] : depositsRes.data || [],
         tenants: tenantsRes.error ? [] : tenantsRes.data || [],
+        slipUsage,
     }
 }
 
-const emptyData = { invoices: [], rooms: [], invoicePayments: [], repairPayments: [], pendingRepairs: 0, pendingDeposits: [], tenants: [] }
+const emptyData = { invoices: [], rooms: [], invoicePayments: [], repairPayments: [], pendingRepairs: 0, pendingDeposits: [], tenants: [], slipUsage: null }
 
 // สีของการ์ด "ต้องจัดการ" ตามประเภท
 const attentionTone = {
@@ -61,6 +64,12 @@ function Card({ title, children, hint, action }) {
             {hint && <div className="text-xs text-muted">{hint}</div>}
         </div>
     )
+}
+
+// สถานะโควตาตรวจสลิปของเดือนนี้ในรูปที่ attentionItems ใช้ (ไม่รู้จำนวนที่ใช้หรือไม่ได้ตั้งโควตา = ไม่แสดง)
+function slipQuota(used, quota) {
+    const { level, remaining } = quotaStatus(used, quota)
+    return { level, used, quota: Number(quota), remaining }
 }
 
 function AdminDashboardPage() {
@@ -147,8 +156,9 @@ function AdminDashboardPage() {
             depositRefunds: { count: data.pendingDeposits.length, amount: data.pendingDeposits.reduce((sum, m) => sum + Number(m.refund_amount), 0) },
             uninvoicedRooms: uninvoicedRooms(data.rooms, data.invoices, currentMonth()).length,
             expiringContracts: expiringContracts(data.tenants, now).length,
+            slipQuota: slipQuota(data.slipUsage, settings.slipQuota),
         })
-    }, [data, now])
+    }, [data, now, settings.slipQuota])
 
     const received = summary.received + summary.repairReceived
     const loadingText = <span className="text-gray-300 text-lg font-normal">กำลังโหลด...</span>

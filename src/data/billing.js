@@ -25,6 +25,8 @@ export const DEFAULT_SETTINGS = {
     lateFeePerDay: 0,
     lateFeeGraceDays: 0,
     lateFeeCap: '',
+    // โควตาตรวจสลิปต่อเดือนที่ซื้อไว้กับ EasySlip (ว่าง = ไม่ตั้ง ไม่แสดงคำเตือน) ดู supabase/migrations/20261022030000_slip_quota.sql
+    slipQuota: '',
 }
 
 // สถานะใบแจ้งหนี้ (ค่าที่เก็บในฐานข้อมูล -> ป้ายและสีที่แสดง)

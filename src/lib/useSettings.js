@@ -24,11 +24,13 @@ const columns = {
     lateFeePerDay: 'late_fee_per_day',
     lateFeeGraceDays: 'late_fee_grace_days',
     lateFeeCap: 'late_fee_cap',
+    slipQuota: 'slip_quota',
 }
 // ค่าที่เป็นตัวเลข (ต้องแปลงเป็น Number ทั้งตอนอ่านและบันทึก)
 const numeric = new Set(['dueDay', 'rateWater', 'rateElectric', 'commonFee', 'lateFeePerDay', 'lateFeeGraceDays'])
 
-// เพดานค่าปรับ: ว่าง ('' ในฟอร์ม / null ในฐานข้อมูล) = ไม่จำกัด
+// ช่องตัวเลขที่เว้นว่างได้ ('' ในฟอร์ม / null ในฐานข้อมูล): เพดานค่าปรับ (ว่าง = ไม่จำกัด) และโควตาตรวจสลิป (ว่าง = ไม่ตั้ง)
+const nullableNumber = new Set(['lateFeeCap', 'slipQuota'])
 const capToRow = (v) => (v === '' || v === null || v === undefined ? null : Number(v))
 
 // แปลงแถวจากตาราง app_settings เป็นออบเจ็กต์ตั้งค่า (ช่องที่ว่างใช้ค่าเริ่มต้น)
@@ -39,7 +41,7 @@ export function settingsFromRow(row) {
         const value = row[column]
         if (value === null || value === undefined) continue
         // ช่องข้อความที่ว่างไว้ ให้ใช้ค่าเริ่มต้นแทน ส่วนตัวเลขยอมรับ 0 ได้
-        if (numeric.has(key) || key === 'lateFeeCap') result[key] = Number(value)
+        if (numeric.has(key) || nullableNumber.has(key)) result[key] = Number(value)
         else if (String(value).trim() !== '') result[key] = value
     }
     return result
@@ -50,7 +52,7 @@ export function settingsToRow(values) {
     const row = {}
     for (const [key, column] of Object.entries(columns)) {
         if (values[key] === undefined) continue
-        if (key === 'lateFeeCap') row[column] = capToRow(values[key])
+        if (nullableNumber.has(key)) row[column] = capToRow(values[key])
         else row[column] = numeric.has(key) ? Number(values[key]) : String(values[key]).trim()
     }
     return row
@@ -85,6 +87,7 @@ const optionalColumns = {
     late_fee_per_day: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
     late_fee_grace_days: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
     late_fee_cap: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
+    slip_quota: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/migrations/20261022030000_slip_quota.sql' },
 }
 
 // บันทึกการตั้งค่า (เฉพาะแอดมิน) คืนค่า null เมื่อสำเร็จ หรือข้อความ error

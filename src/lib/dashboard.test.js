@@ -149,3 +149,27 @@ describe('expiringContracts / uninvoicedRooms', () => {
         expect(attentionItems({ uninvoicedRooms: 0, expiringContracts: 0 })).toEqual([])
     })
 })
+
+describe('attentionItems: โควตาตรวจสลิป', () => {
+    const q = (over) => ({ level: 'low', used: 43, quota: 50, remaining: 7, ...over })
+
+    it('ใกล้หมด: แสดงจำนวนครั้งที่เหลือ ลิงก์ไปหน้าตั้งค่า', () => {
+        const items = attentionItems({ slipQuota: q() })
+        expect(items).toHaveLength(1)
+        expect(items[0]).toMatchObject({ key: 'slip-quota', count: 7, to: '/settings' })
+        expect(items[0].label).toContain('ใช้ไป 43 จาก 50')
+    })
+
+    it('หมดแล้ว: ยังแสดงทั้งที่เหลือ 0', () => {
+        const items = attentionItems({ slipQuota: q({ level: 'out', used: 50, remaining: 0 }) })
+        expect(items).toHaveLength(1)
+        expect(items[0].count).toBe(0)
+        expect(items[0].label).toContain('หมดแล้ว')
+    })
+
+    it('ปกติหรือไม่ได้ตั้งโควตา: ไม่แสดง', () => {
+        expect(attentionItems({ slipQuota: q({ level: 'ok' }) })).toEqual([])
+        expect(attentionItems({ slipQuota: q({ level: 'none' }) })).toEqual([])
+        expect(attentionItems({})).toEqual([])
+    })
+})

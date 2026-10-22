@@ -46,7 +46,7 @@ export function uninvoicedRooms(rooms, invoices, month) {
 }
 
 // รายการ "ต้องจัดการตอนนี้" เรียงตามความเร่งด่วน (เงินของผู้เช่ารอคุณก่อน) ตัดรายการที่เป็นศูนย์ออก
-// input = { reviewInvoices, repairReviews, pendingRepairs, refundInvoices: { count, amount }, depositRefunds: { count, amount }, expiringContracts, uninvoicedRooms }
+// input = { reviewInvoices, repairReviews, pendingRepairs, refundInvoices: { count, amount }, depositRefunds: { count, amount }, expiringContracts, uninvoicedRooms, slipQuota: { level, used, quota, remaining } }
 export function attentionItems(input) {
     const money = (key, label, group) => ({ key, label, count: group?.count ?? 0, amount: group?.amount ?? 0 })
     return [
@@ -57,7 +57,22 @@ export function attentionItems(input) {
         { ...money('deposits', 'เงินประกันรอคืนผู้เช่า', input.depositRefunds), to: '/tenants', tone: 'violet' },
         { key: 'uninvoiced', label: 'ห้องที่ยังไม่ออกบิลเดือนนี้', count: input.uninvoicedRooms ?? 0, to: '/invoices', tone: 'amber' },
         { key: 'contracts', label: 'สัญญาใกล้หมด (ภายใน 30 วัน)', count: input.expiringContracts ?? 0, to: '/tenants', tone: 'amber' },
-    ].filter((item) => item.count > 0)
+        slipQuotaItem(input.slipQuota),
+    ].filter((item) => item && (item.count > 0 || item.keep))
+}
+
+// โควตาตรวจสลิปใกล้หมด/หมดแล้ว (level มาจาก quotaStatus) เต็มแล้วแสดงทั้งที่เหลือ 0
+function slipQuotaItem(q) {
+    if (!q || (q.level !== 'low' && q.level !== 'out')) return null
+    return {
+        key: 'slip-quota',
+        label: q.level === 'out' ? `โควตาตรวจสลิปเดือนนี้หมดแล้ว (ใช้ ${q.used}/${q.quota}) สลิปต้องตรวจด้วยตา` : `ครั้งที่ตรวจสลิปได้ในเดือนนี้ (ใช้ไป ${q.used} จาก ${q.quota})`,
+        count: q.remaining,
+        amount: 0,
+        to: '/settings',
+        tone: 'amber',
+        keep: true,
+    }
 }
 
 // วันครบกำหนดของใบ (YYYY-MM-DD): ใช้ due_date ที่บันทึกไว้ ไม่มีก็คำนวณจากวันครบกำหนดในหน้าตั้งค่า
