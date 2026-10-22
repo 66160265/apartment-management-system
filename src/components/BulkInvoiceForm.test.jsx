@@ -37,7 +37,10 @@ describe('BulkInvoiceForm (แสดงผลครั้งแรก)', () => {
     it('ห้องที่มีใบเดือนนี้แล้วถูกซ่อนไว้ก่อน (มีตัวเลือกแสดง) ส่วนห้องไม่มีบัญชีถูกปิดและบอกเหตุผล', () => {
         expect(html).not.toContain('ห้อง 102 มิเตอร์น้ำปัจจุบัน')
         expect(html).toContain('แสดงห้องที่มีใบเดือน')
-        expect(html).toContain('(1)')
+        // ตัวเลือกแสดงเป็นสวิตช์ (ยังปิดอยู่) พร้อมป้ายจำนวนห้องที่มีใบแล้ว
+        expect(html).toContain('role="switch"')
+        expect(html).toContain('aria-checked="false"')
+        expect(html).toMatch(new RegExp('แสดงห้องที่มีใบเดือน[^<]*</span><span[^>]*>1</span>'))
         expect(html).toContain('ยังไม่มีบัญชีผู้เช่า')
         expect(html).toContain('ค้นหาห้อง/ชื่อ')
     })

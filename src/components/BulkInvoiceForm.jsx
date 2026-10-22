@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import Icon from './Icon'
+import Switch from './Switch'
 import MonthPicker from './MonthPicker'
 import { baht, currentMonth, formatMonth } from '../lib/billing'
 import { buildBulkRows, evaluateRow, summarize, validateRates } from '../lib/bulkInvoices'
@@ -114,10 +115,9 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
                         <input type="text" placeholder="ค้นหาห้อง/ชื่อ" aria-label="ค้นหาห้องหรือชื่อผู้เช่า" className="outline-none w-full bg-transparent text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
                     </div>
                     {createdAlready > 0 && (
-                        <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
-                            <input type="checkbox" checked={showCreated} onChange={(e) => setShowCreated(e.target.checked)} />
-                            แสดงห้องที่มีใบเดือน {formatMonth(month)} แล้ว ({createdAlready})
-                        </label>
+                        <Switch checked={showCreated} onChange={setShowCreated} badge={createdAlready}>
+                            แสดงห้องที่มีใบเดือน {formatMonth(month)} แล้ว
+                        </Switch>
                     )}
                 </div>
             </div>
