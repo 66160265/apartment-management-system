@@ -159,27 +159,27 @@ function SettingsPage() {
             ) : !form ? (
                 <p className="px-6 text-muted">กำลังโหลด...</p>
             ) : (
-                <form onSubmit={handleSubmit} className="px-4 sm:px-6 pb-28 flex flex-col gap-6 max-w-5xl">
+                <form onSubmit={handleSubmit} className="px-4 sm:px-6 pb-28 flex flex-col gap-6">
                     {/* ส่วนที่ 1: ข้อมูลหอพัก */}
                     <Section icon="building" title="ข้อมูลหอพัก" hint="แสดงที่หัวใบแจ้งหนี้ (PDF)">
-                        <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
                             <Field label="ชื่อหอพัก">
                                 <input className={inputClass} value={form.apartmentName} onChange={set('apartmentName')} />
                             </Field>
                             <Field label="ชื่อภาษาอังกฤษ">
                                 <input className={inputClass} value={form.apartmentNameEn} onChange={set('apartmentNameEn')} />
                             </Field>
-                            <div className="sm:col-span-2">
-                                <Field label="ที่อยู่">
-                                    <textarea rows="2" className={inputClass} value={form.address} onChange={set('address')} />
-                                </Field>
-                            </div>
                             <Field label="เบอร์โทรศัพท์ติดต่อ">
                                 <input className={inputClass} value={form.phone} onChange={set('phone')} inputMode="tel" />
                             </Field>
                             <Field label="อีเมล">
                                 <input type="email" className={inputClass} value={form.email} onChange={set('email')} />
                             </Field>
+                            <div className="sm:col-span-2 2xl:col-span-4">
+                                <Field label="ที่อยู่">
+                                    <textarea rows="2" className={inputClass} value={form.address} onChange={set('address')} />
+                                </Field>
+                            </div>
                         </div>
                     </Section>
 
