@@ -43,7 +43,8 @@ export function monthlySummary(data, month, now = new Date()) {
 export const monthlyRows = (data, months, now = new Date()) => months.map((m) => monthlySummary(data, m, now))
 
 // ใบแจ้งหนี้ที่ยังต้องชำระ เรียงจากเกินกำหนดนานสุด แล้วเดือนเก่าสุด
-export function outstandingRows(invoices, now = new Date()) {
+// dueDay = วันครบกำหนดจากหน้าตั้งค่า ใช้กับใบที่ไม่ได้บันทึก due_date (ดู daysLate)
+export function outstandingRows(invoices, now = new Date(), dueDay) {
     return invoices
         .filter((i) => i.status !== 'paid')
         .map((i) => ({
@@ -53,7 +54,7 @@ export function outstandingRows(invoices, now = new Date()) {
             total: Number(i.total),
             paid: Number(i.paid_amount ?? 0),
             balance: balanceOf(i, now),
-            daysLate: daysLate(i, now),
+            daysLate: daysLate(i, now, dueDay),
             status: i.status,
         }))
         .filter((r) => r.balance > 0)
@@ -72,6 +73,54 @@ export function occupancy(rooms) {
         rate: available > 0 ? Math.round((count('occupied') / available) * 1000) / 10 : 0,
     }
 }
+
+// ---- การใช้น้ำ-ไฟ ----
+
+// สรุปการใช้น้ำ-ไฟของใบแจ้งหนี้ชุดหนึ่ง (เช่น ของเดือนเดียว) ค่าบาทคิดทีละใบตามอัตราของใบนั้น
+export function utilityStats(invoices) {
+    let waterUnits = 0
+    let elecUnits = 0
+    let waterCost = 0
+    let elecCost = 0
+    for (const i of invoices) {
+        const w = Math.max(0, (i.water_curr || 0) - (i.water_prev || 0))
+        const e = Math.max(0, (i.elec_curr || 0) - (i.elec_prev || 0))
+        waterUnits += w
+        elecUnits += e
+        waterCost += w * Number(i.water_rate || 0)
+        elecCost += e * Number(i.elec_rate || 0)
+    }
+    const round = (n) => Math.round(n * 100) / 100
+    return {
+        waterUnits,
+        elecUnits,
+        waterCost: round(waterCost),
+        elecCost: round(elecCost),
+        totalCost: round(waterCost + elecCost),
+        // อัตราเฉลี่ยต่อหน่วย (ใบต่างอัตรากันได้ จึงแสดงเป็นค่าเฉลี่ย ไม่ใช้อัตราของใบใดใบหนึ่ง) ไม่มีหน่วย = null
+        waterAvgRate: waterUnits > 0 ? round(waterCost / waterUnits) : null,
+        elecAvgRate: elecUnits > 0 ? round(elecCost / elecUnits) : null,
+    }
+}
+
+// หน่วยที่ใช้รายห้อง เรียงตามเลขห้อง
+export function roomUsage(invoices) {
+    return invoices
+        .map((i) => ({
+            room: i.room,
+            tenant: i.tenant_name,
+            water: Math.max(0, (i.water_curr || 0) - (i.water_prev || 0)),
+            electric: Math.max(0, (i.elec_curr || 0) - (i.elec_prev || 0)),
+        }))
+        .sort((a, b) => String(a.room).localeCompare(String(b.room), undefined, { numeric: true }))
+}
+
+export const utilityColumns = [
+    { header: 'ห้อง', value: (r) => r.room },
+    { header: 'ผู้เช่า', value: (r) => r.tenant },
+    { header: 'น้ำ (หน่วย)', value: (r) => r.water },
+    { header: 'ไฟ (หน่วย)', value: (r) => r.electric },
+]
 
 // ---- CSV ----
 
@@ -142,7 +191,7 @@ export const paymentColumns = (invoiceById) => [
     { header: 'เลขอ้างอิงสลิป', value: (p) => p.trans_ref ?? '' },
 ]
 
-// ---- การย้ายออกและเงินประกัน (supabase/move-out.sql) ----
+// ---- การย้ายออกและเงินประกัน (supabase/migrations/20261022000000_initial_schema.sql (ส่วน move-out)) ----
 
 const refundLabels = { pending: 'รอคืนเงิน', done: 'คืนแล้ว', none: 'ไม่มียอดคืน' }
 

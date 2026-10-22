@@ -3,73 +3,94 @@ import { Link, useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import MonthPicker from '../components/MonthPicker'
-import { invoiceStatuses } from '../data/billing'
-import { balanceOf, currentMonth, formatMonth, paidOf } from '../lib/billing'
+import { baht, currentMonth, formatMonth } from '../lib/billing'
+import { attentionItems, expiringContracts, notYetDueCount, overdueInvoices, uniqueRooms, uninvoicedRooms } from '../lib/dashboard'
 import { useRealtimeReload } from '../lib/realtime'
+import { monthlySummary, occupancy } from '../lib/reports'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
-// อัตราที่เป็น 0 ถือเป็นค่าที่ถูกต้อง จึงใช้ค่าสำรองเฉพาะกรณีไม่มีข้อมูลเท่านั้น
-const toRate = (value, fallback) =>
-    value === null || value === undefined || value === '' ? fallback : Number(value)
+// หน้าภาพรวมของแอดมิน: ตอบ 3 คำถามให้จบในหน้าเดียว
+//   1) มีอะไรต้องจัดการตอนนี้ไหม (สลิปรอตรวจ ซ่อมรอนัด เงินรอคืน)  2) เดือนนี้การเงินเป็นอย่างไร (เรียกเก็บ/ได้รับ/ค้าง)  3) ห้องเต็มไหม
+// รายละเอียดอื่น (ย้อนหลังหลายเดือน การใช้น้ำ-ไฟ ส่งออก CSV) อยู่ที่หน้ารายงาน ไม่ซ้ำกันที่นี่
 
 // ดึงข้อมูลจากฐานข้อมูล (ไม่มีการ setState เพื่อให้เรียกซ้ำได้อย่างปลอดภัย)
+// ใบแจ้งหนี้และห้องจำเป็น พลาดแล้วโยน error ส่วนที่เหลือมาจาก SQL รุ่นหลัง ถ้ายังไม่มีตารางให้ถือว่าไม่มีข้อมูล หน้ายังใช้ได้
 async function fetchDashboardData() {
-    // ดึงใบแจ้งหนี้ (ใหม่สุดก่อน), ห้อง และผู้เช่าพร้อมกัน ตารางไหนพลาดให้โยน error
-    const [invoicesRes, roomsRes, tenantsRes] = await Promise.all([
+    const [invoicesRes, roomsRes, paymentsRes, repairPaymentsRes, pendingRepairsRes, depositsRes, tenantsRes] = await Promise.all([
         supabase.from('invoices').select('*').order('created_at', { ascending: false }),
-        supabase.from('rooms').select('*').order('number', { ascending: true }),
-        supabase.from('tenants').select('*'),
+        supabase.from('rooms').select('number, status'),
+        supabase.from('invoice_payments').select('amount, confirmed_at'),
+        supabase.from('repair_payments').select('amount, status, reviewed_at'),
+        supabase.from('repairs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('move_outs').select('refund_amount').eq('refund_status', 'pending'),
+        supabase.from('tenants').select('room, end_date'),
     ])
 
     if (invoicesRes.error) throw invoicesRes.error
     if (roomsRes.error) throw roomsRes.error
-    if (tenantsRes.error) throw tenantsRes.error
 
     return {
-        invList: invoicesRes.data || [],
-        roomList: [...(roomsRes.data || [])].sort((a, b) =>
-            String(a.number).localeCompare(String(b.number), undefined, { numeric: true })
-        ),
-        tenantList: tenantsRes.data || [],
+        invoices: invoicesRes.data || [],
+        rooms: roomsRes.data || [],
+        invoicePayments: paymentsRes.error ? [] : paymentsRes.data || [],
+        repairPayments: repairPaymentsRes.error ? [] : repairPaymentsRes.data || [],
+        pendingRepairs: pendingRepairsRes.error ? 0 : pendingRepairsRes.count || 0,
+        pendingDeposits: depositsRes.error ? [] : depositsRes.data || [],
+        tenants: tenantsRes.error ? [] : tenantsRes.data || [],
     }
 }
 
-// หน้าภาพรวมของแอดมิน: รายได้ ยอดค้างชำระ สถานะห้อง และสถิติการใช้น้ำ-ไฟรายเดือน
+const emptyData = { invoices: [], rooms: [], invoicePayments: [], repairPayments: [], pendingRepairs: 0, pendingDeposits: [], tenants: [] }
+
+// สีของการ์ด "ต้องจัดการ" ตามประเภท
+const attentionTone = {
+    sky: 'bg-sky-50 ring-sky-200 text-sky-900',
+    amber: 'bg-amber-50 ring-amber-200 text-amber-900',
+    violet: 'bg-violet-50 ring-violet-200 text-violet-900',
+}
+
+function Card({ title, children, hint, action }) {
+    return (
+        <div className="bg-white rounded-2xl p-5 shadow-card border border-line flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-gray-600">{title}</span>
+                {action}
+            </div>
+            {children}
+            {hint && <div className="text-xs text-muted">{hint}</div>}
+        </div>
+    )
+}
+
 function AdminDashboardPage() {
-    // การตั้งค่า (ใช้อัตราน้ำ/ไฟสำรอง), สถานะโหลด, error และเดือนที่เลือกดู
     const settings = useSettings()
     const navigate = useNavigate()
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
     const [selectedMonth, setSelectedMonth] = useState(currentMonth())
-
-    // ข้อมูลจริงจาก Supabase
-    const [rooms, setRooms] = useState([])
-    const [tenants, setTenants] = useState([])
-    const [invoices, setInvoices] = useState([])
+    const [data, setData] = useState(emptyData)
+    // เวลาที่ใช้คิดยอดค้าง/เกินกำหนด จำไว้ตอนโหลด (ตัวเลขไม่เปลี่ยนเองระหว่างดู)
+    const [now, setNow] = useState(() => new Date())
 
     // เลือกเดือนอัตโนมัติเพียงครั้งแรกที่โหลดสำเร็จ ไม่ให้ทับเดือนที่ผู้ใช้เลือกเอง
     const hasAutoSelectedMonth = useRef(false)
 
-    // นำข้อมูลที่โหลดได้ไปตั้งค่า state
-    const applyData = useCallback(({ invList, roomList, tenantList }) => {
-        setInvoices(invList)
-        setRooms(roomList)
-        setTenants(tenantList)
+    const applyData = useCallback((next) => {
+        setData(next)
+        setNow(new Date())
         setLoadError('')
 
         // หากเดือนปัจจุบันยังไม่มีใบแจ้งหนี้ แต่มีในเดือนอื่น ให้เลือกเดือนล่าสุดที่มีข้อมูล
         if (!hasAutoSelectedMonth.current) {
             hasAutoSelectedMonth.current = true
-            const months = [...new Set(invList.map((i) => i.month))].sort()
-            if (!invList.some((i) => i.month === currentMonth()) && months.length > 0) {
+            const months = [...new Set(next.invoices.map((i) => i.month))].sort()
+            if (!next.invoices.some((i) => i.month === currentMonth()) && months.length > 0) {
                 setSelectedMonth(months[months.length - 1])
             }
         }
     }, [])
 
-    // โหลดไม่สำเร็จ: บันทึกลง console และแสดงข้อความ error
     const applyError = useCallback((err) => {
         console.error('Error loading dashboard data:', err)
         setLoadError(`เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message || 'ไม่สามารถติดต่อฐานข้อมูลได้'}`)
@@ -79,7 +100,7 @@ function AdminDashboardPage() {
     useEffect(() => {
         let cancelled = false
         fetchDashboardData()
-            .then((data) => !cancelled && applyData(data))
+            .then((next) => !cancelled && applyData(next))
             .catch((err) => !cancelled && applyError(err))
             .finally(() => !cancelled && setLoading(false))
         return () => {
@@ -87,7 +108,6 @@ function AdminDashboardPage() {
         }
     }, [applyData, applyError])
 
-    // กดลองใหม่เมื่อโหลดข้อมูลไม่สำเร็จ
     const retryLoad = () => {
         setLoading(true)
         setLoadError('')
@@ -97,355 +117,143 @@ function AdminDashboardPage() {
             .finally(() => setLoading(false))
     }
 
-    // อัปเดตเองเมื่อมีการเปลี่ยนใบแจ้งหนี้ ห้อง หรือผู้เช่า (โหลดเงียบ ไม่ขึ้นหน้าจอกำลังโหลด และไม่ทับเดือนที่เลือกไว้)
+    // อัปเดตเองเมื่อมีการเปลี่ยนข้อมูลที่หน้านี้ใช้ (โหลดเงียบ ไม่ขึ้นหน้าจอกำลังโหลด และไม่ทับเดือนที่เลือกไว้)
     const reloadQuiet = useCallback(() => fetchDashboardData().then(applyData).catch(() => {}), [applyData])
-    useRealtimeReload(['invoices', 'rooms', 'tenants'], reloadQuiet)
+    useRealtimeReload(['invoices', 'invoice_payments', 'rooms', 'repairs', 'repair_payments', 'move_outs', 'tenants'], reloadQuiet)
 
-    // รายชื่อเดือนทั้งหมดที่มีใบแจ้งหนี้
-    const monthsWithInvoices = useMemo(() => {
-        return [...new Set(invoices.map((i) => i.month))].sort()
-    }, [invoices])
+    const monthsWithInvoices = useMemo(() => [...new Set(data.invoices.map((i) => i.month))].sort(), [data.invoices])
 
-    // ใบแจ้งหนี้ของเดือนที่เลือก
-    const invoicesForMonth = useMemo(() => {
-        return invoices.filter((i) => i.month === selectedMonth)
-    }, [invoices, selectedMonth])
+    // การเงินของเดือนที่เลือก: เรียกเก็บ / ได้รับจริง / ยังค้าง (นิยามเดียวกับหน้ารายงาน)
+    const summary = useMemo(
+        () => monthlySummary({ invoices: data.invoices, invoicePayments: data.invoicePayments, repairPayments: data.repairPayments }, selectedMonth, now),
+        [data, selectedMonth, now],
+    )
 
-    // รายได้เดือนนี้ = เงินที่ได้รับจริง: ใบที่ชำระแล้วนับเต็มยอดบิล (ยอดที่โอนเกินไม่นับเป็นรายได้) ใบที่ชำระบางส่วนนับเฉพาะที่ได้รับแล้ว
-    const monthlyIncome = useMemo(() => {
-        return invoicesForMonth.reduce(
-            (sum, i) => sum + (i.status === 'paid' ? Number(i.total || 0) : Math.min(paidOf(i), Number(i.total || 0))),
-            0,
-        )
-    }, [invoicesForMonth])
+    // เกินกำหนดชำระ (ผู้เช่ายังต้องจ่ายและเลยวันครบกำหนดแล้ว) กับที่ยังไม่ถึงกำหนด
+    const overdue = useMemo(() => overdueInvoices(data.invoices, now, settings.dueDay), [data.invoices, now, settings.dueDay])
+    const overdueTotal = overdue.reduce((sum, r) => sum + r.balance, 0)
+    const notYetDue = useMemo(() => notYetDueCount(data.invoices, now, settings.dueDay), [data.invoices, now, settings.dueDay])
 
-    // ใบแจ้งหนี้ที่ค้างชำระจริง (pending หรือ review)
-    const overdueInvoices = useMemo(() => {
-        return invoices
-            .filter((i) => i.status === 'pending' || i.status === 'review')
-            .map((inv) => {
-                const tenant = tenants.find((t) => t.room === inv.room)
-                return {
-                    id: inv.id,
-                    room: inv.room,
-                    tenant: inv.tenant_name || tenant?.name || '-',
-                    // ยอดค้างจริง: ถ้าชำระบางส่วนมาแล้วนับเฉพาะยอดคงเหลือ
-                    amount: balanceOf(inv),
-                    month: formatMonth(inv.month),
-                    status: inv.status,
-                    statusLabel: invoiceStatuses[inv.status]?.label || inv.status,
-                    statusStyle:
-                        invoiceStatuses[inv.status]?.color ||
-                        (inv.status === 'review'
-                            ? 'bg-sky-50 text-sky-800 ring-1 ring-sky-200'
-                            : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'),
-                }
-            })
-            .sort((a, b) => String(a.room).localeCompare(String(b.room), undefined, { numeric: true }))
-    }, [invoices, tenants])
+    const occ = useMemo(() => occupancy(data.rooms), [data.rooms])
 
-    // จำนวนห้องที่ค้างชำระจริง
-    const unpaidRoomsCount = useMemo(() => {
-        return new Set(overdueInvoices.map((i) => i.room)).size
-    }, [overdueInvoices])
-
-    // สถิติการใช้น้ำและไฟประจำเดือนที่เลือก
-    const utilityStats = useMemo(() => {
-        let waterUnits = 0
-        let elecUnits = 0
-        let waterCost = 0
-        let elecCost = 0
-
-        // อัตราตั้งต้นจากใบแรกของเดือน (ไม่มีใช้ค่าจากหน้าตั้งค่า)
-        const waterRate = toRate(invoicesForMonth[0]?.water_rate, settings.rateWater)
-        const elecRate = toRate(invoicesForMonth[0]?.elec_rate, settings.rateElectric)
-
-        // รวมหน่วยและค่าน้ำ/ไฟของทุกห้องในเดือนนั้น
-        invoicesForMonth.forEach((inv) => {
-            const w = Math.max(0, (inv.water_curr || 0) - (inv.water_prev || 0))
-            const e = Math.max(0, (inv.elec_curr || 0) - (inv.elec_prev || 0))
-            const wRate = toRate(inv.water_rate, waterRate)
-            const eRate = toRate(inv.elec_rate, elecRate)
-
-            waterUnits += w
-            elecUnits += e
-            waterCost += w * wRate
-            elecCost += e * eRate
+    // สิ่งที่ต้องจัดการตอนนี้
+    const attention = useMemo(() => {
+        const refunds = data.invoices.filter((i) => i.refund_status === 'pending')
+        return attentionItems({
+            reviewInvoices: data.invoices.filter((i) => i.status === 'review').length,
+            repairReviews: data.repairPayments.filter((p) => p.status === 'review').length,
+            pendingRepairs: data.pendingRepairs,
+            refundInvoices: { count: refunds.length, amount: refunds.reduce((sum, i) => sum + Number(i.refund_amount), 0) },
+            depositRefunds: { count: data.pendingDeposits.length, amount: data.pendingDeposits.reduce((sum, m) => sum + Number(m.refund_amount), 0) },
+            uninvoicedRooms: uninvoicedRooms(data.rooms, data.invoices, currentMonth()).length,
+            expiringContracts: expiringContracts(data.tenants, now).length,
         })
+    }, [data, now])
 
-        return {
-            waterUnits,
-            elecUnits,
-            waterRate,
-            elecRate,
-            waterCost,
-            elecCost,
-            totalCost: waterCost + elecCost,
-        }
-    }, [invoicesForMonth, settings.rateWater, settings.rateElectric])
-
-    // สถิติแยกตามห้องประจำเดือนที่เลือก
-    const roomUsage = useMemo(() => {
-        return invoicesForMonth
-            .map((inv) => ({
-                room: inv.room,
-                water: Math.max(0, (inv.water_curr || 0) - (inv.water_prev || 0)),
-                electric: Math.max(0, (inv.elec_curr || 0) - (inv.elec_prev || 0)),
-            }))
-            .sort((a, b) => String(a.room).localeCompare(String(b.room), undefined, { numeric: true }))
-    }, [invoicesForMonth])
+    const received = summary.received + summary.repairReceived
+    const loadingText = <span className="text-gray-300 text-lg font-normal">กำลังโหลด...</span>
 
     return (
         <div className="p-4 sm:p-6 flex flex-col gap-6">
-            {/* Header: ชื่อหน้า Dashboard + ตัวเลือกเดือน + ปุ่มกระดิ่งแจ้งเตือน + Avatar */}
-            <PageHeader flush title="ภาพรวมระบบ" subtitle={`สรุปรายได้ ยอดค้างชำระ และการใช้น้ำ-ไฟ ประจำเดือน ${formatMonth(selectedMonth)}`} actions={
-                    <>
-                        <MonthPicker
-                        value={selectedMonth}
-                        onChange={setSelectedMonth}
-                        marked={monthsWithInvoices}
-                    />
-                    </>
-                } />
+            <PageHeader flush title="ภาพรวมระบบ" subtitle="สิ่งที่ต้องจัดการ การเงินของเดือน และอัตราเข้าพัก" />
 
-            {/* แจ้งเตือนข้อผิดพลาด (ถ้ามี) */}
             {loadError && (
                 <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex justify-between items-center">
                     <span>{loadError}</span>
-                    <button
-                        type="button"
-                        onClick={retryLoad}
-                        className="underline text-red-800 font-medium cursor-pointer"
-                    >
-                        ลองใหม่
-                    </button>
+                    <button type="button" onClick={retryLoad} className="underline text-red-800 font-medium cursor-pointer">ลองใหม่</button>
                 </div>
             )}
 
-            {/* แถวที่ 1: การ์ดสรุป 3 ใบ ตามรูปภาพต้นแบบ */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {/* 1. รายได้เดือนนี้ */}
-                <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col justify-between">
-                    <span className="text-sm font-medium text-gray-600">
-                        รายได้เดือนนี้ ({formatMonth(selectedMonth)})
-                    </span>
-                    <div className="mt-3 text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight">
-                        {loading ? (
-                            <span className="text-gray-300 text-2xl font-normal">กำลังโหลด...</span>
-                        ) : (
-                            `฿${monthlyIncome.toLocaleString()}`
-                        )}
+            {/* 1) ต้องจัดการตอนนี้ */}
+            <section aria-label="ต้องจัดการตอนนี้" className="flex flex-col gap-3">
+                <h2 className="text-base font-semibold text-primary-dark">ต้องจัดการตอนนี้</h2>
+                {loading ? (
+                    <div className="rounded-2xl bg-white border border-line p-5 text-sm text-muted">กำลังโหลด...</div>
+                ) : attention.length === 0 ? (
+                    <div className="rounded-2xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 p-4 flex items-center gap-3 text-sm">
+                        <Icon name="checkCircle" className="w-5 h-5 text-emerald-600 shrink-0" />
+                        ไม่มีงานค้าง ไม่มีสลิปรอตรวจ ไม่มีเรื่องซ่อมรอนัด และไม่มีเงินรอคืนผู้เช่า
                     </div>
-                </div>
-
-                {/* 2. ห้องที่ค้างชำระทั้งหมด */}
-                <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col justify-between">
-                    <span className="text-sm font-medium text-gray-600">
-                        ห้องที่ค้างชำระทั้งหมด
-                    </span>
-                    <div className="mt-3 flex items-baseline">
-                        {loading ? (
-                            <span className="text-gray-300 text-2xl font-normal">กำลังโหลด...</span>
-                        ) : (
-                            <>
-                                <span className="text-3xl sm:text-4xl font-bold text-gray-900">
-                                    {unpaidRoomsCount}
+                ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                        {attention.map((item) => (
+                            <Link key={item.key} to={item.to} className={`rounded-2xl ring-1 p-4 flex flex-col gap-1 hover:shadow-md transition ${attentionTone[item.tone]}`}>
+                                <span className="text-3xl font-bold tabular-nums">{item.count}</span>
+                                <span className="text-sm font-medium">{item.label}</span>
+                                {item.amount > 0 && <span className="text-xs opacity-80 tabular-nums">รวม {baht(item.amount)}</span>}
+                                <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold">
+                                    จัดการ <Icon name="arrowRight" className="w-3.5 h-3.5" />
                                 </span>
-                                <span className="text-xl sm:text-2xl font-normal text-gray-400">
-                                    /{rooms.length}
-                                </span>
-                            </>
-                        )}
+                            </Link>
+                        ))}
                     </div>
-                </div>
+                )}
+            </section>
 
-                {/* 3. ค่าน้ำ/ค่าไฟรวม */}
-                <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col justify-between">
-                    <span className="text-sm font-medium text-gray-600 mb-2">
-                        ค่าน้ำ/ค่าไฟรวม ({formatMonth(selectedMonth)})
-                    </span>
-                    <div className="grid grid-cols-2 divide-x divide-gray-200">
-                        {/* ค่าน้ำรวม */}
-                        <div className="text-center pr-3">
-                            <div className="text-2xl sm:text-3xl font-bold text-gray-900">
-                                {loading ? '...' : utilityStats.waterCost.toLocaleString()}
-                            </div>
-                            <div className="text-xs text-gray-400 mt-1">
-                                หน่วยละ {utilityStats.waterRate} บาท
-                            </div>
+            {/* 2) การเงินของเดือน / เกินกำหนด / อัตราเข้าพัก */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <Card
+                    title={`การเงินเดือน ${formatMonth(selectedMonth)}`}
+                    action={<MonthPicker value={selectedMonth} onChange={setSelectedMonth} marked={monthsWithInvoices} />}
+                    hint="ได้รับ = เงินที่รับจริงในเดือนนี้ (ค่าห้อง+ค่าซ่อม รวมค่าปรับ และอาจมีใบของเดือนก่อนที่เพิ่งชำระ)"
+                >
+                    <dl className="flex flex-col gap-2">
+                        <div className="flex items-baseline justify-between gap-3">
+                            <dt className="text-sm text-muted">เรียกเก็บ ({summary.issuedCount} ใบ)</dt>
+                            <dd className="text-xl font-semibold text-gray-900 tabular-nums">{loading ? loadingText : baht(summary.billed)}</dd>
                         </div>
+                        <div className="flex items-baseline justify-between gap-3">
+                            <dt className="text-sm text-muted">ได้รับแล้ว</dt>
+                            <dd className="text-xl font-semibold text-emerald-700 tabular-nums">{loading ? loadingText : baht(received)}</dd>
+                        </div>
+                        <div className="flex items-baseline justify-between gap-3 border-t border-line pt-2">
+                            <dt className="text-sm text-muted">ยังค้างของใบเดือนนี้ ({summary.unpaidCount} ใบ)</dt>
+                            <dd className={`text-xl font-semibold tabular-nums ${summary.outstanding > 0 ? 'text-amber-700' : 'text-gray-900'}`}>{loading ? loadingText : baht(summary.outstanding)}</dd>
+                        </div>
+                    </dl>
+                </Card>
 
-                        {/* ค่าไฟรวม */}
-                        <div className="text-center pl-3">
-                            <div className="text-2xl sm:text-3xl font-bold text-gray-900">
-                                {loading ? '...' : utilityStats.elecCost.toLocaleString()}
+                <Card title="เกินกำหนดชำระ" hint={loading ? undefined : `ยังไม่ถึงกำหนดอีก ${notYetDue} ใบ (ไม่นับเป็นค้าง)`}>
+                    {loading ? (
+                        loadingText
+                    ) : (
+                        <>
+                            <div className="flex items-baseline gap-2">
+                                <span className={`text-4xl font-bold tabular-nums ${overdue.length > 0 ? 'text-red-600' : 'text-gray-900'}`}>{uniqueRooms(overdue)}</span>
+                                <span className="text-xl text-gray-400">ห้อง</span>
                             </div>
-                            <div className="text-xs text-gray-400 mt-1">
-                                หน่วยละ {utilityStats.elecRate} บาท
+                            <div className="text-sm text-muted tabular-nums">รวมยอดค้าง {baht(overdueTotal)} (รวมค่าปรับของวันนี้)</div>
+                        </>
+                    )}
+                </Card>
+
+                <Card title="อัตราเข้าพัก" hint={loading ? undefined : `มีผู้เช่า ${occ.occupied} จาก ${occ.total - occ.maintenance} ห้อง${occ.maintenance > 0 ? ` · ปิดปรับปรุง ${occ.maintenance}` : ''}`}>
+                    {loading ? (
+                        loadingText
+                    ) : (
+                        <>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-4xl font-bold text-gray-900 tabular-nums">{occ.rate}%</span>
+                                <span className="text-xl text-gray-400">ว่าง {occ.vacant} ห้อง</span>
                             </div>
-                        </div>
-                    </div>
-                </div>
+                            <div className="h-2 rounded-full bg-sand overflow-hidden" role="presentation">
+                                <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, occ.rate)}%` }} />
+                            </div>
+                        </>
+                    )}
+                </Card>
             </div>
 
-            {/* แถวที่ 2: สถิติการใช้น้ำ/ไฟ จากข้อมูลจริงประจำเดือน */}
-            <div className="bg-white rounded-2xl p-6 md:p-8 shadow-card border border-line">
-                <div className="flex justify-between items-center mb-6">
+            {/* 3) ตารางเกินกำหนดชำระ (เฉพาะรายการเร่งด่วนสุด ที่เหลืออยู่หน้ารายงาน) */}
+            <div className="bg-white rounded-2xl p-6 shadow-card border border-line">
+                <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
                     <div className="flex items-center gap-2">
-                        <h2 className="text-lg font-bold text-gray-900">สถิติการใช้น้ำ/ไฟ</h2>
-                        <span className="text-xs text-gray-400 font-normal">
-                            (ประจำเดือน {formatMonth(selectedMonth)})
-                        </span>
-                    </div>
-                    <span className="bg-[#fef9c3] text-[#854d0e] border border-[#fef08a] px-3 py-1 rounded-md text-xs font-semibold">
-                        {formatMonth(selectedMonth)}
-                    </span>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                    {/* ฝั่งซ้าย: กล่องไฮไลต์ตัวเลขน้ำรวม & ไฟรวม + รายละเอียดสรุป */}
-                    <div className="lg:col-span-5 flex flex-col gap-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            {/* กล่องน้ำรวม */}
-                            <div className="bg-cyan-50 border border-cyan-100 rounded-2xl p-5 text-center flex flex-col justify-center shadow-2xs">
-                                <Icon name="droplet" className="w-5 h-5 mx-auto mb-1 text-cyan-600" />
-                                <span className="text-xs font-semibold text-cyan-700">
-                                    น้ำรวม
-                                </span>
-                                <span className="text-3xl sm:text-4xl font-bold text-gray-900 my-1">
-                                    {loading ? '...' : utilityStats.waterUnits.toLocaleString()}
-                                </span>
-                                <span className="text-xs font-medium text-cyan-700">หน่วย</span>
-                            </div>
-
-                            {/* กล่องไฟรวม */}
-                            <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5 text-center flex flex-col justify-center shadow-2xs">
-                                <Icon name="bolt" className="w-5 h-5 mx-auto mb-1 text-amber-600" />
-                                <span className="text-xs font-semibold text-amber-700">
-                                    ไฟรวม
-                                </span>
-                                <span className="text-3xl sm:text-4xl font-bold text-gray-900 my-1">
-                                    {loading ? '...' : utilityStats.elecUnits.toLocaleString()}
-                                </span>
-                                <span className="text-xs font-medium text-amber-700">หน่วย</span>
-                            </div>
-                        </div>
-
-                        {/* กล่องสรุปค่าใช้จ่ายภาพรวม */}
-                        <div className="bg-sand/30 rounded-2xl p-4 border border-line flex flex-col gap-2.5 text-xs text-gray-600">
-                            <div className="flex justify-between items-center">
-                                <span>ค่าน้ำทั้งหมด ({utilityStats.waterUnits} หน่วย × {utilityStats.waterRate}฿)</span>
-                                <span className="font-semibold text-gray-900">
-                                    ฿{utilityStats.waterCost.toLocaleString()}
-                                </span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span>ค่าไฟทั้งหมด ({utilityStats.elecUnits} หน่วย × {utilityStats.elecRate}฿)</span>
-                                <span className="font-semibold text-gray-900">
-                                    ฿{utilityStats.elecCost.toLocaleString()}
-                                </span>
-                            </div>
-                            <div className="pt-2 border-t border-line flex justify-between items-center text-sm font-bold text-primary-dark">
-                                <span>ยอดรวมค่าน้ำและไฟฟ้า</span>
-                                <span>
-                                    ฿{utilityStats.totalCost.toLocaleString()}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* ฝั่งขวา: ตารางสถิติแยกตามห้อง */}
-                    <div className="lg:col-span-7 flex flex-col">
-                        <div className="flex justify-between items-center mb-2">
-                            <span className="text-xs font-semibold text-gray-500">
-                                สถิติการใช้จริงแยกแต่ละห้อง
-                            </span>
-                            <span className="text-[11px] text-gray-400">
-                                {roomUsage.length} ห้องที่มีใบแจ้งหนี้
-                            </span>
-                        </div>
-
-                        <div className="border border-line rounded-xl overflow-hidden">
-                            <div className="max-h-68 overflow-y-auto">
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-sand/40 sticky top-0 z-10 border-b border-line text-xs text-gray-500 font-semibold">
-                                        <tr>
-                                            <th className="py-2.5 px-4 font-normal text-gray-400">ห้อง</th>
-                                            <th className="py-2.5 px-4 font-normal text-gray-400 text-center">
-                                                น้ำ (หน่วย)
-                                            </th>
-                                            <th className="py-2.5 px-4 font-normal text-gray-400 text-right">
-                                                ไฟ (หน่วย)
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {/* ไม่มีข้อมูล: ลิงก์ไปออกใบแจ้งหนี้ / มีข้อมูล: แถวละห้อง */}
-                                        {roomUsage.length === 0 ? (
-                                            <tr>
-                                                <td
-                                                    colSpan={3}
-                                                    className="py-8 text-center text-gray-400 text-xs sm:text-sm"
-                                                >
-                                                    {loading ? (
-                                                        'กำลังโหลดข้อมูล...'
-                                                    ) : (
-                                                        <div className="flex flex-col items-center gap-2">
-                                                            <span>ยังไม่มีข้อมูลการใช้น้ำ/ไฟในเดือน {formatMonth(selectedMonth)}</span>
-                                                            <Link
-                                                                to="/invoices"
-                                                                className="text-xs text-primary hover:underline font-medium"
-                                                            >
-                                                                + ออกใบแจ้งหนี้เดือนนี้
-                                                            </Link>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ) : (
-                                            roomUsage.map((item) => (
-                                                <tr
-                                                    key={item.room}
-                                                    className="hover:bg-sand/30 transition-colors"
-                                                >
-                                                    <td className="py-2.5 px-4 font-medium text-gray-800">
-                                                        {item.room}
-                                                    </td>
-                                                    <td className="py-2.5 px-4 text-center text-gray-700 font-medium">
-                                                        {item.water}
-                                                    </td>
-                                                    <td className="py-2.5 px-4 text-right text-gray-700 font-medium">
-                                                        {item.electric}
-                                                    </td>
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* แถวที่ 3: ห้องที่ค้างชำระทั้งหมด จากข้อมูลจริง */}
-            <div className="bg-white rounded-2xl p-6 md:p-8 shadow-card border border-line">
-                {/* หัวกล่อง: จำนวนรายการค้าง + ลิงก์ไปหน้าใบแจ้งหนี้ */}
-                <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-2">
-                        <h2 className="text-lg font-bold text-gray-900">
-                            ห้องที่ค้างชำระทั้งหมด
-                        </h2>
-                        {!loading && overdueInvoices.length > 0 && (
-                            <span className="text-xs bg-amber-100 text-amber-800 font-semibold px-2.5 py-0.5 rounded-full">
-                                {overdueInvoices.length} รายการ
-                            </span>
+                        <h2 className="text-lg font-bold text-gray-900">เกินกำหนดชำระ</h2>
+                        {!loading && overdue.length > 0 && (
+                            <span className="text-xs bg-red-100 text-red-800 font-semibold px-2.5 py-0.5 rounded-full">{overdue.length} ใบ</span>
                         )}
                     </div>
-                    <Link
-                        to="/invoices"
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-dark font-semibold transition"
-                    >
+                    <Link to="/invoices" className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-dark font-semibold transition">
                         จัดการใบแจ้งหนี้ทั้งหมด
                         <Icon name="arrowRight" className="w-3.5 h-3.5" />
                     </Link>
@@ -455,61 +263,42 @@ function AdminDashboardPage() {
                     <table className="w-full text-left text-sm">
                         <thead>
                             <tr className="border-b border-gray-200 text-xs text-gray-400 font-normal">
-                                <th className="py-3 px-2 font-normal">ห้อง</th>
-                                <th className="py-3 px-2 font-normal">ผู้เช่า</th>
-                                <th className="py-3 px-2 font-normal">ยอด (บาท)</th>
+                                <th className="py-3 px-2 font-normal">ห้อง / ผู้เช่า</th>
                                 <th className="py-3 px-2 font-normal">เดือน</th>
-                                <th className="py-3 px-2 font-normal text-right">สถานะ</th>
+                                <th className="py-3 px-2 font-normal text-right">ค้างชำระ (บาท)</th>
+                                <th className="py-3 px-2 font-normal text-right">เกินกำหนด</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {/* กำลังโหลด / ไม่มีค้างชำระ / แถวละใบ (กดเพื่อไปหน้าใบแจ้งหนี้) */}
                             {loading ? (
-                                <tr>
-                                    <td colSpan={5} className="py-8 text-center text-gray-400 text-sm">
-                                        กำลังโหลดข้อมูล...
-                                    </td>
-                                </tr>
-                            ) : overdueInvoices.length === 0 ? (
-                                <tr>
-                                    <td colSpan={5} className="py-8 text-center text-emerald-600 text-sm font-medium">
-                                        ไม่มีห้องที่ค้างชำระ (ชำระเงินเรียบร้อยทุกห้อง)
-                                    </td>
-                                </tr>
+                                <tr><td colSpan={4} className="py-8 text-center text-gray-400 text-sm">กำลังโหลดข้อมูล...</td></tr>
+                            ) : overdue.length === 0 ? (
+                                <tr><td colSpan={4} className="py-8 text-center text-emerald-600 text-sm font-medium">ไม่มีใบแจ้งหนี้ที่เกินกำหนดชำระ</td></tr>
                             ) : (
-                                overdueInvoices.map((inv) => (
-                                    <tr
-                                        key={inv.id || inv.room}
-                                        onClick={() => navigate('/invoices')}
-                                        className="hover:bg-sand/30 transition-colors cursor-pointer group"
-                                        title="คลิกเพื่อไปที่หน้าใบแจ้งหนี้"
-                                    >
-                                        <td className="py-3.5 px-2 font-medium text-gray-900">
-                                            {inv.room}
-                                        </td>
-                                        <td className="py-3.5 px-2 text-gray-800 font-medium">
-                                            {inv.tenant}
-                                        </td>
-                                        <td className="py-3.5 px-2 text-gray-900 font-semibold">
-                                            ฿{inv.amount.toLocaleString()}
-                                        </td>
-                                        <td className="py-3.5 px-2 text-gray-600">
-                                            {inv.month}
-                                        </td>
-                                        <td className="py-3.5 px-2 text-right">
-                                            <span
-                                                className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${inv.statusStyle}`}
-                                            >
-                                                {inv.statusLabel}
-                                            </span>
-                                        </td>
+                                overdue.slice(0, 8).map((r) => (
+                                    <tr key={r.id} onClick={() => navigate('/invoices')} className="hover:bg-sand/30 transition-colors cursor-pointer" title="คลิกเพื่อไปที่หน้าใบแจ้งหนี้">
+                                        <td className="py-3.5 px-2 font-medium text-gray-900">{r.room} <span className="font-normal text-gray-600">· {r.tenant}</span></td>
+                                        <td className="py-3.5 px-2 text-gray-600">{formatMonth(r.month)}</td>
+                                        <td className="py-3.5 px-2 text-right text-gray-900 font-semibold tabular-nums">{baht(r.balance)}</td>
+                                        <td className="py-3.5 px-2 text-right"><span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 ring-1 ring-red-200">{r.daysLate} วัน</span></td>
                                     </tr>
                                 ))
                             )}
                         </tbody>
                     </table>
                 </div>
+                {!loading && overdue.length > 8 && (
+                    <p className="text-xs text-muted pt-3">
+                        แสดง 8 รายการที่เกินกำหนดนานที่สุด จากทั้งหมด {overdue.length} ใบ{' '}
+                        <Link to="/admin/reports" className="text-primary font-medium hover:underline">ดูทั้งหมดและส่งออกในหน้ารายงาน</Link>
+                    </p>
+                )}
             </div>
+
+            <p className="text-xs text-muted">
+                รายงานย้อนหลัง 12 เดือน สถิติการใช้น้ำ-ไฟรายห้อง และการส่งออก CSV อยู่ที่{' '}
+                <Link to="/admin/reports" className="text-primary font-medium hover:underline">หน้ารายงาน</Link>
+            </p>
         </div>
     )
 }

@@ -4,7 +4,7 @@ vi.mock('./supabaseClient', () => ({ supabase: {} }))
 
 const {
     monthOf, recentMonths, monthlySummary, monthlyRows, outstandingRows, occupancy, toCsv, invoiceColumns, outstandingColumns, monthlyColumns, paymentColumns,
-    pendingDepositRefund, owedFromMoveOuts, moveOutColumns,
+    pendingDepositRefund, owedFromMoveOuts, moveOutColumns, utilityStats, roomUsage, utilityColumns,
 } = await import('./reports')
 
 const now = new Date('2026-11-10T10:00:00+07:00')
@@ -146,6 +146,52 @@ describe('toCsv', () => {
 
     it('ไม่มีแถว = มีแต่หัวตาราง', () => {
         expect(toCsv([], cols)).toBe('ชื่อ,ยอด')
+    })
+})
+
+describe('การใช้น้ำ-ไฟ', () => {
+    const u = (room, wp, wc, ep, ec, wr = 18, er = 7) => ({ room, tenant_name: 'ผู้เช่า ' + room, water_prev: wp, water_curr: wc, water_rate: wr, elec_prev: ep, elec_curr: ec, elec_rate: er })
+
+    it('รวมหน่วยและค่าบาท คิดทีละใบตามอัตราของใบนั้น', () => {
+        const s = utilityStats([u('101', 100, 110, 500, 560), u('102', 40, 55, 200, 230, 20, 8)])
+        expect(s.waterUnits).toBe(25)
+        expect(s.elecUnits).toBe(90)
+        expect(s.waterCost).toBe(10 * 18 + 15 * 20)
+        expect(s.elecCost).toBe(60 * 7 + 30 * 8)
+        expect(s.totalCost).toBe(s.waterCost + s.elecCost)
+    })
+
+    it('อัตราเฉลี่ยต่อหน่วย (ใบต่างอัตรากัน) ไม่ใช้อัตราของใบแรก', () => {
+        const s = utilityStats([u('101', 0, 10, 0, 10, 18, 7), u('102', 0, 10, 0, 10, 22, 9)])
+        expect(s.waterAvgRate).toBe(20)
+        expect(s.elecAvgRate).toBe(8)
+    })
+
+    it('ไม่มีใบ/ไม่มีหน่วยที่ใช้ = ศูนย์ ไม่หารศูนย์ อัตราเฉลี่ยเป็น null', () => {
+        expect(utilityStats([])).toMatchObject({ waterUnits: 0, elecUnits: 0, totalCost: 0, waterAvgRate: null, elecAvgRate: null })
+    })
+
+    it('มิเตอร์ถอยหลัง (ข้อมูลผิด) ไม่ทำให้หน่วยติดลบ', () => {
+        expect(utilityStats([u('101', 100, 90, 500, 400)])).toMatchObject({ waterUnits: 0, elecUnits: 0 })
+    })
+
+    it('รายห้องเรียงตามเลขห้องแบบตัวเลข', () => {
+        const rows = roomUsage([u('102', 0, 5, 0, 6), u('20', 0, 1, 0, 2), u('101', 0, 3, 0, 4)])
+        expect(rows.map((r) => r.room)).toEqual(['20', '101', '102'])
+        expect(rows[0]).toMatchObject({ water: 1, electric: 2 })
+    })
+
+    it('ส่งออก CSV รายห้อง', () => {
+        const csv = toCsv(roomUsage([u('101', 0, 3, 0, 4)]), utilityColumns)
+        expect(csv).toBe('ห้อง,ผู้เช่า,น้ำ (หน่วย),ไฟ (หน่วย)\r\n101,ผู้เช่า 101,3,4')
+    })
+})
+
+describe('ใบที่ไม่มี due_date (ออกตอนไม่ได้เปิดค่าปรับ)', () => {
+    it('ยอดค้างใช้วันครบกำหนดจากหน้าตั้งค่า ถ้าส่ง dueDay มา', () => {
+        const rows = outstandingRows([inv()], now, 5)
+        expect(rows[0].daysLate).toBe(5)
+        expect(outstandingRows([inv()], now)[0].daysLate).toBe(0)
     })
 })
 

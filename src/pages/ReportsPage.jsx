@@ -7,10 +7,11 @@ import { formatDate } from '../lib/tenants'
 import { downloadCsv } from '../lib/downloadCsv'
 import {
     csvFileName, invoiceColumns, monthlyColumns, monthlyRows, monthlySummary, monthOf, moveOutColumns, occupancy, outstandingColumns, outstandingRows,
-    owedFromMoveOuts, paymentColumns, pendingDepositRefund, recentMonths, toCsv,
+    owedFromMoveOuts, paymentColumns, pendingDepositRefund, recentMonths, roomUsage, toCsv, utilityColumns, utilityStats,
 } from '../lib/reports'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
+import { useSettings } from '../lib/useSettings'
 
 // รายงานสำหรับแอดมิน: อัตราเข้าพัก รายรับ-ยอดค้างรายเดือน และส่งออก CSV (เปิดใน Excel/ส่งให้นักบัญชีได้)
 // รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ไม่ใช่เดือนของใบแจ้งหนี้
@@ -37,6 +38,8 @@ function ExportButton({ onClick, children }) {
 }
 
 function ReportsPage() {
+    // วันครบกำหนดจากหน้าตั้งค่า ใช้นับ "เกินกำหนดกี่วัน" ของใบที่ไม่ได้บันทึกวันครบกำหนดไว้
+    const { dueDay } = useSettings()
     const [month, setMonth] = useState(currentMonth())
     const [data, setData] = useState(emptyData)
     const [loading, setLoading] = useState(true)
@@ -50,9 +53,9 @@ function ReportsPage() {
             supabase.from('rooms').select('number, status'),
             supabase.from('invoices').select('*'),
             supabase.from('invoice_payments').select('*'),
-            // ตารางนี้มีเมื่อรัน repair-payments.sql แล้ว ถ้ายังไม่มีให้ถือว่าไม่มีรายรับค่าซ่อม
+            // ตารางนี้มีเมื่อรัน ส่วน repair-payments ของไฟล์ migration แล้ว ถ้ายังไม่มีให้ถือว่าไม่มีรายรับค่าซ่อม
             supabase.from('repair_payments').select('*').eq('status', 'paid'),
-            // ตารางนี้มีเมื่อรัน move-out.sql แล้ว
+            // ตารางนี้มีเมื่อรัน ส่วน move-out ของไฟล์ migration แล้ว
             supabase.from('move_outs').select('*').order('move_out_date', { ascending: false }),
         ])
 
@@ -64,7 +67,7 @@ function ReportsPage() {
             setData({
                 rooms: rooms.data,
                 invoices: invoices.data,
-                // ตารางรับเงินยังไม่มี (ยังไม่ได้รัน payments.sql) ให้รายงานแสดงเท่าที่มี
+                // ตารางรับเงินยังไม่มี (ยังไม่ได้รัน ส่วน payments ของไฟล์ migration) ให้รายงานแสดงเท่าที่มี
                 invoicePayments: payments.error ? [] : payments.data,
                 repairPayments: repairPayments.error ? [] : repairPayments.data,
                 moveOuts: moveOuts.error ? [] : moveOuts.data,
@@ -90,7 +93,7 @@ function ReportsPage() {
     const summary = useMemo(() => monthlySummary(data, month, now), [data, month, now])
     const rows12 = useMemo(() => monthlyRows(data, months, now), [data, months, now])
     const occ = useMemo(() => occupancy(data.rooms), [data.rooms])
-    const outstanding = useMemo(() => outstandingRows(data.invoices, now), [data.invoices, now])
+    const outstanding = useMemo(() => outstandingRows(data.invoices, now, dueDay), [data.invoices, now, dueDay])
     const outstandingTotal = outstanding.reduce((acc, r) => acc + r.balance, 0)
     const pendingRefund = data.invoices.filter((i) => i.refund_status === 'pending').reduce((acc, i) => acc + Number(i.refund_amount), 0)
     const depositToRefund = pendingDepositRefund(data.moveOuts)
@@ -105,6 +108,11 @@ function ReportsPage() {
             toCsv(data.invoicePayments.filter((p) => monthOf(p.confirmed_at) === month).sort((a, b) => a.confirmed_at.localeCompare(b.confirmed_at)), paymentColumns(invoiceById)),
         )
     const exportOutstanding = () => downloadCsv(csvFileName('ยอดค้างชำระ', now.toISOString().slice(0, 10)), toCsv(outstanding, outstandingColumns))
+    // การใช้น้ำ-ไฟของเดือนที่เลือก (เดิมอยู่ในหน้าภาพรวม ย้ายมาไว้ที่นี่)
+    const monthInvoices = useMemo(() => data.invoices.filter((i) => i.month === month), [data.invoices, month])
+    const utility = useMemo(() => utilityStats(monthInvoices), [monthInvoices])
+    const usageRows = useMemo(() => roomUsage(monthInvoices), [monthInvoices])
+    const exportUtility = () => downloadCsv(csvFileName('การใช้น้ำไฟ', month), toCsv(usageRows, utilityColumns))
     const exportMoveOuts = () => downloadCsv(csvFileName('ย้ายออกและเงินประกัน', now.toISOString().slice(0, 10)), toCsv(data.moveOuts, moveOutColumns))
     const exportMonthly = () => downloadCsv(csvFileName('สรุปรายเดือน', `${months.at(-1)}_${months[0]}`), toCsv([...rows12].reverse(), monthlyColumns))
 
@@ -180,6 +188,45 @@ function ReportsPage() {
                                 </table>
                             </div>
                             <p className="text-xs text-muted">รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ใบเดือนก่อนที่เพิ่งได้รับเงินจะไปอยู่ในเดือนที่รับ ส่วนยอดค้างคือยอดของใบเดือนนั้นที่ยังไม่ชำระ ณ วันนี้</p>
+                        </section>
+
+                        {/* การใช้น้ำ-ไฟของเดือนที่เลือก */}
+                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <h2 className="font-medium text-primary-dark">การใช้น้ำ-ไฟ เดือน {formatMonth(month)}</h2>
+                                <ExportButton onClick={exportUtility}>การใช้น้ำ-ไฟรายห้อง (CSV)</ExportButton>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <Stat label="น้ำรวม" value={`${utility.waterUnits.toLocaleString()} หน่วย`} hint={utility.waterAvgRate !== null ? `ค่าน้ำ ${baht(utility.waterCost)} · เฉลี่ย ${utility.waterAvgRate} บาท/หน่วย` : 'ยังไม่มีข้อมูล'} />
+                                <Stat label="ไฟรวม" value={`${utility.elecUnits.toLocaleString()} หน่วย`} hint={utility.elecAvgRate !== null ? `ค่าไฟ ${baht(utility.elecCost)} · เฉลี่ย ${utility.elecAvgRate} บาท/หน่วย` : 'ยังไม่มีข้อมูล'} />
+                                <Stat label="ค่าน้ำ + ค่าไฟรวม" value={baht(utility.totalCost)} hint={`จาก ${monthInvoices.length} ใบแจ้งหนี้`} />
+                            </div>
+                            {usageRows.length === 0 ? (
+                                <p className="text-sm text-muted text-center py-4">ยังไม่มีใบแจ้งหนี้ของเดือนนี้</p>
+                            ) : (
+                                <div className="border border-line rounded-xl overflow-hidden">
+                                    <div className="max-h-72 overflow-y-auto">
+                                        <table className="w-full text-sm">
+                                            <thead className="bg-sand/40 sticky top-0 border-b border-line text-xs text-muted">
+                                                <tr>
+                                                    <th className="py-2.5 px-4 text-left font-normal">ห้อง / ผู้เช่า</th>
+                                                    <th className="py-2.5 px-4 text-right font-normal">น้ำ (หน่วย)</th>
+                                                    <th className="py-2.5 px-4 text-right font-normal">ไฟ (หน่วย)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-line/60">
+                                                {usageRows.map((r) => (
+                                                    <tr key={r.room}>
+                                                        <td className="py-2 px-4 text-ink">{r.room} <span className="text-muted">· {r.tenant}</span></td>
+                                                        <td className="py-2 px-4 text-right tabular-nums">{r.water}</td>
+                                                        <td className="py-2 px-4 text-right tabular-nums">{r.electric}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
                         </section>
 
                         {/* ย้ายออกและเงินประกัน */}
