@@ -140,10 +140,13 @@ function UserDashboardPage() {
         }
     }
 
-    // โหลดข้อมูลเมื่อได้ข้อมูลผู้ใช้ที่ login แล้ว
+    // โหลดข้อมูลเมื่อได้ข้อมูลผู้ใช้ที่ login แล้ว ครั้งแรกขึ้นหน้าจอกำลังโหลด หลังจากนั้น (เช่น แอดมินต่อสัญญาให้ ข้อมูลผู้เช่าเปลี่ยน) โหลดเงียบ
+    const loadedFor = useRef(null)
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadData()
+        if (!me) return
+        const quiet = loadedFor.current === me.id
+        loadedFor.current = me.id
+        loadData({ quiet })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [me])
 

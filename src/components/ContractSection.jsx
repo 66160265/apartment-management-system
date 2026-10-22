@@ -3,8 +3,10 @@ import Icon from './Icon'
 import RenewContractModal from './RenewContractModal'
 import { ContractBadge } from './TenantParts'
 import { loadRenewals } from '../lib/contracts'
+import { useRealtimeReload } from '../lib/realtime'
 import { formatDateTime } from '../lib/billing'
 import { contractStatus, formatDate } from '../lib/tenants'
+import { SkeletonList } from './Skeleton.jsx'
 
 // การ์ด "สัญญาเช่า" ในหน้ารายละเอียดผู้เช่า (แอดมิน): วันสิ้นสุด สถานะ ปุ่มต่อสัญญา และประวัติการต่อสัญญา
 // endDate = วันสิ้นสุดสัญญาปัจจุบัน onRenewed(newEnd) เรียกหลังต่อสำเร็จ (หน้าแม่อัปเดตวันที่ในฟอร์มด้วย กันบันทึกฟอร์มแล้วทับวันที่ใหม่)
@@ -24,6 +26,9 @@ function ContractSection({ tenant, endDate, onRenewed }) {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         reload()
     }, [reload])
+
+    // ต่อสัญญา/แก้วันที่จากที่อื่น (เช่น แอดมินอีกคน) ประวัติอัปเดตเอง
+    useRealtimeReload(['tenants'], reload)
 
     const status = contractStatus(endDate)
 
@@ -60,7 +65,7 @@ function ContractSection({ tenant, endDate, onRenewed }) {
                 {unavailable ? (
                     <p className="text-sm text-muted">ยังดูประวัติไม่ได้ (ฐานข้อมูลยังไม่ได้เพิ่มส่วนต่อสัญญา)</p>
                 ) : renewals === null ? (
-                    <p className="text-sm text-muted">กำลังโหลด...</p>
+                    <SkeletonList rows={2} avatar={false} className="-mx-4" />
                 ) : renewals.length === 0 ? (
                     <p className="text-sm text-muted">ยังไม่เคยต่อสัญญาในระบบ</p>
                 ) : (

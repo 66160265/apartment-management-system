@@ -9,6 +9,7 @@ import {
 } from '../lib/announcements'
 import { useRealtimeReload } from '../lib/realtime'
 import { useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonCards } from '../components/Skeleton.jsx'
 
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white focus:ring-4 focus:ring-secondary/15'
 
@@ -225,7 +226,7 @@ function AnnouncementsPage() {
                 {isAdmin && <Composer onPosted={reload} />}
 
                 {items === null ? (
-                    <p className="text-muted">กำลังโหลด...</p>
+                    <SkeletonCards count={3} lines={3} />
                 ) : items === 'unavailable' ? (
                     <p className="text-sm text-muted bg-white rounded-2xl shadow-card p-5">ยังใช้ระบบประกาศไม่ได้ (ฐานข้อมูลยังไม่ได้เพิ่มส่วนประกาศ) กรุณาติดต่อผู้ดูแลระบบ</p>
                 ) : items.length === 0 ? (

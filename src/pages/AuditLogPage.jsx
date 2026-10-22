@@ -4,6 +4,7 @@ import { auditActionOf, auditActorName, auditDetailRows, auditGroups, matchesAud
 import { formatDateTime } from '../lib/billing'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
+import { SkeletonTable } from '../components/Skeleton.jsx'
 
 // ประวัติการแก้ไขข้อมูลสำคัญ (เฉพาะแอดมิน): ใครทำอะไรเมื่อไหร่ เรื่องเงิน ค่าซ่อม ผู้เช่า และการตั้งค่า
 // ฐานข้อมูลบันทึกเองด้วย trigger (supabase/migrations/20261022000000_initial_schema.sql (ส่วน audit)) แก้หรือลบจากหน้าเว็บไม่ได้
@@ -78,7 +79,7 @@ function AuditLogPage() {
                 {error ? (
                     <p className="text-center py-10 text-red-600">{error}</p>
                 ) : loading && rows.length === 0 ? (
-                    <p className="text-center py-10 text-muted">กำลังโหลด...</p>
+                    <SkeletonTable rows={8} cols={4} className="border-0 rounded-none" />
                 ) : visible.length === 0 ? (
                     <p className="text-center py-10 text-muted">{rows.length === 0 ? 'ยังไม่มีประวัติ' : 'ไม่พบรายการที่ตรงกับคำค้นหา'}</p>
                 ) : (

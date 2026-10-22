@@ -4,6 +4,7 @@ import PageHeader from '../components/PageHeader'
 import { formatPromptPayId, generatePromptPayQR, isValidPromptPayId } from '../lib/promptpay'
 import { fetchSlipUsage, quotaStatus } from '../lib/slipUsage'
 import { loadSettings, saveSettings } from '../lib/useSettings'
+import { SkeletonForm } from '../components/Skeleton.jsx'
 
 // คลาส Tailwind ของช่องกรอกในหน้าตั้งค่า
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2.5 mt-1 outline-none focus:border-secondary focus:bg-white focus:ring-4 focus:ring-secondary/15'
@@ -157,7 +158,7 @@ function SettingsPage() {
             {loadError ? (
                 <p className="px-6 text-red-600">{loadError}</p>
             ) : !form ? (
-                <p className="px-6 text-muted">กำลังโหลด...</p>
+                <SkeletonForm className="px-4 sm:px-6 pb-28" />
             ) : (
                 <form onSubmit={handleSubmit} className="px-4 sm:px-6 pb-28 flex flex-col gap-6">
                     {/* ส่วนที่ 1: ข้อมูลหอพัก */}

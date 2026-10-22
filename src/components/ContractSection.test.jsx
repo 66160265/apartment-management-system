@@ -20,6 +20,8 @@ vi.mock('../lib/contracts', async (importOriginal) => {
     }
 })
 vi.mock('../lib/supabaseClient', () => ({ supabase: { auth: { onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }), getSession: () => Promise.resolve({ data: { session: null } }) } } }))
+// ไม่ต้องต่อ Realtime จริงในเทสต์นี้
+vi.mock('../lib/realtime', () => ({ useRealtimeReload: () => {} }))
 
 const { default: RenewContractModal } = await import('./RenewContractModal.jsx')
 const { default: ContractSection } = await import('./ContractSection.jsx')

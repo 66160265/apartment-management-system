@@ -3,17 +3,11 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { homeFor } from '../lib/auth'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonApp } from './Skeleton'
 
 // หน้าจอกำลังโหลดระหว่างตรวจสอบการเข้าสู่ระบบ
 function Loading() {
-    return (
-        <div className="min-h-screen grid place-items-center bg-sand text-muted">
-            <div className="flex items-center gap-3">
-                <span className="w-5 h-5 rounded-full border-2 border-mist border-t-primary animate-spin" />
-                กำลังตรวจสอบการเข้าสู่ระบบ...
-            </div>
-        </div>
-    )
+    return <SkeletonApp />
 }
 
 // เซสชันปัจจุบัน: undefined = กำลังตรวจ, null = ยังไม่ได้ login

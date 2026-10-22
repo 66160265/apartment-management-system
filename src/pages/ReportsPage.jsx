@@ -13,6 +13,7 @@ import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import MonthlyColumns from '../components/MonthlyColumns'
 import { useSettings } from '../lib/useSettings'
+import { SkeletonCardGrid, SkeletonTable } from '../components/Skeleton.jsx'
 
 // รายงานสำหรับแอดมิน: อัตราเข้าพัก รายรับ-ยอดค้างรายเดือน และส่งออก CSV (เปิดใน Excel/ส่งให้นักบัญชีได้)
 // รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ไม่ใช่เดือนของใบแจ้งหนี้
@@ -129,7 +130,7 @@ function ReportsPage() {
                 {error ? (
                     <p className="text-center py-10 text-red-600">{error}</p>
                 ) : loading ? (
-                    <p className="text-center py-10 text-muted">กำลังโหลด...</p>
+                    <div className="flex flex-col gap-6"><SkeletonCardGrid count={4} /><SkeletonTable rows={5} cols={5} /></div>
                 ) : (
                     <>
                         {/* ห้องพัก (ตอนนี้) */}

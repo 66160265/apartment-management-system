@@ -114,7 +114,7 @@ function Sidebar({ open = false, onClose = () => {} }) {
             {initial}
           </span>
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="text-sm font-medium truncate">{displayName || "กำลังโหลด..."}</div>
+            <div className="text-sm font-medium truncate">{displayName || <span className="inline-block h-3.5 w-24 rounded bg-white/20 motion-safe:animate-pulse align-middle"><span className="sr-only">กำลังโหลด...</span></span>}</div>
             <div className="text-[11px] text-white/60 truncate">{me?.tenant ? `ห้อง ${me.tenant.room}` : me?.username || ""}</div>
           </div>
           <button

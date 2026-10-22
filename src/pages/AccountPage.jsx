@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useRealtimeReload } from '../lib/realtime'
 import Icon from '../components/Icon'
 import PageHeader from '../components/PageHeader'
 import { Avatar, ContractBadge } from '../components/TenantParts'
@@ -8,6 +9,7 @@ import { formatDate } from '../lib/tenants'
 import { makeDefaultPassword } from '../lib/tenantAccount'
 import { homeFor } from '../lib/auth'
 import { resetCurrentUser, roleLabels, useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonCard } from '../components/Skeleton.jsx'
 
 // ความยาวรหัสผ่านขั้นต่ำ
 const MIN_PASSWORD = 6
@@ -164,6 +166,8 @@ function MyRenewals() {
             active = false
         }
     }, [])
+    // แอดมินต่อสัญญาให้ขณะเปิดหน้านี้อยู่ ประวัติโผล่เอง
+    useRealtimeReload(['tenants'], async () => setRenewals(await loadRenewals()))
     if (!renewals?.length) return null
     return (
         <section aria-label="ประวัติการต่อสัญญา" className="bg-white rounded-2xl shadow-card p-5">
@@ -191,7 +195,7 @@ function AccountPage() {
 
             {/* รอโหลดข้อมูลผู้ใช้ก่อน */}
             {!info ? (
-                <p className="px-6 text-muted">กำลังโหลด...</p>
+                <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6"><SkeletonCard lines={4} /><SkeletonCard lines={3} /></div>
             ) : (
                 <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6">
                     {/* การ์ดโปรไฟล์: รูปตัวอักษร ชื่อ ป้ายสิทธิ์ สถานะสัญญา และชื่อผู้ใช้ */}
