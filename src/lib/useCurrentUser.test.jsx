@@ -75,7 +75,7 @@ describe('useCurrentUser', () => {
         expect(get()).toMatchObject({ role: 'admin', mustChangePassword: false })
     })
 
-    it('ยังไม่ได้รัน migration hardening (ไม่มีคอลัมน์): อ่านแค่สิทธิ์ ไม่บังคับ และระบบยังใช้ได้', async () => {
+    it('ยังไม่ได้รัน ส่วน hardening ของไฟล์ migration (ไม่มีคอลัมน์): อ่านแค่สิทธิ์ ไม่บังคับ และระบบยังใช้ได้', async () => {
         profilesFull = { data: null, error: { message: 'column profiles.must_change_password does not exist' } }
         const { get } = await render()
         expect(get()).toMatchObject({ role: 'user', mustChangePassword: false })

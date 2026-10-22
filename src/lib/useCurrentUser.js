@@ -29,7 +29,7 @@ supabase.auth.onAuthStateChange((event) => {
 })
 
 // อ่านสิทธิ์และเครื่องหมายบังคับเปลี่ยนรหัสผ่านจาก profiles
-// ถ้ายังไม่ได้รัน migration hardening (ไม่มีคอลัมน์ must_change_password) ให้อ่านแค่สิทธิ์ ระบบทำงานตามเดิม
+// ถ้ายังไม่ได้รัน ส่วน hardening ของไฟล์ migration (ไม่มีคอลัมน์ must_change_password) ให้อ่านแค่สิทธิ์ ระบบทำงานตามเดิม
 async function fetchProfile(userId) {
     const full = await supabase.from('profiles').select('role, must_change_password').eq('id', userId).single()
     if (!full.error) return full.data
