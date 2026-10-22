@@ -175,19 +175,19 @@ function AdminDashboardPage() {
             )}
 
             {/* 1) ต้องจัดการตอนนี้ */}
-            <section aria-label="ต้องจัดการตอนนี้" className="flex flex-col gap-3">
-                <h2 className="text-base font-semibold text-primary-dark">ต้องจัดการตอนนี้</h2>
+            <section aria-label="ต้องจัดการตอนนี้" className="bg-white rounded-2xl shadow-card border border-line p-5 flex flex-col gap-4">
+                <h2 className="text-lg font-bold text-primary-dark">ต้องจัดการตอนนี้</h2>
                 {loading ? (
-                    <div className="rounded-2xl bg-white border border-line p-5 text-sm text-muted">กำลังโหลด...</div>
+                    <div className="rounded-xl bg-sand/60 p-4 text-sm text-muted">กำลังโหลด...</div>
                 ) : attention.length === 0 ? (
-                    <div className="rounded-2xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 p-4 flex items-center gap-3 text-sm">
+                    <div className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 p-4 flex items-center gap-3 text-sm">
                         <Icon name="checkCircle" className="w-5 h-5 text-emerald-600 shrink-0" />
                         ไม่มีงานค้าง ไม่มีสลิปรอตรวจ ไม่มีเรื่องซ่อมรอนัด และไม่มีเงินรอคืนผู้เช่า
                     </div>
                 ) : (
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                         {attention.map((item) => (
-                            <Link key={item.key} to={item.to} className={`rounded-2xl ring-1 p-4 flex flex-col gap-1 hover:shadow-md transition ${attentionTone[item.tone]}`}>
+                            <Link key={item.key} to={item.to} className={`rounded-xl ring-1 p-4 flex flex-col gap-1 hover:shadow-md transition ${attentionTone[item.tone]}`}>
                                 <span className="text-3xl font-bold tabular-nums">{item.count}</span>
                                 <span className="text-sm font-medium">{item.label}</span>
                                 {item.amount > 0 && <span className="text-xs opacity-80 tabular-nums">รวม {baht(item.amount)}</span>}
