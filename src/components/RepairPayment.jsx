@@ -12,7 +12,7 @@ import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
-// การจ่ายค่าซ่อมในระบบ (supabase/repair-payments.sql): ผู้เช่าโอนตามยอดค่าซ่อมแล้วแนบสลิป ผู้ดูแลตรวจและยืนยัน
+// การจ่ายค่าซ่อมในระบบ (supabase/migrations/20261022000000_initial_schema.sql (ส่วน repair-payments)): ผู้เช่าโอนตามยอดค่าซ่อมแล้วแนบสลิป ผู้ดูแลตรวจและยืนยัน
 // เงื่อนไข: ซ่อมเสร็จแล้ว (done) ผู้ดูแลระบุให้ผู้เช่าเป็นผู้ชำระ (cost_payer = tenant) และมียอด (cost > 0)
 
 const MAX_SIZE = 5 * 1024 * 1024

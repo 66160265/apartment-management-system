@@ -6,7 +6,7 @@ import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { formatDate } from '../lib/tenants'
 
-// เงินประกันและการย้ายออก (ในหน้ารายละเอียดผู้เช่า, supabase/move-out.sql)
+// เงินประกันและการย้ายออก (ในหน้ารายละเอียดผู้เช่า, supabase/migrations/20261022000000_initial_schema.sql (ส่วน move-out))
 // ขั้นตอน: ระบุวันที่ย้ายออก เลือกใบแจ้งหนี้ค้างที่จะหักจากเงินประกัน เพิ่มรายการหักอื่น ๆ -> ระบบคำนวณยอดคืน/ยอดที่ต้องจ่ายเพิ่ม -> บันทึก
 // หลังบันทึก: บันทึกว่าคืนเงินประกันแล้ว และใช้ปุ่ม "ลบผู้เช่า" เดิมเพื่อปิดบัญชีและคืนห้องว่าง (บันทึกย้ายออกยังอยู่)
 
@@ -17,7 +17,7 @@ const today = () => {
 }
 
 function MoveOutSection({ tenant }) {
-    // record: undefined = ยังโหลด, null = ยังไม่ได้บันทึกย้ายออก, ออบเจ็กต์ = บันทึกแล้ว  unavailable = ยังไม่ได้รัน move-out.sql
+    // record: undefined = ยังโหลด, null = ยังไม่ได้บันทึกย้ายออก, ออบเจ็กต์ = บันทึกแล้ว  unavailable = ยังไม่ได้รัน ส่วน move-out ของไฟล์ migration
     const [record, setRecord] = useState(undefined)
     const [invoices, setInvoices] = useState([])
     const [unavailable, setUnavailable] = useState(false)
@@ -37,7 +37,7 @@ function MoveOutSection({ tenant }) {
             supabase.from('move_outs').select('*').eq('room', tenant.room).eq('start_date', tenant.startDate).maybeSingle(),
             supabase.from('invoices').select('*').eq('room', tenant.room),
         ])
-        // ตารางยังไม่มี = ยังไม่ได้รัน move-out.sql ซ่อนส่วนนี้ (ไม่ให้แอดมินกดแล้วพัง)
+        // ตารางยังไม่มี = ยังไม่ได้รัน ส่วน move-out ของไฟล์ migration ซ่อนส่วนนี้ (ไม่ให้แอดมินกดแล้วพัง)
         if (rec.error) {
             setUnavailable(true)
             return

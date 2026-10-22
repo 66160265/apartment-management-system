@@ -1,6 +1,6 @@
 import { balanceOf, formatMonth } from './billing'
 
-// ย้ายออกและคืนเงินประกัน (components/MoveOutSection.jsx, supabase/move-out.sql): ตรรกะฝั่งเว็บ ใช้แสดงตัวอย่างยอดก่อนบันทึก
+// ย้ายออกและคืนเงินประกัน (components/MoveOutSection.jsx, supabase/migrations/20261022000000_initial_schema.sql (ส่วน move-out)): ตรรกะฝั่งเว็บ ใช้แสดงตัวอย่างยอดก่อนบันทึก
 // ยอดจริงคำนวณโดยฟังก์ชัน record_move_out ในฐานข้อมูล สูตรต้องตรงกัน (เทสต์เทียบกับค่าที่ฐานข้อมูลให้ไว้ในชุดทดสอบ SQL)
 
 const round2 = (n) => Math.round(Number(n) * 100) / 100

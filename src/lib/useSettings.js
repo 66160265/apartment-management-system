@@ -81,10 +81,10 @@ export function loadSettings(force = false) {
 
 // คอลัมน์ของ app_settings ที่มาจากไฟล์ SQL รุ่นหลัง: ค่าเริ่มต้น (ใช้ตัดสินว่าข้ามได้ไหม) และไฟล์ที่ต้องรัน
 const optionalColumns = {
-    slip_verify_mode: { isDefault: (v) => v === undefined || v === 'off', sql: 'supabase/slip-verify.sql' },
-    late_fee_per_day: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/payments.sql' },
-    late_fee_grace_days: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/payments.sql' },
-    late_fee_cap: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/payments.sql' },
+    slip_verify_mode: { isDefault: (v) => v === undefined || v === 'off', sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-verify)' },
+    late_fee_per_day: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
+    late_fee_grace_days: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
+    late_fee_cap: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
 }
 
 // บันทึกการตั้งค่า (เฉพาะแอดมิน) คืนค่า null เมื่อสำเร็จ หรือข้อความ error

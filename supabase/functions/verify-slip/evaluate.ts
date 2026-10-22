@@ -1,5 +1,5 @@
 // ตรรกะล้วน ๆ ของการอ่านผลจาก EasySlip และประเมินสลิป (ไม่พึ่ง Deno หรือเครือข่าย เพื่อให้ทดสอบด้วย Vitest ได้)
-// ใช้โดย index.ts  ผลลัพธ์ status: ok | warn | failed | error ตรงกับ invoices.verify_status ใน supabase/slip-verify.sql
+// ใช้โดย index.ts  ผลลัพธ์ status: ok | warn | failed | error ตรงกับ invoices.verify_status ใน supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-verify)
 
 export type SlipInfo = {
   amount: number | null

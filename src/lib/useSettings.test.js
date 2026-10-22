@@ -79,16 +79,16 @@ describe('saveSettings เมื่อฐานข้อมูลยังไม
         for (const c of ['late_fee_per_day', 'late_fee_grace_days', 'late_fee_cap', 'slip_verify_mode']) expect(last).not.toHaveProperty(c)
     })
 
-    it('เปิดใช้ค่าปรับแต่ยังไม่รัน SQL: แจ้งให้รัน payments.sql ไม่บันทึกแบบเงียบ ๆ', async () => {
+    it('เปิดใช้ค่าปรับแต่ยังไม่รัน SQL: แจ้งให้รัน ส่วน payments ของไฟล์ migration ไม่บันทึกแบบเงียบ ๆ', async () => {
         upsert.mockResolvedValueOnce({ error: missing('late_fee_per_day') })
         const err = await saveSettings({ ...DEFAULT_SETTINGS, lateFeePerDay: 50 })
-        expect(err).toContain('supabase/payments.sql')
+        expect(err).toContain('supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)')
         expect(upsert).toHaveBeenCalledTimes(1)
     })
 
-    it('เปิดโหมดตรวจสลิปแต่ยังไม่รัน SQL: แจ้งให้รัน slip-verify.sql', async () => {
+    it('เปิดโหมดตรวจสลิปแต่ยังไม่รัน SQL: แจ้งให้รัน ส่วน slip-verify ของไฟล์ migration', async () => {
         upsert.mockResolvedValueOnce({ error: missing('slip_verify_mode') })
-        expect(await saveSettings({ ...DEFAULT_SETTINGS, slipVerifyMode: 'suggest' })).toContain('supabase/slip-verify.sql')
+        expect(await saveSettings({ ...DEFAULT_SETTINGS, slipVerifyMode: 'suggest' })).toContain('supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-verify)')
     })
 
     it('error อื่นที่ไม่เกี่ยวกับคอลัมน์ ส่งข้อความกลับตามจริง ไม่วนซ้ำ', async () => {

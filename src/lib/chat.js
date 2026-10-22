@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { supabase } from './supabaseClient'
 import { useCurrentUser } from './useCurrentUser'
 
-// แชทผู้เช่า <-> ผู้ดูแล: เก็บในตาราง chat_messages (ดู supabase/chat.sql)
+// แชทผู้เช่า <-> ผู้ดูแล: เก็บในตาราง chat_messages (ดู supabase/migrations/20261022000000_initial_schema.sql (ส่วน chat))
 // ผู้เช่า 1 คน = 1 ห้องแชท ระบุด้วย tenant_user_id (id บัญชีผู้เช่า)
 
 export const MAX_MESSAGE_LENGTH = 2000

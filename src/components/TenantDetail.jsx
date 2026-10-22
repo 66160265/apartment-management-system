@@ -84,7 +84,7 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
         }
         setSaving(true)
         const fields = { name: form.name.trim(), phone: form.phone.trim(), start_date: form.startDate, end_date: form.endDate }
-        // ส่งเงินประกันเมื่อมีการเปลี่ยนเท่านั้น (ถ้ายังไม่ได้รัน move-out.sql จะได้ไม่กระทบการแก้ข้อมูลอื่น)
+        // ส่งเงินประกันเมื่อมีการเปลี่ยนเท่านั้น (ถ้ายังไม่ได้รัน ส่วน move-out ของไฟล์ migration จะได้ไม่กระทบการแก้ข้อมูลอื่น)
         if (Number(form.deposit) !== Number(tenant.deposit ?? 0)) fields.deposit = Number(form.deposit)
         // อัปเดตแถวผู้เช่าของห้องนี้ แล้วโหลดรายการใหม่และกลับหน้ารายชื่อ
         const { error: err } = await supabase.from('tenants').update(fields).eq('room', tenant.room)
