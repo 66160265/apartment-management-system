@@ -62,10 +62,10 @@ Deno.serve(async (req) => {
     return json({ error: message }, status)
   }
 
-  // กำหนดสิทธิ์บัญชีนี้เป็นผู้เช่า (user)
+  // กำหนดสิทธิ์บัญชีนี้เป็นผู้เช่า (user) และบังคับให้เปลี่ยนรหัสผ่านเมื่อเข้าครั้งแรก (รหัสเริ่มต้นเดาได้จากเลขห้องกับเบอร์โทร)
   const { error: profileError } = await admin
     .from('profiles')
-    .upsert({ id: data.user.id, role: 'user' })
+    .upsert({ id: data.user.id, role: 'user', must_change_password: true })
   if (profileError) return rollback(`บันทึกสิทธิ์ไม่สำเร็จ: ${profileError.message}`)
 
   // เพิ่มข้อมูลผู้เช่าและผูกกับบัญชี (ห้องซ้ำจะได้ error 23505)

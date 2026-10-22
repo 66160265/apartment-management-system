@@ -3,6 +3,8 @@ import PageHeader from './PageHeader'
 import Icon from './Icon'
 import DatePicker from './DatePicker'
 import { Avatar, ContractBadge } from './TenantParts'
+import ContractSection from './ContractSection'
+import MoveOutSection from './MoveOutSection'
 import TenantDocuments from './TenantDocuments'
 import { callAdminUsers } from '../lib/adminUsers'
 import { supabase } from '../lib/supabaseClient'
@@ -53,9 +55,12 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
         phone: tenant.phone,
         startDate: tenant.startDate,
         endDate: tenant.endDate,
+        deposit: String(tenant.deposit ?? 0),
     })
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
+    // วันสิ้นสุดสัญญาปัจจุบัน (เปลี่ยนทันทีหลังต่อสัญญา)
+    const [contractEnd, setContractEnd] = useState(tenant.endDate)
     const [confirmDelete, setConfirmDelete] = useState(false)
 
     // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key และล้างข้อความ error
@@ -76,12 +81,16 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
             setError('วันสิ้นสุดสัญญาต้องไม่ก่อนวันเริ่มสัญญา')
             return
         }
+        if (form.deposit === '' || Number.isNaN(Number(form.deposit)) || Number(form.deposit) < 0) {
+            setError('เงินประกันต้องเป็นตัวเลขที่ไม่ติดลบ')
+            return
+        }
         setSaving(true)
+        const fields = { name: form.name.trim(), phone: form.phone.trim(), start_date: form.startDate, end_date: form.endDate }
+        // ส่งเงินประกันเมื่อมีการเปลี่ยนเท่านั้น (ถ้ายังไม่ได้รัน ส่วน move-out ของไฟล์ migration จะได้ไม่กระทบการแก้ข้อมูลอื่น)
+        if (Number(form.deposit) !== Number(tenant.deposit ?? 0)) fields.deposit = Number(form.deposit)
         // อัปเดตแถวผู้เช่าของห้องนี้ แล้วโหลดรายการใหม่และกลับหน้ารายชื่อ
-        const { error: err } = await supabase
-            .from('tenants')
-            .update({ name: form.name.trim(), phone: form.phone.trim(), start_date: form.startDate, end_date: form.endDate })
-            .eq('room', tenant.room)
+        const { error: err } = await supabase.from('tenants').update(fields).eq('room', tenant.room)
         setSaving(false)
         if (err) {
             setError(`บันทึกไม่สำเร็จ: ${err.message}`)
@@ -113,25 +122,27 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
     }
 
     // สถานะสัญญา และข้อมูลสรุปที่แสดงบนการ์ดด้านบน
-    const status = contractStatus(tenant.endDate)
+    const status = contractStatus(contractEnd)
+
+    // ต่อสัญญาสำเร็จ: อัปเดตวันที่ในหน้านี้และในฟอร์ม (กันกดบันทึกฟอร์มแล้วเขียนวันสิ้นสุดเดิมทับ) แล้วให้หน้ารายชื่อโหลดใหม่
+    const handleRenewed = async (newEnd) => {
+        setContractEnd(newEnd)
+        setForm((f) => ({ ...f, endDate: newEnd }))
+        await onChanged()
+    }
 
     const facts = [
         { icon: 'door', label: 'ห้องพัก', value: `${tenant.room}${floor ? ` · ชั้น ${floor}` : ''}` },
         { icon: 'phone', label: 'เบอร์โทร', value: tenant.phone },
-        { icon: 'calendar', label: 'ระยะสัญญา', value: `${formatDate(tenant.startDate)} – ${formatDate(tenant.endDate)}` },
+        { icon: 'calendar', label: 'ระยะสัญญา', value: `${formatDate(tenant.startDate)} – ${formatDate(contractEnd)}` },
         { icon: 'clock', label: 'เหลือเวลา', value: status.key === 'expired' ? status.hint : status.hint },
     ]
 
     return (
         <>
-            <PageHeader title="รายละเอียดผู้เช่า" subtitle="ตรวจสอบและแก้ไขข้อมูลผู้เช่า พร้อมจัดการเอกสาร" />
+            <PageHeader title="รายละเอียดผู้เช่า" subtitle="ตรวจสอบและแก้ไขข้อมูลผู้เช่า พร้อมจัดการเอกสาร" onBack={onBack} backLabel="กลับไปรายชื่อผู้เช่า" />
 
             <div className="px-4 sm:px-6 pb-28 flex flex-col gap-4">
-                {/* ปุ่มกลับไปรายชื่อผู้เช่า */}
-                <button onClick={onBack} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm">
-                    <Icon name="arrowLeft" className="w-4 h-4" />
-                    กลับไปรายชื่อผู้เช่า
-                </button>
 
                 {/* การ์ดสรุป: ชื่อ สถานะสัญญา บัญชีเข้าสู่ระบบ และข้อมูลห้อง/เบอร์/ระยะสัญญา/เวลาที่เหลือ */}
                 <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-5">
@@ -140,7 +151,7 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
                         <div className="flex-1 min-w-48">
                             <div className="flex items-center gap-3 flex-wrap">
                                 <h2 className="text-xl font-semibold text-primary-dark">{tenant.name}</h2>
-                                <ContractBadge endDate={tenant.endDate} />
+                                <ContractBadge endDate={contractEnd} />
                             </div>
                             {tenant.username && (
                                 <p className="flex items-center gap-1.5 text-sm text-secondary mt-1">
@@ -162,6 +173,9 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
                         ))}
                     </dl>
                 </div>
+
+                {/* สัญญาเช่า: ต่อสัญญาและประวัติการต่อ */}
+                <ContractSection tenant={tenant} endDate={contractEnd} onRenewed={handleRenewed} />
 
                 {/* ฟอร์มแก้ไขข้อมูลผู้เช่า (ปุ่มบันทึกอยู่ที่แถบด้านล่าง ผูกด้วย form="tenant-form") */}
                 <form id="tenant-form" onSubmit={handleSave} className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
@@ -193,8 +207,15 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
                             <DatePicker value={form.endDate} onChange={(v) => set('endDate')({ target: { value: v } })} min={form.startDate} align="right" />
                         </div>
                     </div>
+                    <label className="text-sm text-muted">
+                        เงินประกัน (บาท)
+                        <input className={inputClass} type="number" min="0" step="0.01" value={form.deposit} onChange={set('deposit')} />
+                    </label>
                     {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
                 </form>
+
+                {/* เงินประกันและการย้ายออก */}
+                <MoveOutSection tenant={tenant} />
 
                 {/* การ์ดเอกสารของผู้เช่า */}
                 <TenantDocuments room={tenant.room} />

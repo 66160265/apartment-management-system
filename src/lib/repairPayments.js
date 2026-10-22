@@ -1,6 +1,6 @@
 import { supabase } from './supabaseClient'
 
-// เรื่องแจ้งซ่อมนี้มีค่าซ่อมที่ผู้เช่าต้องชำระหรือไม่ (supabase/repair-payments.sql)
+// เรื่องแจ้งซ่อมนี้มีค่าซ่อมที่ผู้เช่าต้องชำระหรือไม่ (supabase/migrations/20261022000000_initial_schema.sql (ส่วน repair-payments))
 // เงื่อนไข: ซ่อมเสร็จแล้ว (done) ผู้ดูแลระบุให้ผู้เช่าเป็นผู้ชำระ (cost_payer = tenant) และมียอด (cost > 0)
 export const owesRepairCost = (repair) => repair.status === 'done' && repair.cost_payer === 'tenant' && Number(repair.cost) > 0
 
@@ -11,7 +11,7 @@ export function unpaidRepairCosts(repairs, payments) {
     return repairs.filter((r) => owesRepairCost(r) && !settled.has(r.id))
 }
 
-// ค่าซ่อมที่ยังไม่ได้เรียกเก็บ แยกตามห้อง { ห้อง: ยอดรวม } (ต้องตรงกับ repair_unbilled ใน supabase/repair-billing.sql)
+// ค่าซ่อมที่ยังไม่ได้เรียกเก็บ แยกตามห้อง { ห้อง: ยอดรวม } (ต้องตรงกับ repair_unbilled ใน supabase/migrations/20261022000000_initial_schema.sql ส่วน repair-updates)
 // = ค่าซ่อมที่ผู้เช่ายังค้าง และยังไม่ถูกรวมในใบแจ้งหนี้ใบไหน (invoice_id ว่าง) ใช้แสดงยอดตัวอย่างก่อนสร้างใบแจ้งหนี้
 export function unbilledRepairFees(repairs, payments) {
     const fees = {}

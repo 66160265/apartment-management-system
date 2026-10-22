@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import DatePicker from './DatePicker'
 import { MAX_SLOTS, repairStatuses, repairUrgencies } from '../data/repairs'
-import { firstFreePeriod, formatSize, formatSlot, getRepairImageUrl, isBooked, isInSlots, parsePeriod, periodAt, repairTimeOptions, todayIso, validateImage } from '../lib/repairs'
+import { formatSize, formatSlot, getRepairImageUrl, isBooked, parsePeriod, periodAt, repairTimeOptions, todayIso, validateImage } from '../lib/repairs'
 
 // ป้ายสถานะงานซ่อม (รอดำเนินการ / กำลังดำเนินการ / เสร็จสิ้น) สีตามสถานะ ถ้าไม่รู้จักสถานะจะแสดงเป็นสีเทา
 export function RepairStatusBadge({ status }) {
@@ -221,7 +221,7 @@ function TimeSelect({ value, options, isBlocked, onChange, disabled, label, alig
 
 // เลือกเวลาเข้าซ่อม 09:00, 10:00, ..., 17:00 ค่าเป็นช่วงนัด 1 ครั้ง "09:00-10:00"
 // isBlocked(period) = เวลานี้เลือกไม่ได้ (มีนัดของห้องอื่นแล้ว)
-export function TimePicker({ value, onChange, isBlocked, disabled = false, selectClassName = 'w-full border border-line rounded-xl px-3 py-2 text-sm bg-white outline-none focus:border-secondary' }) {
+function TimePicker({ value, onChange, isBlocked, disabled = false, selectClassName = 'w-full border border-line rounded-xl px-3 py-2 text-sm bg-white outline-none focus:border-secondary' }) {
     const { start } = parsePeriod(value)
     return (
         <div className="w-36 shrink-0 flex items-center gap-1.5">
@@ -293,34 +293,18 @@ export function SlotPicker({ slots, onChange, booked = [], disabled = false }) {
     )
 }
 
-// รายการช่วงเวลาที่ผู้เช่าสะดวก (อ่านอย่างเดียว) ถ้าส่ง onPick มา จะมีปุ่มเลือกช่วงนั้นเป็นวันนัด (ใช้ฝั่งแอดมิน)
-// onPick({ date, period }) ได้เวลานัด 1 ครั้งที่ยังว่างในช่วงนั้น, booked = นัดของห้องอื่น (ช่วงที่เต็มแล้วกดไม่ได้)
-export function SlotList({ slots, allowEntry, note, onPick, picked, booked = [] }) {
+// รายการช่วงเวลาที่ผู้เช่าสะดวก (อ่านอย่างเดียว ใช้ทั้งฝั่งผู้เช่าและแอดมิน) วันที่ผ่านไปแล้วขีดฆ่า
+export function SlotList({ slots, allowEntry, note }) {
     const today = todayIso()
     return (
         <div className="flex flex-col gap-1.5 text-sm">
             {(slots ?? []).length === 0 && !allowEntry && <p className="text-muted">ผู้เช่าไม่ได้ระบุช่วงเวลา</p>}
             {(slots ?? []).map((s) => {
                 const past = s.date < today
-                const isPicked = picked && isInSlots([s], picked.date, picked.period)
-                const free = onPick && !past ? firstFreePeriod(s, booked) : null
                 return (
                     <div key={`${s.date}-${s.period}`} className={`flex items-center gap-2 ${past ? 'text-muted line-through' : 'text-ink'}`}>
                         <Icon name="calendar" className="w-4 h-4 text-secondary shrink-0" />
                         <span className="flex-1">{formatSlot(s.date, s.period)}</span>
-                        {onPick && !past && (
-                            isPicked || free ? (
-                                <button
-                                    type="button"
-                                    onClick={() => !isPicked && onPick({ date: s.date, period: free })}
-                                    className={`px-3 py-0.5 rounded-lg text-xs ${isPicked ? 'bg-primary text-white' : 'bg-mist/60 text-primary-dark hover:bg-mist'}`}
-                                >
-                                    {isPicked ? 'เลือกแล้ว' : 'นัดช่วงนี้'}
-                                </button>
-                            ) : (
-                                <span className="px-3 py-0.5 rounded-lg text-xs bg-line/50 text-muted" title="เวลานี้มีนัดซ่อมของห้องอื่นแล้ว">ไม่ว่าง</span>
-                            )
-                        )}
                     </div>
                 )
             })}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import { supabase } from '../lib/supabaseClient'
 import { REQUIRED_DOCS, formatDate } from '../lib/tenants'
+import { SkeletonList } from './Skeleton.jsx'
 
 // ขนาดไฟล์สูงสุด 10 MB และชนิดไฟล์ที่รับ (MIME -> นามสกุล)
 const MAX_SIZE = 10 * 1024 * 1024
@@ -291,7 +292,7 @@ function TenantDocuments({ room }) {
             </div>
 
             {/* ข้อความกำลังโหลด / error */}
-            {loading && <p className="text-sm text-muted">กำลังโหลด...</p>}
+            {loading && <SkeletonList rows={2} avatar={false} className="-mx-4" />}
             {loadError && <p className="text-sm text-red-600">{loadError}</p>}
             {actionError && <p className="text-sm text-red-600">{actionError}</p>}
 

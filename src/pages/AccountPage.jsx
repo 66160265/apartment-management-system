@@ -1,10 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRealtimeReload } from '../lib/realtime'
 import Icon from '../components/Icon'
 import PageHeader from '../components/PageHeader'
 import { Avatar, ContractBadge } from '../components/TenantParts'
 import { supabase } from '../lib/supabaseClient'
+import { loadRenewals } from '../lib/contracts'
 import { formatDate } from '../lib/tenants'
-import { roleLabels, useCurrentUser } from '../lib/useCurrentUser'
+import { makeDefaultPassword } from '../lib/tenantAccount'
+import { homeFor } from '../lib/auth'
+import { resetCurrentUser, roleLabels, useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonCard } from '../components/Skeleton.jsx'
 
 // ความยาวรหัสผ่านขั้นต่ำ
 const MIN_PASSWORD = 6
@@ -55,7 +60,8 @@ function PasswordField({ label, value, onChange, autoComplete }) {
 }
 
 // ฟอร์มเปลี่ยนรหัสผ่าน: ตรวจรหัสเดิมก่อน แล้วตั้งรหัสใหม่
-function ChangePasswordForm({ email }) {
+// forced = บัญชีที่ต้องเปลี่ยนรหัสผ่านก่อนใช้งาน (หลังเปลี่ยนสำเร็จจะล้างเครื่องหมายแล้วพาไปหน้าแรก) tenant = ข้อมูลผู้เช่า ใช้กันตั้งรหัสซ้ำรหัสเริ่มต้น
+function ChangePasswordForm({ email, forced, role, tenant }) {
     const [form, setForm] = useState({ current: '', next: '', confirm: '' })
     const [error, setError] = useState('')
     const [success, setSuccess] = useState(false)
@@ -88,6 +94,11 @@ function ChangePasswordForm({ email }) {
             setError('รหัสผ่านใหม่ต้องไม่เหมือนรหัสผ่านเดิม')
             return
         }
+        // ห้ามตั้งเป็นรหัสเริ่มต้นของห้อง (เดาได้จากเลขห้องกับเบอร์โทร)
+        if (tenant?.room && tenant?.phone && form.next === makeDefaultPassword(tenant.room, tenant.phone)) {
+            setError('รหัสผ่านใหม่ต้องไม่ใช่รหัสผ่านเริ่มต้น')
+            return
+        }
 
         setSaving(true)
         // ยืนยันรหัสผ่านเดิมก่อน กันคนอื่นที่นั่งใช้เครื่องที่ login ค้างไว้
@@ -102,6 +113,17 @@ function ChangePasswordForm({ email }) {
         setSaving(false)
         if (updateError) {
             setError(`เปลี่ยนรหัสผ่านไม่สำเร็จ: ${updateError.message}`)
+            return
+        }
+        // บัญชีที่ถูกบังคับเปลี่ยนรหัส: ล้างเครื่องหมายแล้วเข้าหน้าแรก (โหลดหน้าใหม่ให้สถานะผู้ใช้สดจริง)
+        if (forced) {
+            const { error: clearError } = await supabase.rpc('clear_must_change_password')
+            if (clearError) {
+                setError(`เปลี่ยนรหัสผ่านแล้ว แต่ปลดการบังคับไม่สำเร็จ: ${clearError.message}`)
+                return
+            }
+            resetCurrentUser()
+            window.location.assign(homeFor(role))
             return
         }
         setForm({ current: '', next: '', confirm: '' })
@@ -134,6 +156,34 @@ function ChangePasswordForm({ email }) {
     )
 }
 
+// ประวัติการต่อสัญญาของผู้เช่า (ผู้ดูแลเป็นผู้ต่อ ผู้เช่าดูได้อย่างเดียว) ไม่มีประวัติหรือโหลดไม่ได้ = ไม่แสดงส่วนนี้
+function MyRenewals() {
+    const [renewals, setRenewals] = useState(null)
+    useEffect(() => {
+        let active = true
+        loadRenewals().then((list) => active && setRenewals(list))
+        return () => {
+            active = false
+        }
+    }, [])
+    // แอดมินต่อสัญญาให้ขณะเปิดหน้านี้อยู่ ประวัติโผล่เอง
+    useRealtimeReload(['tenants'], async () => setRenewals(await loadRenewals()))
+    if (!renewals?.length) return null
+    return (
+        <section aria-label="ประวัติการต่อสัญญา" className="bg-white rounded-2xl shadow-card p-5">
+            <h2 className="font-medium text-primary-dark mb-3">ประวัติการต่อสัญญา</h2>
+            <ul className="flex flex-col divide-y divide-line/70 border border-line rounded-xl">
+                {renewals.map((r) => (
+                    <li key={r.id} className="px-4 py-3 text-sm">
+                        <span className="font-medium text-ink">ต่อจาก {formatDate(r.previous_end_date)} เป็น {formatDate(r.new_end_date)}</span>
+                        {r.note && <span className="block text-muted whitespace-pre-wrap">{r.note}</span>}
+                    </li>
+                ))}
+            </ul>
+        </section>
+    )
+}
+
 // หน้าบัญชีของฉัน: ข้อมูลผู้ใช้/ห้อง/สัญญา และฟอร์มเปลี่ยนรหัสผ่าน
 function AccountPage() {
     const info = useCurrentUser()
@@ -145,7 +195,7 @@ function AccountPage() {
 
             {/* รอโหลดข้อมูลผู้ใช้ก่อน */}
             {!info ? (
-                <p className="px-6 text-muted">กำลังโหลด...</p>
+                <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6"><SkeletonCard lines={4} /><SkeletonCard lines={3} /></div>
             ) : (
                 <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6">
                     {/* การ์ดโปรไฟล์: รูปตัวอักษร ชื่อ ป้ายสิทธิ์ สถานะสัญญา และชื่อผู้ใช้ */}
@@ -167,6 +217,16 @@ function AccountPage() {
                             </p>
                         </div>
                     </div>
+
+                    {info.mustChangePassword && (
+                        <div className="flex items-start gap-3 rounded-2xl bg-amber-50 ring-1 ring-amber-200 text-amber-900 px-5 py-4 text-sm">
+                            <Icon name="alert" className="w-5 h-5 shrink-0 mt-0.5" />
+                            <p>
+                                <strong>กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน</strong> บัญชีนี้ใช้รหัสผ่านที่ผู้ดูแลระบบตั้งให้ ซึ่งผู้อื่นอาจรู้ได้
+                                ตั้งรหัสผ่านของคุณเองในช่อง "เปลี่ยนรหัสผ่าน" ด้านล่าง แล้วระบบจะพาไปหน้าแรก
+                            </p>
+                        </div>
+                    )}
 
                     <div className="grid gap-6 lg:grid-cols-2 items-start">
                         {/* การ์ดข้อมูลบัญชี (ผู้เช่าจะเห็นข้อมูลห้องและสัญญาเพิ่ม) */}
@@ -195,9 +255,10 @@ function AccountPage() {
                                     ? 'รหัสผ่านเริ่มต้นเดาได้ง่าย แนะนำให้เปลี่ยนเป็นรหัสผ่านของคุณเอง'
                                     : `ตั้งรหัสผ่านใหม่อย่างน้อย ${MIN_PASSWORD} ตัวอักษร`}
                             </p>
-                            <ChangePasswordForm email={info.email} />
+                            <ChangePasswordForm email={info.email} forced={info.mustChangePassword} role={info.role} tenant={t} />
                         </section>
                     </div>
+                    {t && <MyRenewals />}
                 </div>
             )}
         </>

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from 'react'
+import DownloadReceiptButton from './DownloadReceiptButton'
 import Icon from './Icon'
 import { SlipImage, VerifyBox } from './InvoiceParts'
 import { baht, formatDateTime, formatMonth } from '../lib/billing'
+import { useRealtimeReload } from '../lib/realtime'
 import { owesRepairCost } from '../lib/repairPayments'
+import { buildRepairReceipt } from '../lib/receipts'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
-// ค่าซ่อมที่ผู้เช่าต้องชำระ: รวมในใบแจ้งหนี้ค่าห้องใบถัดไป (supabase/repair-billing.sql) ไม่ต้องจ่ายแยก
-// เรื่องเก่าที่เคยส่งสลิปค่าซ่อมแยกไว้ (supabase/repair-payments.sql) ยังแสดงสถานะ และแอดมินยังตรวจสลิปที่ค้างได้
+// ค่าซ่อมที่ผู้เช่าต้องชำระ: รวมในใบแจ้งหนี้ค่าห้องใบถัดไป (supabase/migrations/20261022000000_initial_schema.sql ส่วน repair-updates) ไม่ต้องจ่ายแยก
+// เรื่องเก่าที่เคยส่งสลิปค่าซ่อมแยกไว้ (ส่วน repair-payments ใน initial_schema) ยังแสดงสถานะ ใบเสร็จ และแอดมินยังตรวจสลิปที่ค้างได้
 // เงื่อนไข: ซ่อมเสร็จแล้ว (done) ผู้ดูแลระบุให้ผู้เช่าเป็นผู้ชำระ (cost_payer = tenant) และมียอด (cost > 0)
-
 
 // โหลดรายการชำระค่าซ่อมของเรื่องนี้ (เก่าไปใหม่) null = ยังโหลดไม่เสร็จ refresh() โหลดใหม่
 function useRepairPayments(repairId) {
@@ -31,10 +33,12 @@ function useRepairPayments(repairId) {
         const { data, error } = await supabase.from('repair_payments').select('*').eq('repair_id', repairId).order('created_at')
         setPayments(error ? null : (data ?? []))
     }, [repairId])
+    // อัปเดตเองเมื่อสลิปค่าซ่อมถูกส่ง ยืนยัน หรือปฏิเสธ (ทั้งฝั่งผู้เช่าและแอดมิน)
+    useRealtimeReload(['repair_payments'], refresh)
     return [payments, refresh]
 }
 
-// ค่าซ่อมไม่ต้องจ่ายแยก: รวมในใบแจ้งหนี้ค่าห้องใบถัดไปอัตโนมัติ (supabase/repair-billing.sql)
+// ค่าซ่อมไม่ต้องจ่ายแยก: รวมในใบแจ้งหนี้ค่าห้องใบถัดไปอัตโนมัติ (supabase/migrations/20261022000000_initial_schema.sql ส่วน repair-updates)
 // invoice_id = รวมในใบแจ้งหนี้ใบนั้นแล้ว (แสดงเดือนของใบ) ไม่มี = รอรวมในใบถัดไป
 function RepairBillingNotice({ repair }) {
     const [month, setMonth] = useState(null)
@@ -64,7 +68,7 @@ function RepairBillingNotice({ repair }) {
     )
 }
 
-// ฝั่งผู้เช่า: ค่าซ่อมรวมในค่าห้อง (เรื่องเก่าที่เคยส่งสลิปแยกไว้ ยังแสดงสถานะสลิปนั้น)
+// ฝั่งผู้เช่า: ค่าซ่อมรวมในค่าห้อง (เรื่องเก่าที่เคยส่งสลิปแยกไว้ ยังแสดงสถานะสลิปนั้นและใบเสร็จ)
 export function TenantRepairPayment({ repair }) {
     const [payments] = useRepairPayments(repair.id)
     if (payments === null) return null
@@ -76,9 +80,12 @@ export function TenantRepairPayment({ repair }) {
         <div className="rounded-2xl border border-line bg-white p-4 flex flex-col gap-3">
             <h3 className="font-medium text-primary-dark">ค่าซ่อม {baht(repair.cost)}</h3>
             {paid ? (
-                <p className="text-sm text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-xl px-4 py-2.5">
-                    ชำระค่าซ่อมเรียบร้อยแล้ว เมื่อ {formatDateTime(paid.reviewed_at)}
-                </p>
+                <div className="text-sm text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <span>ชำระค่าซ่อมเรียบร้อยแล้ว เมื่อ {formatDateTime(paid.reviewed_at)}</span>
+                    {paid.receipt_no !== null && paid.receipt_no !== undefined && (
+                        <DownloadReceiptButton receipt={buildRepairReceipt({ payment: paid, repair })} className="text-xs text-primary hover:underline" label="ดาวน์โหลดใบเสร็จ" />
+                    )}
+                </div>
             ) : (
                 <>
                     <p className="text-sm text-sky-800 bg-sky-50 ring-1 ring-sky-200 rounded-xl px-4 py-2.5">
@@ -129,9 +136,12 @@ export function AdminRepairPayment({ repair }) {
             </div>
 
             {paid && (
-                <p className="text-sm text-emerald-800">
-                    ยืนยันรับเงินเมื่อ {formatDateTime(paid.reviewed_at)}{paid.auto_approved && ' · ระบบอนุมัติอัตโนมัติ'}
-                </p>
+                <div className="text-sm text-emerald-800 flex flex-wrap items-center justify-between gap-2">
+                    <span>ยืนยันรับเงินเมื่อ {formatDateTime(paid.reviewed_at)}{paid.auto_approved && ' · ระบบอนุมัติอัตโนมัติ'}</span>
+                    {paid.receipt_no !== null && paid.receipt_no !== undefined && (
+                        <DownloadReceiptButton receipt={buildRepairReceipt({ payment: paid, repair })} className="text-xs text-primary hover:underline" label="ดาวน์โหลดใบเสร็จ" />
+                    )}
+                </div>
             )}
             {paid && paid.slip_path && (
                 <details>

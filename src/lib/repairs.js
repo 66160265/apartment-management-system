@@ -129,10 +129,6 @@ export const upcomingSlots = (slots) =>
 // วัน + เวลานี้ชนกับนัดที่มีอยู่แล้วไหม (booked = [{ date, period }])
 export const isBooked = (booked, date, period) => (booked ?? []).some((b) => b.date === date && periodsOverlap(b.period, period))
 
-// เวลานัดแรกที่ยังว่างภายในช่วงที่ผู้เช่าสะดวก (null = เต็มทั้งช่วง)
-export const firstFreePeriod = (slot, booked) =>
-    repairTimeOptions.map(periodAt).find((p) => isInSlots([slot], slot.date, p) && !isBooked(booked, slot.date, p)) ?? null
-
 // นัดซ่อมที่ยังไม่ถึงของทุกห้อง (เฉพาะวันและเวลา ไม่มีข้อมูลห้อง) ไม่นับรายการ excludeId
 export async function loadBookedTimes(excludeId = null) {
     const { data, error } = await supabase.rpc('repair_booked_times', { p_exclude: excludeId })

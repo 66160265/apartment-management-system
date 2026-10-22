@@ -28,3 +28,6 @@ dist-ssr
 
 # Supabase CLI local state (project ref, versions)
 supabase/.temp
+
+# Supabase CLI
+supabase/.temp

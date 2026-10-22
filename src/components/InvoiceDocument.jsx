@@ -84,7 +84,7 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
             {/* หัวเอกสาร */}
             <div style={{ background: `linear-gradient(135deg, ${C.deep}, ${C.primary})`, color: '#FFFFFF', padding: '30px 44px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 {/* ซ้าย: โลโก้ ชื่อหอพัก ที่อยู่ และช่องทางติดต่อ */}
-                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flex: 1, minWidth: 0, marginRight: 24 }}>
                     <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(255,255,255,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M5 21V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v17M15 9h4a1 1 0 0 1 1 1v11M3 21h18M9 7h2M9 11h2M9 15h2" />
@@ -102,7 +102,7 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
                     </div>
                 </div>
                 {/* ขวา: คำว่าใบแจ้งหนี้ และเลขที่ใบแจ้งหนี้ */}
-                <div style={{ textAlign: 'right' }}>
+                <div style={{ textAlign: 'right', flexShrink: 0, whiteSpace: 'nowrap' }}>
                     <div style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.1 }}>ใบแจ้งหนี้</div>
                     <div style={{ fontSize: 12, letterSpacing: 3, opacity: 0.8, marginTop: 2 }}>INVOICE</div>
                     <div style={{ fontSize: 13, marginTop: 10, fontWeight: 600 }}>{invoiceCode(invoice)}</div>
@@ -131,7 +131,7 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
                 {/* ป้ายสถานะ */}
                 <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 12, color: C.muted }}>สถานะ</span>
-                    <span style={{ background: status.bg, color: status.fg, borderRadius: 999, padding: '2px 12px', fontSize: 12, fontWeight: 600 }}>{status.label}</span>
+                    <span style={{ display: 'inline-block', whiteSpace: 'nowrap', background: status.bg, color: status.fg, borderRadius: 999, padding: '2px 12px', fontSize: 12, fontWeight: 600 }}>{status.label}</span>
                 </div>
 
                 {/* ตารางรายการ */}

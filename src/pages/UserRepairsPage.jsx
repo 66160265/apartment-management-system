@@ -6,8 +6,10 @@ import { AppointmentBox, ConfirmDialog, RepairImage, RepairImagePicker, RepairSt
 import { repairCategories, repairProgressKeys, repairStatuses, repairStatusKeys } from '../data/repairs'
 import { baht, formatDateTime } from '../lib/billing'
 import { formatSlot, formatThaiDate, loadBookedTimes, removeRepairImage, upcomingSlots, uploadRepairImage, validateAvailability } from '../lib/repairs'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonCards, SkeletonPage } from '../components/Skeleton.jsx'
 
 // คลาส Tailwind ของช่องกรอก และค่าเริ่มต้นของฟอร์มแจ้งซ่อมใหม่
 const inputClass = 'w-full border border-line rounded-xl px-4 py-2 text-ink text-sm outline-none focus:border-secondary focus:ring-2 focus:ring-secondary/30 bg-white disabled:bg-sand/60'
@@ -106,6 +108,9 @@ function UserRepairsPage() {
     // โหลดซ้ำหลังแจ้ง/แก้ไข/ยกเลิก
     const load = async () => setData(await fetchRepairs(userId))
 
+    // อัปเดตเองเมื่อผู้ดูแลรับเรื่อง เสนอนัด เปลี่ยนสถานะ หรือใส่ค่าซ่อม
+    useRealtimeReload(['repairs'], load, { enabled: Boolean(userId) })
+
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {
         if (!userId) return
@@ -126,7 +131,7 @@ function UserRepairsPage() {
     }, [notice])
 
     // รอข้อมูลผู้ใช้ก่อน
-    if (!me) return <p className="p-6 text-muted">กำลังโหลด...</p>
+    if (!me) return <SkeletonPage />
 
     // เปิดฟอร์มแจ้งซ่อมใหม่
     const openNew = () => {
@@ -297,7 +302,7 @@ function UserRepairsPage() {
     // จำนวนรายการที่ยังไม่เสร็จ และรายการแท็บ (ทั้งหมด + ทุกสถานะ)
     const active = repairs.filter((r) => r.status !== 'done' && r.status !== 'cancelled').length
     const actionCount = repairs.filter((r) => needsAction(r) || needsNewTime(r)).length
-    const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.map((k) => ({ key: k, label: repairStatuses[k].label }))]
+    const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.filter((k) => k !== 'cancelled').map((k) => ({ key: k, label: repairStatuses[k].label }))]
     // นับจำนวนรายการตามแท็บสถานะ ('all' = ทั้งหมด)
     const countOf = (key) => (key === 'all' ? repairs.length : repairs.filter((r) => r.status === key).length)
     // กรองตามแท็บสถานะและประเภท แล้วเรียงตามวันที่แจ้ง (ใหม่สุดก่อน หรือเก่าสุดก่อน)
@@ -459,7 +464,6 @@ function UserRepairsPage() {
                         <div className="rounded-xl border border-line p-4 flex flex-col gap-3">
                             <div>
                                 <div className="text-sm font-medium text-primary-dark">วันเวลาที่สะดวกให้ช่างเข้าซ่อม</div>
-                                {!readOnly && <div className="text-xs text-muted">เลือกวันและเวลาที่สะดวก 1 เวลา ผู้ดูแลจะยืนยันเป็นวันนัด</div>}
                             </div>
                             {readOnly ? (
                                 <SlotList slots={editing.available_slots} allowEntry={editing.allow_entry} note={editing.availability_note} />
@@ -568,7 +572,7 @@ function UserRepairsPage() {
                         </div>
                     </form>
                 ) : loading || loadError ? (
-                    <p className={`text-center py-10 ${loadError ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : loadError}</p>
+                    loading ? <SkeletonCards count={3} lines={3} /> : <p className="text-center py-10 text-red-600">{loadError}</p>
                 ) : (
                     <>
                         {/* ===== หน้ารายการ: การ์ดสรุปห้องและจำนวนที่ยังไม่เสร็จ ===== */}
@@ -589,7 +593,7 @@ function UserRepairsPage() {
                         </div>
 
                         {/* แท็บสถานะพร้อมจำนวน (กดเพื่อกรอง) */}
-                        <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                             {tabs.map((t) => {
                                 const isActive = activeTab === t.key
                                 return (

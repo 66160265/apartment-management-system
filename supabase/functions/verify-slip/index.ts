@@ -3,13 +3,13 @@
 // หน้าที่: อ่านสลิปที่ผู้เช่าแนบ ส่งให้ EasySlip ตรวจ แล้วบันทึกผลลง verify_status / verify_detail
 //         ใช้ได้ 2 แบบ: สลิปของใบแจ้งหนี้ (ส่ง invoice_id) และสลิปค่าซ่อม (ส่ง payment_id ของตาราง repair_payments)
 //         โหมด "แนะนำ": แอดมินดูผลและกดยืนยันรับเงินเอง  โหมด "อัตโนมัติ": ผ่านครบทุกเงื่อนไขแล้วยืนยันรับเงินให้เอง
-//         (ดู auto_approve_slip ใน supabase/slip-verify.sql และ auto_approve_repair_payment ใน supabase/repair-payments.sql)
+//         (ดู auto_approve_slip และ auto_approve_repair_payment ในไฟล์ supabase/migrations/20261022000000_initial_schema.sql)
 //         ไม่ปฏิเสธสลิปเองเด็ดขาด สลิปที่ไม่เข้าเงื่อนไขรอแอดมินตรวจ
 // ผู้เรียก: หน้าเว็บหลังผู้เช่าส่งสลิป (src/lib/slipVerify.js) หรือแอดมินกด "ตรวจสลิป" เอง
 // ต้องตั้งค่า:  npx supabase secrets set EASYSLIP_API_KEY=<คีย์>   (คีย์ห้ามอยู่ในโค้ดหน้าเว็บหรือในรีโป)
 //   ตรวจผู้รับ: ลงทะเบียนบัญชีรับเงินของหอพักในแดชบอร์ด EasySlip แล้วตั้ง EASYSLIP_MATCH_ACCOUNT=1 (โหมดอัตโนมัติขอตรวจผู้รับเสมอ และจำเป็นต้องมีผลยืนยัน)
 // ถ้าแก้ไฟล์นี้: ต้อง deploy ใหม่ด้วย  npx supabase functions deploy verify-slip
-// ต้องรัน supabase/slip-verify.sql (และ repair-payments.sql สำหรับค่าซ่อม) ก่อน และตั้งโหมดตรวจในหน้าตั้งค่า (โหมด "ปิด" ฟังก์ชันนี้ไม่ทำอะไรและไม่เสียโควตา)
+// ต้องรันไฟล์ migration (ส่วน slip-verify และ repair-payments) ก่อน และตั้งโหมดตรวจในหน้าตั้งค่า (โหมด "ปิด" ฟังก์ชันนี้ไม่ทำอะไรและไม่เสียโควตา)
 // ===========================================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
       // ค่าซ่อม: ยอดค่าซ่อมเต็ม (claim คืน paid_amount = 0)
       let balance = Math.max(0, Number(claim.total) - Number(claim.paid_amount ?? 0))
       // ใบแจ้งหนี้: ยอดที่ต้องชำระรวมค่าปรับล่าช้า ณ วันที่โอน (ให้ฐานข้อมูลคำนวณ ใช้สูตรเดียวกับตอนยืนยันรับเงิน)
-      // เรียกไม่ได้ (เช่น ยังไม่ได้รัน payments.sql รุ่นใหม่) ใช้ยอดคงเหลือแบบไม่มีค่าปรับแทน
+      // เรียกไม่ได้ (เช่น ยังไม่ได้รันส่วน payments ของไฟล์ migration รุ่นใหม่) ใช้ยอดคงเหลือแบบไม่มีค่าปรับแทน
       if (kind === 'invoice') {
         const { data: due, error: dueError } = await admin.rpc('invoice_balance_at', { p_invoice: id, p_transfer: slip.date })
         if (!dueError && due !== null && due !== undefined && Number.isFinite(Number(due))) balance = Number(due)

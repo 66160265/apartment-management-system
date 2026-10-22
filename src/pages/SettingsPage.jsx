@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import PageHeader from '../components/PageHeader'
 import { formatPromptPayId, generatePromptPayQR, isValidPromptPayId } from '../lib/promptpay'
+import { fetchSlipUsage, quotaStatus } from '../lib/slipUsage'
 import { loadSettings, saveSettings } from '../lib/useSettings'
+import { SkeletonForm } from '../components/Skeleton.jsx'
 
 // คลาส Tailwind ของช่องกรอกในหน้าตั้งค่า
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2.5 mt-1 outline-none focus:border-secondary focus:bg-white focus:ring-4 focus:ring-secondary/15'
@@ -26,6 +28,29 @@ function Section({ icon, title, hint, children }) {
 }
 
 // ช่องกรอกพร้อมหัวข้อและคำแนะนำใต้ช่อง
+// จำนวนครั้งที่ตรวจสลิปในเดือนนี้ เทียบกับโควตาที่กรอก (ไม่แสดงถ้ายังไม่มีตาราง slip_verify_log)
+function SlipUsage({ quota }) {
+    const [used, setUsed] = useState(null)
+    useEffect(() => {
+        let active = true
+        fetchSlipUsage().then((n) => active && setUsed(n))
+        return () => {
+            active = false
+        }
+    }, [])
+    if (used === null) return <p className="text-xs text-muted self-end pb-2">ยังไม่มีข้อมูลจำนวนการตรวจเดือนนี้ (ต้องรัน migration slip_quota ก่อน)</p>
+    const { level, remaining } = quotaStatus(used, quota)
+    const tone = level === 'out' ? 'text-red-700' : level === 'low' ? 'text-amber-700' : 'text-primary-dark'
+    return (
+        <div className="self-end pb-1">
+            <p className={`text-sm font-medium ${tone}`}>
+                เดือนนี้ตรวจไปแล้ว {used.toLocaleString('th-TH')} ครั้ง{level !== 'none' && ` (เหลือ ${remaining.toLocaleString('th-TH')})`}
+            </p>
+            <p className="text-xs text-muted">นับตอนระบบจองสิทธิ์ตรวจ อาจมากกว่าที่ EasySlip นับเล็กน้อย</p>
+        </div>
+    )
+}
+
 function Field({ label, hint, children }) {
     return (
         <label className="text-sm text-muted block">
@@ -110,6 +135,7 @@ function SettingsPage() {
         const grace = Number(form.lateFeeGraceDays)
         if (form.lateFeeGraceDays === '' || !Number.isInteger(grace) || grace < 0 || grace > 60) return setError('วันผ่อนผันต้องเป็นจำนวนเต็ม 0 – 60 วัน')
         if (form.lateFeeCap !== '' && (Number.isNaN(Number(form.lateFeeCap)) || Number(form.lateFeeCap) < 0)) return setError('เพดานค่าปรับต้องเป็นตัวเลขที่ไม่ติดลบ (เว้นว่าง = ไม่จำกัด)')
+        if (form.slipQuota !== '' && (!Number.isInteger(Number(form.slipQuota)) || Number(form.slipQuota) < 0)) return setError('โควตาตรวจสลิปต้องเป็นจำนวนเต็มที่ไม่ติดลบ (เว้นว่าง = ไม่ตั้ง)')
 
         // บันทึก โดยจัดรูปแบบรหัสพร้อมเพย์ให้มีขีดคั่นก่อน
         setSaving(true)
@@ -132,29 +158,29 @@ function SettingsPage() {
             {loadError ? (
                 <p className="px-6 text-red-600">{loadError}</p>
             ) : !form ? (
-                <p className="px-6 text-muted">กำลังโหลด...</p>
+                <SkeletonForm className="px-4 sm:px-6 pb-28" />
             ) : (
-                <form onSubmit={handleSubmit} className="px-4 sm:px-6 pb-28 flex flex-col gap-6 max-w-5xl">
+                <form onSubmit={handleSubmit} className="px-4 sm:px-6 pb-28 flex flex-col gap-6">
                     {/* ส่วนที่ 1: ข้อมูลหอพัก */}
                     <Section icon="building" title="ข้อมูลหอพัก" hint="แสดงที่หัวใบแจ้งหนี้ (PDF)">
-                        <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
                             <Field label="ชื่อหอพัก">
                                 <input className={inputClass} value={form.apartmentName} onChange={set('apartmentName')} />
                             </Field>
                             <Field label="ชื่อภาษาอังกฤษ">
                                 <input className={inputClass} value={form.apartmentNameEn} onChange={set('apartmentNameEn')} />
                             </Field>
-                            <div className="sm:col-span-2">
-                                <Field label="ที่อยู่">
-                                    <textarea rows="2" className={inputClass} value={form.address} onChange={set('address')} />
-                                </Field>
-                            </div>
                             <Field label="เบอร์โทรศัพท์ติดต่อ">
                                 <input className={inputClass} value={form.phone} onChange={set('phone')} inputMode="tel" />
                             </Field>
                             <Field label="อีเมล">
                                 <input type="email" className={inputClass} value={form.email} onChange={set('email')} />
                             </Field>
+                            <div className="sm:col-span-2 2xl:col-span-4">
+                                <Field label="ที่อยู่">
+                                    <textarea rows="2" className={inputClass} value={form.address} onChange={set('address')} />
+                                </Field>
+                            </div>
                         </div>
                     </Section>
 
@@ -248,6 +274,12 @@ function SettingsPage() {
                                 <strong className="block mt-1">ต้องลงทะเบียนบัญชีรับเงินของหอพักในแดชบอร์ด EasySlip ก่อน ไม่งั้นจะไม่มีสลิปไหนอนุมัติอัตโนมัติได้</strong>
                             </p>
                         )}
+                        <div className="grid gap-4 sm:grid-cols-2 mt-3">
+                            <Field label="โควตาตรวจสลิปต่อเดือน (ครั้ง)" hint="จำนวนที่ซื้อไว้กับ EasySlip ใช้เตือนเมื่อใกล้หมด เว้นว่าง = ไม่ตั้ง">
+                                <input type="number" min="0" step="1" className={inputClass} value={form.slipQuota} onChange={set('slipQuota')} placeholder="ไม่ตั้ง" />
+                            </Field>
+                            <SlipUsage quota={form.slipQuota} />
+                        </div>
                         <p className="text-xs text-muted mt-3">
                             โหมด &quot;แนะนำ&quot; ใช้โควตาของบริการ EasySlip ทุกครั้งที่ผู้เช่าส่งสลิป (สูงสุด 3 ครั้งต่อใบแจ้งหนี้) ต้องตั้งค่า API key เป็น secret ของ Edge Function verify-slip ก่อน ถ้ายังไม่ได้ตั้ง ระบบจะแสดงว่า &quot;ตรวจอัตโนมัติไม่สำเร็จ&quot; และให้ตรวจด้วยตา
                         </p>

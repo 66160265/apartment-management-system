@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 import { USERNAME_EMAIL_DOMAIN } from './tenantAccount'
+import { useRealtimeReload } from './realtime'
 
 // ชื่อสิทธิ์ภาษาไทยสำหรับแสดงผล
 export const roleLabels = { admin: 'ผู้ดูแลระบบ', user: 'ผู้เช่า' }
@@ -13,6 +14,15 @@ export const emailToUsername = (email = '') =>
 // ไม่ต้องยิง API ซ้ำทุกครั้งที่เปลี่ยนหน้า
 let cached = null
 let pending = null
+// ทุก hook ที่ใช้งานอยู่ (รับข้อมูลใหม่เมื่อแอดมินแก้ข้อมูลผู้เช่า/สัญญาของบัญชีนี้)
+const listeners = new Set()
+let refreshing = null
+
+// ล้างแคชให้โหลดข้อมูลผู้ใช้ใหม่ครั้งถัดไป (เช่น หลังเปลี่ยนรหัสผ่านครั้งแรก)
+export function resetCurrentUser() {
+    cached = null
+    pending = null
+}
 
 // ล้างแคชเมื่อสถานะ login เปลี่ยน (login/logout/เปลี่ยนบัญชี)
 supabase.auth.onAuthStateChange((event) => {
@@ -22,6 +32,15 @@ supabase.auth.onAuthStateChange((event) => {
     }
 })
 
+// อ่านสิทธิ์และเครื่องหมายบังคับเปลี่ยนรหัสผ่านจาก profiles
+// ถ้ายังไม่ได้รัน ส่วน hardening ของไฟล์ migration (ไม่มีคอลัมน์ must_change_password) ให้อ่านแค่สิทธิ์ ระบบทำงานตามเดิม
+async function fetchProfile(userId) {
+    const full = await supabase.from('profiles').select('role, must_change_password').eq('id', userId).single()
+    if (!full.error) return full.data
+    const basic = await supabase.from('profiles').select('role').eq('id', userId).single()
+    return basic.data
+}
+
 // ดึงข้อมูลผู้ใช้ที่ login: บัญชี สิทธิ์จาก profiles และข้อมูลผู้เช่า (ถ้ามี)
 async function fetchCurrentUser() {
     // getSession อ่านจากเครื่อง ไม่ต้องยิงเซิร์ฟเวอร์เหมือน getUser
@@ -29,8 +48,8 @@ async function fetchCurrentUser() {
     const user = session?.user
     if (!user) return null
     // ดึงสิทธิ์ (profiles) และข้อมูลผู้เช่าของบัญชีนี้พร้อมกัน
-    const [{ data: profile }, { data: tenant }] = await Promise.all([
-        supabase.from('profiles').select('role').eq('id', user.id).single(),
+    const [profile, { data: tenant }] = await Promise.all([
+        fetchProfile(user.id),
         supabase.from('tenants').select('name, room, phone, start_date, end_date').eq('user_id', user.id).maybeSingle(),
     ])
     return {
@@ -38,8 +57,26 @@ async function fetchCurrentUser() {
         email: user.email,
         username: emailToUsername(user.email),
         role: profile?.role,
+        mustChangePassword: Boolean(profile?.must_change_password),
         tenant,
     }
+}
+
+// โหลดข้อมูลผู้ใช้ใหม่เงียบ ๆ เมื่อตาราง tenants เปลี่ยน (เช่น แอดมินต่อสัญญา แก้ห้อง/เบอร์) แล้วส่งให้ทุกหน้าที่ใช้อยู่
+// เปลี่ยนค่าเฉพาะเมื่อเนื้อหาต่างจากเดิมจริง (ไม่งั้นหน้าที่ผูกกับข้อมูลนี้จะโหลดซ้ำโดยไม่จำเป็น) ใช้คำขอเดียวร่วมกันทุก hook
+function refreshCurrentUser() {
+    refreshing ??= fetchCurrentUser()
+        .then((next) => {
+            if (!next || !cached || next.id !== cached.id) return
+            if (JSON.stringify(next) === JSON.stringify(cached)) return
+            cached = next
+            listeners.forEach((listener) => listener(next))
+        })
+        .catch(() => {})
+        .finally(() => {
+            refreshing = null
+        })
+    return refreshing
 }
 
 // ข้อมูลผู้ใช้ที่ login อยู่: บัญชี, role และข้อมูลผู้เช่า (ถ้าเป็นผู้เช่า)
@@ -63,6 +100,15 @@ export function useCurrentUser() {
             active = false
         }
     }, [])
+
+    // รับข้อมูลใหม่ที่โหลดตามเหตุการณ์ real-time
+    useEffect(() => {
+        listeners.add(setInfo)
+        return () => {
+            listeners.delete(setInfo)
+        }
+    }, [])
+    useRealtimeReload(['tenants'], refreshCurrentUser, { enabled: Boolean(info) })
 
     return info
 }

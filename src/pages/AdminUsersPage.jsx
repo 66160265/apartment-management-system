@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useRealtimeReload } from '../lib/realtime'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import { Avatar } from '../components/TenantParts'
@@ -6,6 +7,7 @@ import DatePicker from '../components/DatePicker'
 import { callAdminUsers } from '../lib/adminUsers'
 import { makeDefaultPassword } from '../lib/tenantAccount'
 import { emailToUsername, roleLabels, useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonTable } from '../components/Skeleton.jsx'
 
 // คลาส Tailwind ของช่องกรอกในฟอร์ม
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
@@ -29,6 +31,8 @@ function EditModal({ user, onSave, onCancel }) {
     })
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
+    // ช่องรหัสผ่านใหม่ซ่อนไว้จนกว่าแอดมินจะกดปุ่มตั้งรหัสเอง (ไม่ให้เบราว์เซอร์เติมรหัสที่เคยบันทึกลงช่องแล้วถูกส่งไปตั้งทับตอนกดบันทึก)
+    const [resetting, setResetting] = useState(false)
 
     // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key
     const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
@@ -45,7 +49,11 @@ function EditModal({ user, onSave, onCancel }) {
             setError('วันสิ้นสุดสัญญาต้องไม่ก่อนวันเริ่มสัญญา')
             return
         }
-        if (form.password && form.password.length < 6) {
+        if (resetting && !form.password) {
+            setError('กรอกรหัสผ่านใหม่ หรือกด "ไม่ตั้งรหัสผ่านใหม่" ถ้าไม่ต้องการเปลี่ยนรหัสผ่าน')
+            return
+        }
+        if (resetting && form.password.length < 6) {
             setError('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร')
             return
         }
@@ -53,7 +61,7 @@ function EditModal({ user, onSave, onCancel }) {
         // ส่งเฉพาะค่าที่เกี่ยวข้อง: รหัสผ่าน (ถ้ากรอก) และข้อมูลผู้เช่า (ถ้าเป็นบัญชีผู้เช่า)
         const err = await onSave({
             userId: user.id,
-            ...(form.password && { password: form.password }),
+            ...(resetting && { password: form.password }),
             ...(t && {
                 name: form.name.trim(),
                 phone: form.phone.trim(),
@@ -93,25 +101,52 @@ function EditModal({ user, onSave, onCancel }) {
                         </div>
                     </>
                 )}
-                {/* รหัสผ่านใหม่ (เว้นว่าง = ไม่เปลี่ยน) */}
-                <label className="text-sm text-muted">
-                    รหัสผ่านใหม่
-                    <input
-                        className={inputClass}
-                        value={form.password}
-                        onChange={set('password')}
-                        placeholder="เว้นว่างไว้ = ไม่เปลี่ยนรหัสผ่าน"
-                        autoComplete="off"
-                    />
-                </label>
-                {/* ปุ่มเติมรหัสผ่านเริ่มต้น TP+เลขห้อง+เบอร์ 4 ตัวท้าย (ใช้รีเซ็ตรหัสให้ผู้เช่า) */}
-                {t && (
+                {/* รหัสผ่าน: ปกติไม่แตะ กดปุ่มก่อนจึงแสดงช่องกรอก (กันตั้งรหัสทับโดยไม่ตั้งใจ) */}
+                {resetting ? (
+                    <div className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                        <label className="text-sm text-muted">
+                            รหัสผ่านใหม่
+                            <input
+                                className={inputClass}
+                                value={form.password}
+                                onChange={set('password')}
+                                name="new-password"
+                                autoComplete="new-password"
+                            />
+                        </label>
+                        <p className="text-sm text-amber-900">
+                            กดบันทึกแล้วรหัสผ่านของบัญชีนี้จะถูกเปลี่ยนเป็นรหัสที่กรอกไว้ (ทับรหัสเดิมที่ผู้ใช้ตั้งเอง)
+                            {t && ' และผู้เช่าต้องตั้งรหัสใหม่เองอีกครั้งตอนเข้าสู่ระบบครั้งถัดไป'}
+                        </p>
+                        <div className="flex flex-wrap gap-4">
+                            {t && (
+                                <button
+                                    type="button"
+                                    onClick={() => setForm({ ...form, password: makeDefaultPassword(t.room, form.phone || t.phone) })}
+                                    className="text-sm text-primary hover:underline cursor-pointer"
+                                >
+                                    ใช้รหัสผ่านเริ่มต้น
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setResetting(false)
+                                    setForm({ ...form, password: '' })
+                                }}
+                                className="text-sm text-muted hover:underline cursor-pointer"
+                            >
+                                ไม่ตั้งรหัสผ่านใหม่
+                            </button>
+                        </div>
+                    </div>
+                ) : (
                     <button
                         type="button"
-                        onClick={() => setForm({ ...form, password: makeDefaultPassword(t.room, form.phone || t.phone) })}
+                        onClick={() => setResetting(true)}
                         className="self-start text-sm text-primary hover:underline cursor-pointer"
                     >
-                        ใช้รหัสผ่านเริ่มต้น
+                        ตั้งรหัสผ่านใหม่ให้บัญชีนี้
                     </button>
                 )}
                 {/* ข้อความ error และปุ่มยกเลิก/บันทึก */}
@@ -209,6 +244,12 @@ function AdminUsersPage() {
         }
     }, [applyResult])
 
+    // อัปเดตเองเมื่อมีผู้เช่าถูกเพิ่ม/แก้/ลบ (โหลดเงียบ ถ้าพลาดใช้รายชื่อเดิมต่อ)
+    useRealtimeReload(['tenants'], async () => {
+        const result = await fetchUsers()
+        if (!result.error) applyResult(result)
+    }, { enabled: isAdmin })
+
     // กรองรายชื่อตามคำค้นหา: ชื่อผู้ใช้ ชื่อผู้เช่า หรือเลขห้อง
     const keyword = search.trim().toLowerCase()
     const visible = users.filter((u) =>
@@ -249,7 +290,7 @@ function AdminUsersPage() {
                                 บัญชีทั้งหมด
                                 <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
                             </h2>
-                            <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:bg-white">
+                            <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                                 <Icon name="search" className="w-4 h-4 text-muted" />
                                 <input
                                     type="text"
@@ -352,7 +393,7 @@ function AdminUsersPage() {
                             {/* ข้อความกำลังโหลด / error / ไม่พบบัญชี */}
                             {(loading || loadError || visible.length === 0) && (
                                 <div className={`py-12 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
-                                    {loading ? 'กำลังโหลด...' : loadError || 'ไม่พบบัญชีผู้ใช้'}
+                                    {loading ? <SkeletonTable rows={6} cols={5} className="border-0 rounded-none text-left" /> : loadError || 'ไม่พบบัญชีผู้ใช้'}
                                 </div>
                             )}
                         </div>

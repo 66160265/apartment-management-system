@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import AvatarMenu from '../components/AvatarMenu'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
 import { invoiceStatuses } from '../data/billing'
-import { balanceOf, baht, daysLate, formatDateTime, formatMonth, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
+import { balanceOf, baht, daysLate, formatDateTime, formatMonth, formatShortDate, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
+import { invoiceDueDate, tenantUnpaid } from '../lib/dashboard'
 import { generatePromptPayQR } from '../lib/promptpay'
+import AnnouncementBanner from '../components/AnnouncementBanner'
+import { useRealtimeReload } from '../lib/realtime'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
@@ -27,13 +29,8 @@ const formatThaiToday = () => {
     return `วันที่ ${now.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}`
 }
 
-// วันที่ครบกำหนดชำระ (วันที่ 5 ของเดือนถัดไป เช่น "5 ต.ค. 69")
-const formatDueDate = (monthStr) => {
-    if (!monthStr) return '-'
-    const [y, m] = monthStr.split('-').map(Number)
-    const dueDate = new Date(y, m, 5)
-    return dueDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
-}
+// วันที่ครบกำหนดชำระของใบ เช่น "5 ต.ค. 69" (ตาม due_date ของใบ หรือวันครบกำหนดในหน้าตั้งค่า)
+const formatDueDate = (invoice, dueDay) => (invoice ? formatShortDate(invoiceDueDate(invoice, dueDay)) : '-')
 
 // ปุ่มคัดลอกข้อความ
 function CopyBtn({ text, label = 'คัดลอก' }) {
@@ -91,14 +88,12 @@ function UserDashboardPage() {
     const [uploadSuccess, setUploadSuccess] = useState(false)
     const fileInputRef = useRef(null)
 
-    // สถานะเปิดป็อปอัปดูประวัติใบแจ้งหนี้ทั้งหมด
-    const [showHistoryModal, setShowHistoryModal] = useState(false)
-
     // โหลดข้อมูล Dashboard
-    const loadData = async () => {
+    // quiet = โหลดเงียบตามเหตุการณ์ real-time: ไม่ขึ้นหน้าจอกำลังโหลด ไม่แสดง error ถ้าพลาด (ใช้ข้อมูลเดิมต่อ) และคงใบแจ้งหนี้ที่ผู้ใช้เลือกดูอยู่
+    const loadData = async ({ quiet = false } = {}) => {
         if (!me) return
-        setLoading(true)
-        setLoadError('')
+        if (!quiet) setLoading(true)
+        if (!quiet) setLoadError('')
 
         try {
             // บัญชีที่ยังไม่ผูกกับห้อง: ล้างข้อมูลแล้วจบ (หน้าจะแสดงข้อความให้ติดต่อผู้ดูแล)
@@ -114,47 +109,50 @@ function UserDashboardPage() {
 
             setTenantInfo(activeTenant)
 
-            // ดึงข้อมูลห้องพัก (ชั้น, ค่าเช่า)
-            const { data: rData } = await supabase
-                .from('rooms')
-                .select('*')
-                .eq('number', activeTenant.room)
-                .maybeSingle()
-            setRoomInfo(rData)
-
-            // ดึงข้อมูลใบแจ้งหนี้ของผู้เช่าห้องนี้
-            const { data: invData, error: invErr } = await supabase
-                .from('invoices')
-                .select('*')
-                .eq('room', activeTenant.room)
-                .order('month', { ascending: false })
+            // ดึงข้อมูลห้องพัก (ชั้น, ค่าเช่า) และใบแจ้งหนี้ของผู้เช่าห้องนี้พร้อมกัน (เดิมรอทีละอย่าง)
+            const [{ data: rData }, { data: invData, error: invErr }] = await Promise.all([
+                supabase.from('rooms').select('*').eq('number', activeTenant.room).maybeSingle(),
+                supabase.from('invoices').select('*').eq('room', activeTenant.room).order('month', { ascending: false }),
+            ])
             if (invErr) throw invErr
+            setRoomInfo(rData)
 
             const invList = invData || []
             setInvoices(invList)
 
-            // เลือกใบแจ้งหนี้ที่สำคัญที่สุด: ค้างชำระ (pending) ก่อน -> หรือรอตรวจ (review) -> หรือใบล่าสุด
-            const pendingInv = invList.find((i) => i.status === 'pending')
+            // เลือกใบแจ้งหนี้ที่สำคัญที่สุด: ใบรอชำระที่เก่าสุดก่อน (ค้างนานสุดเร่งด่วนสุด) -> หรือรอตรวจ (review) -> หรือใบล่าสุด
+            const pendingInv = [...invList].reverse().find((i) => i.status === 'pending')
             const reviewInv = invList.find((i) => i.status === 'review')
             const targetInv = pendingInv || reviewInv || invList[0]
 
             if (targetInv) {
-                setSelectedInvoiceId(targetInv.id)
+                // โหลดเงียบ: ถ้าใบที่ผู้ใช้เลือกดูอยู่ยังอยู่ ไม่เปลี่ยนไปใบอื่น
+                setSelectedInvoiceId((current) => (quiet && invList.some((i) => i.id === current) ? current : targetInv.id))
             }
         } catch (err) {
             console.error('Error loading tenant dashboard:', err)
+            if (quiet) return
             setLoadError(`เกิดข้อผิดพลาดในการโหลดข้อมูล: ${err.message || 'ไม่สามารถติดต่อฐานข้อมูลได้'}`)
         } finally {
             setLoading(false)
         }
     }
 
-    // โหลดข้อมูลเมื่อได้ข้อมูลผู้ใช้ที่ login แล้ว
+    // โหลดข้อมูลเมื่อได้ข้อมูลผู้ใช้ที่ login แล้ว ครั้งแรกขึ้นหน้าจอกำลังโหลด หลังจากนั้น (เช่น แอดมินต่อสัญญาให้ ข้อมูลผู้เช่าเปลี่ยน) โหลดเงียบ
+    const loadedFor = useRef(null)
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        loadData()
+        if (!me) return
+        const quiet = loadedFor.current === me.id
+        loadedFor.current = me.id
+        loadData({ quiet })
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [me])
+
+    // อัปเดตเองเมื่อผู้ดูแลยืนยันสลิป ออกใบใหม่ หรือแก้ข้อมูลห้อง (ไม่ต้องกดรีเฟรช)
+    useRealtimeReload(['invoices', 'invoice_payments', 'rooms'], () => loadData({ quiet: true }), { enabled: Boolean(me?.tenant) })
+
+    // ใบที่ต้องจ่ายอยู่ทั้งหมด (เก่าสุดก่อน) ใช้แถบ "ต้องชำระ" เมื่อค้างหลายเดือน
+    const unpaid = useMemo(() => tenantUnpaid(invoices, new Date(), settings.dueDay), [invoices, settings.dueDay])
 
     // ใบแจ้งหนี้ที่กำลังแสดงผล
     const activeInvoice = useMemo(() => {
@@ -291,13 +289,13 @@ function UserDashboardPage() {
         return (
             <div className="p-4 sm:p-6 flex flex-col gap-6">
                 <div className="flex justify-between items-center animate-pulse">
-                    <div className="h-8 bg-gray-200 rounded-lg w-48" />
-                    <div className="w-10 h-10 bg-gray-200 rounded-full" />
+                    <div className="h-8 bg-line rounded-lg w-48" />
+                    <div className="w-10 h-10 bg-line rounded-full" />
                 </div>
-                <div className="h-36 bg-gray-200 rounded-2xl animate-pulse" />
+                <div className="h-36 bg-line rounded-2xl animate-pulse" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="h-32 bg-gray-200 rounded-2xl animate-pulse" />
-                    <div className="h-32 bg-gray-200 rounded-2xl animate-pulse" />
+                    <div className="h-32 bg-line rounded-2xl animate-pulse" />
+                    <div className="h-32 bg-line rounded-2xl animate-pulse" />
                 </div>
             </div>
         )
@@ -312,7 +310,7 @@ function UserDashboardPage() {
                     <span className="w-16 h-16 rounded-full bg-sand flex items-center justify-center text-muted">
                         <Icon name="door" className="w-8 h-8" />
                     </span>
-                    <h2 className="text-lg font-bold text-gray-800">ไม่พบข้อมูลห้องพักหรือสัญญาเช่า</h2>
+                    <h2 className="text-lg font-bold text-ink">ไม่พบข้อมูลห้องพักหรือสัญญาเช่า</h2>
                     <p className="text-sm text-muted max-w-md">
                         บัญชีผู้ใช้นี้ยังไม่ได้ผูกกับห้องพักในระบบ หรือยังไม่มีข้อมูลผู้เช่า กรุณาติดต่อผู้ดูแลหอพัก
                     </p>
@@ -413,13 +411,62 @@ function UserDashboardPage() {
                         </div>
                     </div>
 
-                    {/* การ์ดสรุปตัวเลข 2 ใบ ตามรูปแรก (พร้อมการ์ดที่ 3 สำหรับการแสดงผลบน Desktop) */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {/* ค้างชำระหลายใบ: แสดงรายการทั้งหมด เลือกใบที่จะดู/จ่ายได้ (ถ้ามีใบเดียว การ์ดการดำเนินการด้านล่างครอบคลุมแล้ว) */}
+                    {unpaid.length > 1 && (
+                        <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-col gap-3">
+                            <h3 className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
+                                <Icon name="alert" className="w-4 h-4" />
+                                มี {unpaid.length} ใบที่ยังต้องชำระ · รวม {baht(unpaid.reduce((sum, u) => sum + u.balance, 0))}
+                            </h3>
+                            <div className="flex flex-col divide-y divide-amber-200/70">
+                                {unpaid.map((u) => (
+                                    <div key={u.id} className="py-2.5 flex flex-wrap items-center justify-between gap-2 text-sm">
+                                        <div>
+                                            <span className="font-semibold text-ink">{formatMonth(u.month)}</span>
+                                            <span className={`ml-2 text-xs font-medium ${u.daysLate > 0 ? 'text-red-600' : 'text-muted'}`}>
+                                                {u.daysLate > 0 ? `เกินกำหนด ${u.daysLate} วัน` : `ครบกำหนด ${formatShortDate(u.dueDate)}`}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-bold tabular-nums text-ink">{baht(u.balance)}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedInvoiceId(u.id)
+                                                    setCurrentView('payment')
+                                                }}
+                                                className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary-dark text-white text-xs font-semibold transition cursor-pointer"
+                                            >
+                                                ชำระ
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
+                    {/* สัญญาใกล้หมดหรือหมดแล้ว: บอกผู้เช่าให้ติดต่อผู้ดูแล (ต่อสัญญาทำโดยผู้ดูแล) */}
+                    {contractRemainingDays !== null && contractRemainingDays <= 30 && (
+                        <div role="status" className={`rounded-2xl ring-1 p-4 flex items-start gap-3 text-sm ${contractRemainingDays > 0 ? 'bg-amber-50 ring-amber-200 text-amber-950' : 'bg-red-50 ring-red-200 text-red-950'}`}>
+                            <Icon name="calendar" className="w-5 h-5 shrink-0 mt-0.5" />
+                            <p>
+                                <strong>{contractRemainingDays > 0 ? `สัญญาเช่าของคุณจะสิ้นสุดในอีก ${contractRemainingDays} วัน` : 'สัญญาเช่าของคุณสิ้นสุดแล้ว'}</strong>
+                                {' '}({formatShortDate(tenantInfo.end_date)}) หากต้องการต่อสัญญา กรุณาติดต่อผู้ดูแลหอพัก
+                            </p>
+                        </div>
+                    )}
+
+                    {/* ประกาศล่าสุดจากหอพัก (ภายใน 14 วัน) */}
+                    <AnnouncementBanner />
+
+                    {/* การ์ดสรุปตัวเลข */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         {/* 1. ยอดเดือนนี้ */}
                         <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col justify-between">
-                            <span className="text-sm font-medium text-gray-600">ยอดเดือนนี้</span>
+                            <span className="text-sm font-medium text-muted">ยอดใบแจ้งหนี้</span>
                             <div className="mt-3">
-                                <div className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight tabular-nums">
+                                <div className="text-3xl sm:text-4xl font-bold text-ink tracking-tight tabular-nums">
                                     {activeInvoice ? baht(activeInvoice.total) : '฿0'}
                                 </div>
                                 <div className="text-xs text-muted mt-1.5 font-medium">
@@ -440,7 +487,7 @@ function UserDashboardPage() {
 
                         {/* 2. สถานะ */}
                         <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col justify-between">
-                            <span className="text-sm font-medium text-gray-600">สถานะ</span>
+                            <span className="text-sm font-medium text-muted">สถานะ</span>
                             <div className="mt-3">
                                 <div className="text-2xl sm:text-3xl font-bold tracking-tight">
                                     {activeInvoice ? (
@@ -456,7 +503,7 @@ function UserDashboardPage() {
                                             {invoiceStatuses[activeInvoice.status]?.label || activeInvoice.status}
                                         </span>
                                     ) : (
-                                        <span className="text-gray-400 font-normal">ไม่มีรายการ</span>
+                                        <span className="text-muted/70 font-normal">ไม่มีรายการ</span>
                                     )}
                                 </div>
                                 <div className="text-xs text-muted mt-1.5 font-medium">
@@ -466,32 +513,11 @@ function UserDashboardPage() {
                                         ) : activeInvoice.status === 'review' ? (
                                             `ส่งสลิปเมื่อ ${formatDateTime(activeInvoice.slip_uploaded_at)} (รอตรวจ)`
                                         ) : (
-                                            `ภายในวันที่ ${formatDueDate(activeInvoice.month)}`
+                                            `ภายในวันที่ ${formatDueDate(activeInvoice, settings.dueDay)}`
                                         )
                                     ) : (
                                         'ทุกรายการชำระครบถ้วนแล้ว'
                                     )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 3. สรุปการใช้พลังงาน (Desktop Complement) */}
-                        <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col justify-between">
-                            <span className="text-sm font-medium text-gray-600">การใช้น้ำและไฟฟ้าเดือนนี้</span>
-                            <div className="mt-3 grid grid-cols-2 divide-x divide-line text-center">
-                                <div className="pr-2">
-                                    <span className="text-xs text-sky-700 font-semibold block">น้ำประปา</span>
-                                    <span className="text-2xl font-bold text-gray-900 tabular-nums">
-                                        {invoiceBreakdown?.waterUnits ?? 0}
-                                    </span>
-                                    <span className="text-[11px] text-gray-400 block">หน่วย</span>
-                                </div>
-                                <div className="pl-2">
-                                    <span className="text-xs text-amber-700 font-semibold block">ไฟฟ้า</span>
-                                    <span className="text-2xl font-bold text-gray-900 tabular-nums">
-                                        {invoiceBreakdown?.elecUnits ?? 0}
-                                    </span>
-                                    <span className="text-[11px] text-gray-400 block">หน่วย</span>
                                 </div>
                             </div>
                         </div>
@@ -519,9 +545,9 @@ function UserDashboardPage() {
                                             <span className="grid place-items-center w-8 h-8 rounded-lg bg-sky-50 text-sky-700">
                                                 <Icon name="home" className="w-4 h-4" />
                                             </span>
-                                            <span className="text-gray-800 font-medium">ค่าห้อง</span>
+                                            <span className="text-ink font-medium">ค่าห้อง</span>
                                         </div>
-                                        <span className="font-semibold text-gray-900 tabular-nums">
+                                        <span className="font-semibold text-ink tabular-nums">
                                             {baht(invoiceBreakdown.rent)}
                                         </span>
                                     </div>
@@ -533,15 +559,15 @@ function UserDashboardPage() {
                                                 <Icon name="droplet" className="w-4 h-4" />
                                             </span>
                                             <div>
-                                                <div className="text-gray-800 font-medium">
+                                                <div className="text-ink font-medium">
                                                     ค่าน้ำ {invoiceBreakdown.waterUnits} หน่วย (หน่วยละ {invoiceBreakdown.waterRate} บาท)
                                                 </div>
-                                                <div className="text-[11px] text-gray-400">
+                                                <div className="text-[11px] text-muted/70">
                                                     มิเตอร์: {activeInvoice.water_prev} → {activeInvoice.water_curr}
                                                 </div>
                                             </div>
                                         </div>
-                                        <span className="font-semibold text-gray-900 tabular-nums">
+                                        <span className="font-semibold text-ink tabular-nums">
                                             {baht(invoiceBreakdown.waterCost)}
                                         </span>
                                     </div>
@@ -553,15 +579,15 @@ function UserDashboardPage() {
                                                 <Icon name="bolt" className="w-4 h-4" />
                                             </span>
                                             <div>
-                                                <div className="text-gray-800 font-medium">
+                                                <div className="text-ink font-medium">
                                                     ค่าไฟ {invoiceBreakdown.elecUnits} หน่วย (หน่วยละ {invoiceBreakdown.elecRate} บาท)
                                                 </div>
-                                                <div className="text-[11px] text-gray-400">
+                                                <div className="text-[11px] text-muted/70">
                                                     มิเตอร์: {activeInvoice.elec_prev} → {activeInvoice.elec_curr}
                                                 </div>
                                             </div>
                                         </div>
-                                        <span className="font-semibold text-gray-900 tabular-nums">
+                                        <span className="font-semibold text-ink tabular-nums">
                                             {baht(invoiceBreakdown.elecCost)}
                                         </span>
                                     </div>
@@ -572,37 +598,36 @@ function UserDashboardPage() {
                                             <span className="grid place-items-center w-8 h-8 rounded-lg bg-violet-50 text-violet-700">
                                                 <Icon name="building" className="w-4 h-4" />
                                             </span>
-                                            <span className="text-gray-800 font-medium">ค่าส่วนกลาง</span>
+                                            <span className="text-ink font-medium">ค่าส่วนกลาง</span>
                                         </div>
-                                        <span className="font-semibold text-gray-900 tabular-nums">
+                                        <span className="font-semibold text-ink tabular-nums">
                                             {baht(invoiceBreakdown.commonFee)}
                                         </span>
                                     </div>
 
-                                    {/* ค่าซ่อมที่รวมมาในใบนี้ (แสดงเฉพาะเมื่อมี) */}
-                                    {invoiceBreakdown.repairFee > 0 && (
-                                        <div className="py-3.5 flex justify-between items-center text-sm">
-                                            <div className="flex items-center gap-3">
-                                                <span className="grid place-items-center w-8 h-8 rounded-lg bg-rose-50 text-rose-700">
-                                                    <Icon name="wrench" className="w-4 h-4" />
-                                                </span>
-                                                <span className="text-gray-800 font-medium">ค่าซ่อม</span>
-                                            </div>
-                                            <span className="font-semibold text-gray-900 tabular-nums">
-                                                {baht(invoiceBreakdown.repairFee)}
+                                    {/* ค่าซ่อมที่รวมมาในใบนี้ (แสดงทุกใบเหมือนค่าส่วนกลาง ไม่มีค่าซ่อม = ฿0) */}
+                                    <div className="py-3.5 flex justify-between items-center text-sm">
+                                        <div className="flex items-center gap-3">
+                                            <span className="grid place-items-center w-8 h-8 rounded-lg bg-rose-50 text-rose-700">
+                                                <Icon name="wrench" className="w-4 h-4" />
                                             </span>
+                                            <span className="text-gray-800 font-medium">ค่าซ่อม</span>
                                         </div>
-                                    )}
+                                        <span className="font-semibold text-gray-900 tabular-nums">
+                                            {baht(invoiceBreakdown.repairFee)}
+                                        </span>
+                                    </div>
+
                                     {/* รวมทั้งหมด */}
                                     <div className="pt-5 flex justify-between items-center">
-                                        <span className="text-base font-bold text-gray-900">รวมทั้งหมด</span>
+                                        <span className="text-base font-bold text-ink">รวมทั้งหมด</span>
                                         <span className="text-2xl font-bold text-primary-dark tabular-nums">
                                             {baht(invoiceBreakdown.total)}
                                         </span>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="py-12 text-center text-gray-400 text-sm">
+                                <div className="py-12 text-center text-muted/70 text-sm">
                                     ยังไม่มีรายการค่าใช้จ่ายในขณะนี้
                                 </div>
                             )}
@@ -611,7 +636,7 @@ function UserDashboardPage() {
                         {/* ฝั่งขวา: กล่อง Action (ปุ่มชำระเงินตามรูปแรก ที่เมื่อกดแล้วจะเปิดหน้าในรูปที่สอง) */}
                         <div className="lg:col-span-4 flex flex-col gap-5">
                             <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col gap-4">
-                                <h3 className="text-base font-bold text-gray-900">การดำเนินการ</h3>
+                                <h3 className="text-base font-bold text-ink">การดำเนินการ</h3>
 
                                 {/* เนื้อหาตามสถานะ: รอชำระ = ปุ่มไปหน้าชำระเงิน, รอตรวจ = ปุ่มดูรายละเอียด, ชำระแล้ว = ข้อความยืนยัน */}
                                 {activeInvoice?.status === 'pending' ? (
@@ -620,7 +645,7 @@ function UserDashboardPage() {
                                             <span className="font-semibold mb-0.5 flex items-center gap-1.5"><Icon name="alert" className="w-4 h-4" />{isPartiallyPaid(activeInvoice) ? 'ยังมียอดคงเหลือ' : 'มียอดรอชำระเงิน'}</span>
                                             {isPartiallyPaid(activeInvoice)
                                                 ? `ได้รับชำระแล้ว ${baht(paidOf(activeInvoice))} กรุณาโอนส่วนที่เหลือ ${baht(balanceOf(activeInvoice))} และแนบหลักฐานการโอน`
-                                                : `กรุณาชำระเงินและแนบหลักฐานการโอนภายในวันที่ ${formatDueDate(activeInvoice.month)}`}
+                                                : `กรุณาชำระเงินและแนบหลักฐานการโอนภายในวันที่ ${formatDueDate(activeInvoice, settings.dueDay)}`}
                                         </div>
 
                                         {/* ปุ่มชำระเงิน / อัปโหลดสลิป ตามรูปแรก เมื่อกดจะเปิดหน้าในรูปที่สอง */}
@@ -657,7 +682,7 @@ function UserDashboardPage() {
                                         </div>
                                     </>
                                 ) : (
-                                    <p className="text-xs text-gray-500">ไม่มีรายการที่ต้องดำเนินการ</p>
+                                    <p className="text-xs text-muted">ไม่มีรายการที่ต้องดำเนินการ</p>
                                 )}
 
                                 {/* ปุ่มดาวน์โหลดใบแจ้งหนี้ PDF */}
@@ -673,33 +698,15 @@ function UserDashboardPage() {
             {/* ---------------- VIEW 2: PAYMENT SCREEN (หน้าชำระเงินตามรูปที่สอง) ---------------- */}
             {currentView === 'payment' && (
                 <>
-                    {/* Header พร้อมปุ่มกลับ */}
-                    <div className="flex flex-wrap justify-between items-center gap-4">
-                        <div className="flex items-center gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setCurrentView('overview')}
-                                className="flex items-center gap-1.5 px-3.5 py-2 bg-white border border-line hover:bg-mist/30 text-primary-dark font-medium rounded-xl text-sm transition cursor-pointer shadow-xs"
-                            >
-                                <Icon name="arrowLeft" className="w-4 h-4" />
-                                <span>กลับ</span>
-                            </button>
-                            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
-                                ชำระเงิน
-                            </h1>
-                        </div>
-                        {/* เมนูบัญชีมุมขวา (หน้านี้ไม่ได้ใช้ PageHeader) */}
-                        <div className="flex items-center gap-3">
-                            <AvatarMenu />
-                        </div>
-                    </div>
+                    {/* หัวหน้าเดียวกับหน้าอื่น พร้อมปุ่มกลับภาพรวม */}
+                    <PageHeader flush title="ชำระเงิน" subtitle="สแกน QR หรือโอนตามยอด แล้วแนบสลิปเพื่อให้ผู้ดูแลตรวจสอบ" onBack={() => setCurrentView('overview')} backLabel="กลับไปภาพรวม" />
 
                     {/* การ์ดสรุปยอดที่ต้องชำระ (ตามส่วนบนของรูปที่สอง) */}
                     <div className="bg-white rounded-2xl p-6 md:p-8 shadow-card border border-line text-center flex flex-col items-center justify-center">
-                        <span className="text-xs md:text-sm text-gray-500 font-medium">
+                        <span className="text-xs md:text-sm text-muted font-medium">
                             ยอดที่ต้องชำระ · ประจำเดือน {activeInvoice ? formatMonth(activeInvoice.month) : '-'} (ห้อง {tenantInfo?.room})
                         </span>
-                        <div className="text-3xl sm:text-5xl font-extrabold text-gray-900 mt-2 tracking-tight tabular-nums">
+                        <div className="text-3xl sm:text-5xl font-extrabold text-ink mt-2 tracking-tight tabular-nums">
                             {activeInvoice ? baht(balanceOf(activeInvoice)) : '฿0'}
                         </div>
                         {activeInvoice && lateFeeOf(activeInvoice) > 0 && activeInvoice.status !== 'paid' && (
@@ -713,7 +720,7 @@ function UserDashboardPage() {
                             </span>
                         )}
                         <span className="text-xs md:text-sm text-red-600 font-semibold mt-2">
-                            ภายในวันที่ {activeInvoice ? formatDueDate(activeInvoice.month) : '-'}
+                            ภายในวันที่ {activeInvoice ? formatDueDate(activeInvoice, settings.dueDay) : '-'}
                         </span>
                     </div>
 
@@ -721,7 +728,7 @@ function UserDashboardPage() {
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                         {/* ฝั่งซ้าย: สแกน QR PromptPay และข้อมูลบัญชีธนาคาร (ตามรูปที่สอง) */}
                         <div className="lg:col-span-6 bg-white rounded-2xl p-6 md:p-8 shadow-card border border-line flex flex-col items-center text-center gap-5">
-                            <h3 className="text-lg font-bold text-gray-900">
+                            <h3 className="text-lg font-bold text-ink">
                                 สแกน QR PromptPay
                             </h3>
 
@@ -749,7 +756,7 @@ function UserDashboardPage() {
                             {/* เลขพร้อมเพย์ */}
                             {BANK.promptpay && (
                                 <div className="flex items-center gap-2">
-                                    <span className="text-sm font-semibold text-gray-800">
+                                    <span className="text-sm font-semibold text-ink">
                                         พร้อมเพย์ {BANK.promptpay}
                                     </span>
                                     <CopyBtn text={BANK.promptpay.replace(/-/g, '')} label="คัดลอก" />
@@ -758,17 +765,17 @@ function UserDashboardPage() {
 
                             {/* บัญชีธนาคารเพิ่มเติม */}
                             {BANK.account && (
-                                <div className="w-full pt-4 border-t border-line text-xs text-gray-600 flex flex-col gap-1.5 text-left bg-sand/30 p-3.5 rounded-xl">
+                                <div className="w-full pt-4 border-t border-line text-xs text-muted flex flex-col gap-1.5 text-left bg-sand/30 p-3.5 rounded-xl">
                                     <span className="font-bold text-primary-dark">หรือโอนเข้าบัญชีธนาคาร:</span>
                                     <div className="flex justify-between items-center">
-                                        <span>ธนาคาร: <strong className="text-gray-900">{BANK.name}</strong></span>
+                                        <span>ธนาคาร: <strong className="text-ink">{BANK.name}</strong></span>
                                     </div>
                                     <div className="flex justify-between items-center">
-                                        <span>เลขที่บัญชี: <strong className="font-mono text-gray-900">{BANK.account}</strong></span>
+                                        <span>เลขที่บัญชี: <strong className="font-mono text-ink">{BANK.account}</strong></span>
                                         <CopyBtn text={BANK.account.replace(/-/g, '')} label="คัดลอก" />
                                     </div>
                                     <div>
-                                        <span>ชื่อบัญชี: <strong className="text-gray-900">{BANK.holder}</strong></span>
+                                        <span>ชื่อบัญชี: <strong className="text-ink">{BANK.holder}</strong></span>
                                     </div>
                                 </div>
                             )}
@@ -777,7 +784,7 @@ function UserDashboardPage() {
                         {/* ฝั่งขวา: แนบสลิปโอนเงิน + ปุ่มส่งหลักฐาน + ปุ่มดาวน์โหลด PDF (ตามรูปที่สอง) */}
                         <div className="lg:col-span-6 bg-white rounded-2xl p-6 md:p-8 shadow-card border border-line flex flex-col gap-5">
                             <div className="text-center">
-                                <span className="text-xs font-semibold text-gray-400 tracking-wider">
+                                <span className="text-xs font-semibold text-muted/70 tracking-wider">
                                     — หรือแนบสลิปโอนเงิน —
                                 </span>
                             </div>
@@ -815,7 +822,7 @@ function UserDashboardPage() {
                                         className="max-h-72 max-w-full object-contain rounded-xl shadow-card"
                                     />
                                     <div className="flex items-center gap-3 text-xs text-muted">
-                                        <span className="truncate max-w-48 font-medium text-gray-700">
+                                        <span className="truncate max-w-48 font-medium text-ink">
                                             {uploadFile.name} · {formatSize(uploadFile.size)}
                                         </span>
                                         <button
@@ -851,14 +858,14 @@ function UserDashboardPage() {
                                         <Icon name="upload" className="w-7 h-7" />
                                     </span>
                                     <div>
-                                        <div className="font-semibold text-gray-800 text-sm sm:text-base">
+                                        <div className="font-semibold text-ink text-sm sm:text-base">
                                             แตะเพื่อแนบรูปสลิป
                                         </div>
                                         <div className="text-xs text-muted mt-1">
                                             คลิกเพื่อเลือกไฟล์ หรือลากรูปมาวางที่นี่
                                         </div>
                                     </div>
-                                    <span className="text-[11px] text-gray-400">
+                                    <span className="text-[11px] text-muted/70">
                                         JPG / PNG ไม่เกิน 5MB
                                     </span>
                                 </div>
@@ -889,130 +896,6 @@ function UserDashboardPage() {
                         </div>
                     </div>
                 </>
-            )}
-
-            {/* Modal ป็อปอัปแสดงประวัติใบแจ้งหนี้ทั้งหมด */}
-            {showHistoryModal && (
-                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-                    <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-line my-auto animate-in fade-in zoom-in-95">
-                        {/* Header ของป็อปอัป */}
-                        <div className="px-6 py-4 bg-sand/40 border-b border-line flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                                <span className="grid place-items-center w-9 h-9 rounded-xl bg-white shadow-xs text-primary">
-                                    <Icon name="receipt" className="w-5 h-5" />
-                                </span>
-                                <div>
-                                    <h3 className="text-base font-bold text-gray-900">
-                                        ประวัติใบแจ้งหนี้ทั้งหมด
-                                    </h3>
-                                    <p className="text-xs text-muted">
-                                        ห้อง {tenantInfo?.room} · ทั้งหมด {invoices.length} รอบบิล
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setShowHistoryModal(false)}
-                                className="w-8 h-8 rounded-full bg-white hover:bg-line/60 text-gray-500 hover:text-gray-800 transition flex items-center justify-center cursor-pointer border border-line text-sm"
-                            >
-                                <Icon name="close" className="w-4 h-4" />
-                            </button>
-                        </div>
-
-                        {/* รายการใบแจ้งหนี้ทั้งหมด */}
-                        <div className="p-6 max-h-[60vh] overflow-y-auto flex flex-col gap-2.5">
-                            {invoices.map((inv, idx) => {
-                                const isSelected = inv.id === activeInvoice?.id
-                                const isCurrent = idx === 0
-                                return (
-                                    <div
-                                        key={inv.id}
-                                        className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition ${
-                                            isSelected
-                                                ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
-                                                : 'border-line hover:bg-sand/30 bg-white'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <span className="grid place-items-center w-10 h-10 rounded-xl bg-sand text-primary-dark font-semibold text-xs tabular-nums shrink-0">
-                                                {idx + 1}
-                                            </span>
-                                            <div>
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="font-bold text-gray-900 text-sm">
-                                                        เดือน {formatMonth(inv.month)}
-                                                    </span>
-                                                    {isCurrent && (
-                                                        <span className="text-[10px] bg-primary text-white px-2 py-0.5 rounded-full font-medium">
-                                                            เดือนปัจจุบัน
-                                                        </span>
-                                                    )}
-                                                    {isSelected && (
-                                                        <span className="text-[10px] bg-sand border border-primary/30 text-primary-dark px-2 py-0.5 rounded-full font-medium">
-                                                            กำลังแสดงผล
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <div className="text-xs text-muted mt-0.5">
-                                                    ออกใบแจ้งหนี้: {inv.created_at ? new Date(inv.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : inv.month}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-line/60">
-                                            <div className="text-right">
-                                                <div className="text-base font-bold text-gray-900 tabular-nums">
-                                                    {baht(inv.total)}
-                                                </div>
-                                                {isPartiallyPaid(inv) && (
-                                                    <div className="text-[11px] text-amber-700">ชำระแล้ว {baht(paidOf(inv))} · เหลือ {baht(balanceOf(inv))}</div>
-                                                )}
-                                                <span
-                                                    className={`inline-block text-[11px] px-2.5 py-0.5 rounded-full font-medium mt-0.5 ${
-                                                        inv.status === 'paid'
-                                                            ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                                                            : inv.status === 'review'
-                                                            ? 'bg-sky-50 text-sky-700 ring-1 ring-sky-200'
-                                                            : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                                                    }`}
-                                                >
-                                                    {invoiceStatuses[inv.status]?.label || inv.status}
-                                                </span>
-                                            </div>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedInvoiceId(inv.id)
-                                                    setShowHistoryModal(false)
-                                                }}
-                                                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition cursor-pointer shrink-0 ${
-                                                    isSelected
-                                                        ? 'bg-primary text-white shadow-xs'
-                                                        : 'border border-line bg-white hover:bg-mist/40 text-primary-dark'
-                                                }`}
-                                            >
-                                                {isSelected ? 'กำลังดูหน้านี้' : 'เลือกดูหน้านี้'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
-
-                        {/* Footer ของป็อปอัป */}
-                        <div className="px-6 py-3.5 bg-sand/30 border-t border-line flex justify-between items-center text-xs text-muted">
-                            <span>คลิก &quot;เลือกดูหน้านี้&quot; เพื่อเปลี่ยนรายละเอียดค่าใช้จ่ายใน Dashboard</span>
-                            <button
-                                type="button"
-                                onClick={() => setShowHistoryModal(false)}
-                                className="px-4 py-1.5 bg-white border border-line rounded-xl text-gray-700 hover:bg-sand/60 font-medium transition cursor-pointer"
-                            >
-                                ปิด
-                            </button>
-                        </div>
-                    </div>
-                </div>
             )}
         </div>
     )

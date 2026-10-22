@@ -2,12 +2,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import PageHeader from './PageHeader'
 import Icon from './Icon'
-import { AppointmentBox, ConfirmDialog, RepairImagePicker, RepairStatusBadge, SlotList, UrgencyBadge } from './RepairParts'
+import { ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge, SlotList, UrgencyBadge } from './RepairParts'
 import { repairCategories, repairStatuses, repairStatusKeys } from '../data/repairs'
-import { formatDateTime } from '../lib/billing'
+import { baht, formatDateTime } from '../lib/billing'
 import { AdminRepairPayment } from './RepairPayment'
 import { formatSlot, formatThaiDate, isBooked, isInSlots, isValidPeriod, normalizePeriod, removeRepairImage, todayIso, upcomingSlots, uploadRepairImage } from '../lib/repairs'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
+import { SkeletonTable } from './Skeleton.jsx'
 
 // คลาส Tailwind ของช่องกรอก/ตัวเลือกในฟอร์ม (ใช้ร่วมกันทุกช่อง)
 const inputClass = 'w-full border border-line rounded-xl px-4 py-2 text-ink text-sm outline-none focus:border-secondary focus:ring-2 focus:ring-secondary/30 bg-white disabled:bg-sand/60 disabled:text-muted'
@@ -65,6 +67,20 @@ async function fetchData() {
     }
 }
 
+// ค่าซ่อมและผู้รับผิดชอบ (ไม่มีค่าใช้จ่าย = "-") ใช้ในตารางและการ์ดรายการ
+function RepairCost({ repair, inline = false }) {
+    if (!(Number(repair.cost) > 0)) return inline ? null : '-'
+    const tenantPays = repair.cost_payer === 'tenant'
+    const payer = tenantPays ? 'ผู้เช่าจ่าย' : 'หอพักจ่าย'
+    if (inline) return <div className="text-xs text-muted">ค่าซ่อม {baht(repair.cost)} · <span className={tenantPays ? 'text-rose-700' : ''}>{payer}</span></div>
+    return (
+        <>
+            <div className="font-medium text-ink tabular-nums">{baht(repair.cost)}</div>
+            <div className={`text-xs ${tenantPays ? 'text-rose-700' : 'text-muted'}`}>{payer}</div>
+        </>
+    )
+}
+
 // ไอคอนและสีของการ์ดสรุปแต่ละสถานะ
 const summaryMeta = {
     all: { icon: 'wrench', tone: 'bg-slate-100 text-slate-600' },
@@ -103,6 +119,9 @@ function AdminRepairs({ adminId }) {
 
     // โหลดซ้ำหลังบันทึก/ลบ
     const load = async () => setData(await fetchData())
+
+    // อัปเดตเองเมื่อผู้เช่าแจ้งซ่อมใหม่ ยืนยัน/ขอเปลี่ยนนัด หรือยืนยันผลซ่อม
+    useRealtimeReload(['repairs'], load)
 
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {
@@ -210,6 +229,8 @@ function AdminRepairs({ adminId }) {
     // บันทึกรายการแจ้งซ่อม: ตรวจข้อมูล อัปโหลด/ลบรูป แล้วเพิ่มหรืออัปเดตในฐานข้อมูล
     const handleSave = async (e) => {
         e.preventDefault()
+        // เรื่องที่เสร็จสิ้นแล้วแก้ไม่ได้
+        if (editing !== 'new' && editing.status === 'done') return
         // 1. ตรวจข้อมูลที่จำเป็น
         const isNew = editing === 'new'
         const problem = form.problem.trim()
@@ -273,16 +294,24 @@ function AdminRepairs({ adminId }) {
             appointment_state: keepAppt && form.appointment_date ? appointmentState : null,
             technician: form.technician.trim(),
             cost,
-            cost_payer: form.cost_payer,
+            // แอดมินแจ้งเอง (ห้องว่าง ไม่มีผู้เช่า) หอพักรับผิดชอบค่าใช้จ่ายเสมอ
+            cost_payer: isNew || !editing.user_id ? 'owner' : form.cost_payer,
             // ให้ผู้เช่าเลือกเวลาใหม่: ล้างเวลาที่ผู้เช่าเลือกไว้ (ฐานข้อมูลจะแจ้งเตือนผู้เช่าให้เลือกใหม่)
             ...(askNewTime && { available_slots: [], allow_entry: false }),
+        }
+        // เรื่องที่ผู้เช่าแจ้ง: ไม่ส่งปัญหา รายละเอียด และรูปไปแก้ (ฐานข้อมูลไม่ให้แอดมินแก้ส่วนนี้)
+        if (!isNew && editing.user_id) {
+            delete fields.problem
+            delete fields.detail
+            delete fields.image_path
         }
         const { error } = isNew
             ? await supabase.from('repairs').insert({
                 ...fields,
                 room: form.room,
                 user_id: tenant?.user_id ?? null,
-                tenant_name: tenant?.name ?? '',
+                // แอดมินแจ้งซ่อมเองได้เฉพาะห้องว่าง ผู้แจ้งจึงเป็นผู้ดูแล
+                tenant_name: tenant?.name ?? 'ผู้ดูแล',
             })
             : await supabase.from('repairs').update(fields).eq('id', editing.id)
 
@@ -325,6 +354,11 @@ function AdminRepairs({ adminId }) {
     // ค่าที่ใช้ตอนแสดงผล: เป็นรายการใหม่ไหม, รูปเดิมที่ยังแสดงในฟอร์ม, และรายการแท็บ (ทั้งหมด + ทุกสถานะ)
     const isNew = editing === 'new'
     const existingPath = editing && !isNew && !removeExisting ? editing.image_path : null
+    // เสร็จสิ้นแล้ว = ดูได้อย่างเดียว แก้อะไรไม่ได้อีก (ฐานข้อมูลล็อกไว้ด้วย)
+    const locked = Boolean(editing) && !isNew && editing.status === 'done'
+    const fieldLocked = saving || locked
+    // มีผู้เช่าเป็นเจ้าของเรื่องไหม (แอดมินแจ้งเองสำหรับห้องว่าง = ไม่มี) ใช้ซ่อนส่วนที่เกี่ยวกับผู้เช่า
+    const hasTenant = Boolean(editing) && !isNew && Boolean(editing.user_id)
     // การ์ดสรุปด้านบน (ไม่แสดงสถานะยกเลิก แต่ยังนับรวมใน "ทั้งหมด")
     const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.filter((k) => k !== 'cancelled').map((k) => ({ key: k, label: repairStatuses[k].label }))]
     return (
@@ -350,6 +384,12 @@ function AdminRepairs({ adminId }) {
                         <h2 className="text-lg font-semibold text-primary-dark">{isNew ? 'แจ้งซ่อมใหม่' : 'จัดการรายการแจ้งซ่อม'}</h2>
                         {!isNew && <RepairStatusBadge status={editing.status} />}
                     </div>
+                    {locked && (
+                        <p className="-mt-2 text-sm text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
+                            <Icon name="checkCircle" className="w-4 h-4 shrink-0" />
+                            เรื่องนี้ซ่อมเสร็จสิ้นแล้ว ดูข้อมูลได้อย่างเดียว แก้ไขไม่ได้
+                        </p>
+                    )}
 
                     {/* เลือกห้อง (แก้ได้เฉพาะรายการใหม่) และช่องแสดงผู้แจ้ง/วันที่แจ้ง (อ่านอย่างเดียว) */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -357,8 +397,9 @@ function AdminRepairs({ adminId }) {
                             <label className="block text-sm text-muted mb-1">ห้อง</label>
                             <select value={form.room} onChange={set('room')} disabled={!isNew || saving} className={inputClass} required>
                                 <option value="">เลือกห้อง</option>
+                                {/* แจ้งซ่อมใหม่เลือกได้เฉพาะห้องว่าง (ห้องที่มีผู้เช่า ให้ผู้เช่าแจ้งเอง) */}
                                 {rooms.map((n) => (
-                                    <option key={n} value={n}>
+                                    <option key={n} value={n} disabled={isNew && Boolean(tenantOf(n))}>
                                         {n}{tenantOf(n) ? ` — ${tenantOf(n).name}` : ' (ว่าง)'}
                                     </option>
                                 ))}
@@ -368,7 +409,7 @@ function AdminRepairs({ adminId }) {
                             <label className="block text-sm text-muted mb-1">{isNew ? 'ผู้แจ้ง' : 'วันที่แจ้ง'}</label>
                             <input
                                 disabled
-                                value={isNew ? tenantOf(form.room)?.name || '-' : formatTimeDate(editing.created_at)}
+                                value={isNew ? (form.room ? 'ผู้ดูแล' : '-') : formatTimeDate(editing.created_at)}
                                 className={inputClass}
                             />
                         </div>
@@ -378,7 +419,7 @@ function AdminRepairs({ adminId }) {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm text-muted mb-1">ประเภท</label>
-                            <select value={form.category} onChange={set('category')} disabled={saving} className={inputClass}>
+                            <select value={form.category} onChange={set('category')} disabled={fieldLocked} className={inputClass}>
                                 {Object.entries(repairCategories).map(([k, label]) => (
                                     <option key={k} value={k}>{label}</option>
                                 ))}
@@ -390,8 +431,8 @@ function AdminRepairs({ adminId }) {
                         </div>
                     </div>
 
-                    {/* ข้อมูลจากผู้เช่า: เวลาที่สะดวก (กดเพื่อใช้เป็นวันนัด) เบอร์ติดต่อ และข้อความล่าสุด */}
-                    {!isNew && (
+                    {/* ข้อมูลจากผู้เช่า: เวลาที่สะดวก เบอร์ติดต่อ และข้อความล่าสุด (แอดมินแจ้งเอง ไม่มีผู้เช่า = ไม่แสดง) */}
+                    {hasTenant && (
                         <div className="rounded-xl bg-sand/60 border border-line p-4 flex flex-col gap-3">
                             <div className="text-sm font-medium text-primary-dark">เวลาที่ผู้เช่าสะดวกให้ช่างเข้า</div>
                             <SlotList
@@ -452,49 +493,53 @@ function AdminRepairs({ adminId }) {
 
                     {/* ชื่อปัญหา (บังคับกรอก) */}
                     <div>
-                        <label className="block text-sm text-muted mb-1">ปัญหา</label>
-                        <input required maxLength={200} value={form.problem} onChange={set('problem')} disabled={saving} placeholder="เช่น หลอดไฟขาด" className={inputClass} />
+                        <label className="block text-sm text-muted mb-1">ปัญหา{hasTenant && !locked && <span className="text-xs"> (ผู้เช่าเป็นผู้แจ้ง แก้ไขไม่ได้)</span>}</label>
+                        <input required maxLength={200} value={form.problem} onChange={set('problem')} disabled={fieldLocked || hasTenant} placeholder="เช่น หลอดไฟขาด" className={inputClass} />
                     </div>
 
                     {/* รายละเอียดเพิ่มเติม */}
                     <div>
                         <label className="block text-sm text-muted mb-1">รายละเอียดเพิ่มเติม</label>
-                        <textarea rows={3} maxLength={2000} value={form.detail} onChange={set('detail')} disabled={saving} placeholder="อธิบายอาการ ตำแหน่ง หรือช่วงเวลาที่สะดวกให้ช่างเข้า" className={inputClass} />
+                        <textarea rows={3} maxLength={2000} value={form.detail} onChange={set('detail')} disabled={fieldLocked || hasTenant} placeholder="อธิบายอาการ ตำแหน่ง หรือช่วงเวลาที่สะดวกให้ช่างเข้า" className={inputClass} />
                     </div>
 
                     {/* เปลี่ยนสถานะงานซ่อม (ผู้เช่าจะได้รับแจ้งเตือนเมื่อสถานะเปลี่ยน) */}
                     <div>
                         <label className="block text-sm text-muted mb-1">สถานะ</label>
-                        <select value={form.status} onChange={(e) => changeStatus(e.target.value)} disabled={saving} className={inputClass}>
-                            {/* เลือก "รอดำเนินการ" และ "ยกเลิก" ไม่ได้ (ถ้ารายการอยู่ในสถานะนั้น ยังแสดงค่าปัจจุบันไว้แต่กดเลือกไม่ได้) */}
+                        <select value={form.status} onChange={(e) => changeStatus(e.target.value)} disabled={fieldLocked} className={inputClass}>
+                            {/* เลือก "ยกเลิก" ไม่ได้ (ถ้ารายการอยู่ในสถานะนั้น ยังแสดงค่าปัจจุบันไว้แต่กดเลือกไม่ได้) */}
                             {repairStatusKeys.map((k) => {
-                                const locked = k === 'pending' || k === 'cancelled'
-                                if (locked && form.status !== k) return null
+                                const blocked = k === 'cancelled'
+                                if (blocked && form.status !== k) return null
                                 return (
-                                    <option key={k} value={k} disabled={locked} hidden={locked}>{repairStatuses[k].label}</option>
+                                    <option key={k} value={k} disabled={blocked} hidden={blocked}>{repairStatuses[k].label}</option>
                                 )
                             })}
                         </select>
                     </div>
 
-                    {/* เสร็จสิ้น: นัดเดิม ค่าใช้จ่าย ผู้รับผิดชอบค่าใช้จ่าย และชื่อช่าง */}
+                    {/* เสร็จสิ้น: ค่าใช้จ่าย ผู้รับผิดชอบค่าใช้จ่าย และชื่อช่าง */}
                     {form.status === 'done' && (
                         <div className="flex flex-col gap-3">
-                            {!isNew && editing.appointment_date && <AppointmentBox repair={editing} />}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div>
                                     <label className="block text-sm text-muted mb-1">ค่าใช้จ่าย (บาท)</label>
-                                    <input type="number" min="0" step="0.01" value={form.cost} onChange={set('cost')} disabled={saving} placeholder="0" className={inputClass} />
+                                    <input type="number" min="0" step="0.01" value={form.cost} onChange={set('cost')} disabled={fieldLocked} placeholder="0" className={inputClass} />
                                 </div>
                                 <div>
                                     <label className="block text-sm text-muted mb-1">ผู้รับผิดชอบค่าใช้จ่าย</label>
-                                    <select value={form.cost_payer} onChange={set('cost_payer')} disabled={saving} className={inputClass}>
-                                        <option value="owner">หอพัก (ของเสื่อมตามอายุการใช้งาน)</option>
-                                        <option value="tenant">ผู้เช่า (ทำเสียหายเอง)</option>
-                                    </select>
+                                    {/* แอดมินแจ้งเอง (ไม่มีผู้เช่า): หอพักรับผิดชอบเสมอ แสดงเป็นช่องอ่านอย่างเดียว */}
+                                    {hasTenant ? (
+                                        <select value={form.cost_payer} onChange={set('cost_payer')} disabled={fieldLocked} className={inputClass}>
+                                            <option value="owner">หอพัก (ของเสื่อมตามอายุการใช้งาน)</option>
+                                            <option value="tenant">ผู้เช่า (ทำเสียหายเอง)</option>
+                                        </select>
+                                    ) : (
+                                        <input disabled value="หอพัก (ของเสื่อมตามอายุการใช้งาน)" className={inputClass} />
+                                    )}
                                 </div>
                             </div>
-                            <input maxLength={100} value={form.technician} onChange={set('technician')} disabled={saving} placeholder="ชื่อช่าง (ถ้ามี)" className={inputClass} />
+                            <input maxLength={100} value={form.technician} onChange={set('technician')} disabled={fieldLocked} placeholder="ชื่อช่าง (ถ้ามี)" className={inputClass} />
                         </div>
                     )}
 
@@ -509,25 +554,38 @@ function AdminRepairs({ adminId }) {
                         </p>
                     )}
 
-                    {/* ข้อความจากแอดมินถึงผู้เช่า */}
-                    <div>
-                        <label className="block text-sm text-muted mb-1">หมายเหตุถึงผู้เช่า (ผู้เช่าจะเห็นข้อความนี้)</label>
-                        <textarea rows={2} maxLength={1000} value={form.admin_note} onChange={set('admin_note')} disabled={saving} placeholder={form.status === 'cancelled' ? 'เหตุผลที่ยกเลิก เช่น ซ่อมเรียบร้อยแล้วจากการแจ้งครั้งก่อน' : 'เช่น รออะไหล่ 2-3 วัน, ช่างจะโทรหาก่อนเข้า 30 นาที'} className={inputClass} />
-                    </div>
+                    {/* ข้อความจากแอดมินถึงผู้เช่า (แอดมินแจ้งเองสำหรับห้องว่าง ไม่มีผู้เช่า จึงไม่แสดง) */}
+                    {hasTenant && (
+                        <div>
+                            <label className="block text-sm text-muted mb-1">หมายเหตุถึงผู้เช่า (ผู้เช่าจะเห็นข้อความนี้)</label>
+                            <textarea rows={2} maxLength={1000} value={form.admin_note} onChange={set('admin_note')} disabled={fieldLocked} placeholder={form.status === 'cancelled' ? 'เหตุผลที่ยกเลิก เช่น ซ่อมเรียบร้อยแล้วจากการแจ้งครั้งก่อน' : 'เช่น รออะไหล่ 2-3 วัน, ช่างจะโทรหาก่อนเข้า 30 นาที'} className={inputClass} />
+                        </div>
+                    )}
 
                     {/* แนบ/เปลี่ยน/นำรูปออก (นำออกแล้วจะลบรูปเดิมตอนบันทึก) */}
                     <div>
                         <label className="block text-sm text-muted mb-1">รูปภาพ</label>
-                        <RepairImagePicker
-                            file={file}
-                            existingPath={existingPath}
-                            disabled={saving}
-                            onPick={(f) => setFile(f)}
-                            onClear={() => {
-                                setFile(null)
-                                setRemoveExisting(true)
-                            }}
-                        />
+                        {/* เรื่องที่ผู้เช่าแจ้ง หรือเสร็จสิ้นแล้ว: ดูรูปได้อย่างเดียว */}
+                        {locked || hasTenant ? (
+                            editing.image_path ? (
+                                <div className="rounded-2xl bg-sand/70 border border-line p-4 flex justify-center">
+                                    <RepairImage path={editing.image_path} className="max-h-72" />
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted">ไม่มีรูปภาพ</p>
+                            )
+                        ) : (
+                            <RepairImagePicker
+                                file={file}
+                                existingPath={existingPath}
+                                disabled={saving}
+                                onPick={(f) => setFile(f)}
+                                onClear={() => {
+                                    setFile(null)
+                                    setRemoveExisting(true)
+                                }}
+                            />
+                        )}
                     </div>
 
                     {/* ข้อความ error ของฟอร์ม */}
@@ -544,11 +602,13 @@ function AdminRepairs({ adminId }) {
                         )}
                         <div className="flex gap-3 w-full sm:w-auto justify-end">
                             <button type="button" onClick={close} disabled={saving} className="border border-line text-muted hover:bg-sand rounded-xl px-8 py-2.5 text-sm font-semibold flex-1 sm:flex-initial">
-                                ยกเลิก
+                                {locked ? 'ปิด' : 'ยกเลิก'}
                             </button>
-                            <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark text-white rounded-xl px-10 py-2.5 text-sm font-semibold shadow-card flex-1 sm:flex-initial">
-                                {saving ? 'กำลังบันทึก...' : 'บันทึก'}
-                            </button>
+                            {!locked && (
+                                <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark text-white rounded-xl px-10 py-2.5 text-sm font-semibold shadow-card flex-1 sm:flex-initial">
+                                    {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+                                </button>
+                            )}
                         </div>
                     </div>
                 </form>
@@ -584,7 +644,7 @@ function AdminRepairs({ adminId }) {
                         </div>
                     )}
 
-                    <div className="grid grid-cols-3 lg:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                         {tabs.map((t) => {
                             const active = activeTab === t.key
                             const meta = summaryMeta[t.key]
@@ -636,7 +696,7 @@ function AdminRepairs({ adminId }) {
                                     <Icon name="calendar" className="w-4 h-4 text-muted" />
                                     {oldestFirst ? 'เก่าสุด → ใหม่สุด' : 'ใหม่สุด → เก่าสุด'}
                                 </button>
-                                <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-48 max-w-full focus-within:border-secondary focus-within:bg-white">
+                                <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-48 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                                     <Icon name="search" className="w-4 h-4 text-muted" />
                                     <input
                                         type="search"
@@ -651,7 +711,7 @@ function AdminRepairs({ adminId }) {
 
                         {/* กำลังโหลด/โหลดไม่สำเร็จ แสดงข้อความ ไม่งั้นแสดงรายการ */}
                         {loading || loadError ? (
-                            <p className={`text-center py-12 ${loadError ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : loadError}</p>
+                            loading ? <SkeletonTable rows={6} cols={5} /> : <p className="text-center py-12 text-red-600">{loadError}</p>
                         ) : (
                             <div className="xl:overflow-auto xl:max-h-[36rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
                                 {/* จอใหญ่ (xl ขึ้นไป): ตาราง กดแถวไหนก็ได้เพื่อเปิดจัดการ รายการรอดำเนินการพื้นสีฟ้า */}
@@ -663,6 +723,7 @@ function AdminRepairs({ adminId }) {
                                             <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-left">ปัญหา</th>
                                             <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">วันที่แจ้ง</th>
                                             <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">วันที่เสร็จสิ้น</th>
+                                            <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">ค่าซ่อม</th>
                                             <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">สถานะ</th>
                                             <th className="px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10 text-center">จัดการ</th>
                                         </tr>
@@ -689,6 +750,7 @@ function AdminRepairs({ adminId }) {
                                                 <td className="px-3 py-3 border-x border-line/60 text-center text-muted whitespace-nowrap">
                                                     {r.status === 'done' && r.completed_at ? formatThaiDate(r.completed_at) : '-'}
                                                 </td>
+                                                <td className="px-3 py-3 border-x border-line/60 text-center text-muted whitespace-nowrap"><RepairCost repair={r} /></td>
                                                 <td className="px-3 py-3 border-x border-line/60 text-center"><RepairStatusBadge status={r.status} /></td>
                                                 <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                                                     <button onClick={() => openEdit(r)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist">จัดการ</button>
@@ -712,6 +774,7 @@ function AdminRepairs({ adminId }) {
                                                     {r.status === 'done' && r.completed_at && (
                                                         <div className="text-xs text-emerald-700">เสร็จสิ้น {formatThaiDate(r.completed_at)}</div>
                                                     )}
+                                                    <RepairCost repair={r} inline />
                                                 </div>
                                                 <div className="flex flex-col items-end gap-1">
                                                     <RepairStatusBadge status={r.status} />

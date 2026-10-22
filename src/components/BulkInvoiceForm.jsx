@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import Icon from './Icon'
+import Switch from './Switch'
 import MonthPicker from './MonthPicker'
 import { baht, currentMonth, formatMonth } from '../lib/billing'
 import { buildBulkRows, evaluateRow, summarize, validateRates } from '../lib/bulkInvoices'
@@ -14,13 +15,16 @@ const prevInput = 'w-16 border border-transparent bg-transparent rounded px-1 py
 const rateInput = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
 
 // repairFees = ค่าซ่อมที่ยังไม่ได้เรียกเก็บ { ห้อง: ยอด } (ฐานข้อมูลบวกเข้าใบให้ตอนสร้าง ที่นี่ใช้แสดงยอดตัวอย่าง)
-function BulkInvoiceForm({ tenants, rents, invoices, settings, repairFees = {}, onDone, onCancel }) {
+function BulkInvoiceForm({ tenants, rents, invoices, settings, repairFees = {}, onDone }) {
     const [month, setMonth] = useState(currentMonth())
     // อัตราที่ใช้กับทุกห้องในรอบนี้ (ค่าเริ่มต้นจากหน้าตั้งค่า แก้ได้)
     const [rates, setRates] = useState({ waterRate: String(settings.rateWater), elecRate: String(settings.rateElectric), commonFee: String(settings.commonFee) })
     // ค่าที่กรอก: { ห้อง: { waterPrev, waterCurr, elecPrev, elecCurr } }
     const [inputs, setInputs] = useState({})
     const [confirming, setConfirming] = useState(false)
+    // ค้นหาห้อง/ชื่อ และแสดงห้องที่มีใบเดือนนี้แล้วด้วยหรือไม่ (ปกติซ่อนไว้ เหลือเฉพาะห้องที่ยังต้องออกใบ)
+    const [search, setSearch] = useState('')
+    const [showCreated, setShowCreated] = useState(false)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState('')
 
@@ -30,6 +34,9 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, repairFees = {}, 
     const summary = useMemo(() => (rateError ? { records: [], errors: {}, total: 0 } : summarize(rows, inputs, rates, context)), [rows, inputs, rates, context, rateError])
     const errorCount = Object.keys(summary.errors).length
     const createdAlready = rows.filter((r) => r.exists).length
+    // แถวที่แสดง (การซ่อน/ค้นหาไม่กระทบค่าที่กรอกไว้และยอดสรุป)
+    const keyword = search.trim().toLowerCase()
+    const shownRows = rows.filter((r) => (showCreated || !r.exists) && (!keyword || r.room.toLowerCase().includes(keyword) || r.name.toLowerCase().includes(keyword)))
 
     const setCell = (room, key, value) => {
         setInputs((prev) => ({ ...prev, [room]: { ...prev[room], [key]: value } }))
@@ -79,10 +86,6 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, repairFees = {}, 
 
     return (
         <div className="px-4 sm:px-6 pb-8 flex flex-col gap-4">
-            <button onClick={onCancel} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm">
-                <Icon name="arrowLeft" className="w-4 h-4" />กลับไปรายการใบแจ้งหนี้
-            </button>
-
             {/* เดือนและอัตราค่าบริการของรอบนี้ */}
             <div className="bg-white rounded-2xl shadow-card p-5 grid gap-4 md:grid-cols-[auto_1fr] items-start">
                 <div>
@@ -103,13 +106,29 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, repairFees = {}, 
                 {rateError && <p className="md:col-span-2 text-sm text-red-600">{rateError}</p>}
             </div>
 
-            <p className="text-sm text-muted">
-                กรอกเลขมิเตอร์ปัจจุบันของแต่ละห้อง (มิเตอร์ก่อนหน้าดึงจากใบเดือนล่าสุดให้ แก้ได้ถ้าเปลี่ยนมิเตอร์) กด Enter เพื่อไปห้องถัดไป ห้องที่ไม่กรอกจะถูกข้าม
-                {createdAlready > 0 && ` · เดือน ${formatMonth(month)} มีใบแจ้งหนี้แล้ว ${createdAlready} ห้อง`}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted max-w-3xl">
+                    กรอกเลขมิเตอร์ปัจจุบันของห้องที่ต้องการออกใบ (มิเตอร์ก่อนหน้าดึงจากใบเดือนล่าสุดให้ แก้ได้ถ้าเปลี่ยนมิเตอร์) กด Enter เพื่อไปห้องถัดไป ห้องที่ไม่กรอกจะถูกข้าม
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2 border border-line bg-white rounded-xl px-3 py-1.5 w-56 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15">
+                        <Icon name="search" className="w-4 h-4 text-muted" />
+                        <input type="text" placeholder="ค้นหาห้อง/ชื่อ" aria-label="ค้นหาห้องหรือชื่อผู้เช่า" className="outline-none w-full bg-transparent text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
+                    </div>
+                    {createdAlready > 0 && (
+                        <Switch checked={showCreated} onChange={setShowCreated} badge={createdAlready}>
+                            แสดงห้องที่มีใบเดือน {formatMonth(month)} แล้ว
+                        </Switch>
+                    )}
+                </div>
+            </div>
 
             {rows.length === 0 ? (
                 <p className="text-center py-10 text-muted">ยังไม่มีผู้เช่า</p>
+            ) : shownRows.length === 0 ? (
+                <p className="text-center py-10 text-muted">
+                    {keyword ? 'ไม่พบห้องที่ตรงกับคำค้นหา' : `ทุกห้องมีใบแจ้งหนี้เดือน ${formatMonth(month)} แล้ว (เลือกเดือนอื่น หรือกดแสดงห้องที่มีใบแล้ว)`}
+                </p>
             ) : (
                 <div className="bg-white rounded-2xl shadow-card overflow-x-auto">
                     <table className="w-full text-sm min-w-[880px]">
@@ -127,7 +146,7 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, repairFees = {}, 
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map((r) => {
+                            {shownRows.map((r) => {
                                 const input = inputs[r.room] ?? {}
                                 const ev = evaluateRow(r, input, rates)
                                 const disabled = ev.state === 'skip'
@@ -175,7 +194,7 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, repairFees = {}, 
             {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
 
             {/* แถบสรุปและปุ่มสร้าง (ต้องกดยืนยันอีกครั้ง เพราะผู้เช่าทุกคนจะได้รับแจ้งเตือนใบแจ้งหนี้ใหม่ทันที) */}
-            <div className="sticky bottom-0 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-white/95 backdrop-blur border-t border-line flex flex-wrap items-center justify-between gap-3">
+            <div className="sticky bottom-4 px-4 sm:px-5 py-3 bg-white rounded-2xl border border-line shadow-card flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm">
                     <span className="font-medium text-primary-dark">พร้อมสร้าง {summary.records.length} ใบ รวม {baht(summary.total + summary.records.reduce((sum, rec) => sum + (repairFees[rec.room] ?? 0), 0))}</span>
                     {errorCount > 0 && <span className="text-red-600"> · มีแถวที่กรอกไม่ถูกต้อง {errorCount} ห้อง</span>}
