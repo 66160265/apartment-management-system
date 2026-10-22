@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { homeFor } from '../lib/auth'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
@@ -77,6 +77,16 @@ export function RequireRole({ role, children }) {
     // อ่านสิทธิ์ไม่ได้ (ไม่มีแถวใน profiles) ส่งกลับหน้า login กันวนไปมา
     if (!me.role) return <Navigate to="/" replace />
     if (me.role !== role) return <Navigate to={homeFor(me.role)} replace />
+    return children
+}
+
+// บัญชีที่ถูกตั้งให้ต้องเปลี่ยนรหัสผ่าน (แอดมินสร้าง/รีเซ็ตรหัสให้) ใช้ได้แค่หน้าบัญชีจนกว่าจะตั้งรหัสใหม่
+// ไม่รอข้อมูลผู้ใช้ก่อนแสดงหน้า (ไม่ให้หน้าแรกช้าลง) พอโหลดเสร็จและต้องเปลี่ยนรหัสจึงพาไปหน้าบัญชี
+export function RequireFreshPassword({ children }) {
+    const me = useCurrentUser()
+    const { pathname } = useLocation()
+
+    if (me?.mustChangePassword && pathname !== '/account') return <Navigate to="/account" replace />
     return children
 }
 

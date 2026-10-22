@@ -1,4 +1,4 @@
-import { RedirectIfAuthed, RequireAuth, RequireRole } from './components/AuthGuards.jsx'
+import { RedirectIfAuthed, RequireAuth, RequireFreshPassword, RequireRole } from './components/AuthGuards.jsx'
 import { Navigate, Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout.jsx'
 import { lazy } from 'react'
@@ -30,7 +30,7 @@ function App() {
         <Route path="/" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />
 
         {/* ต้อง login ก่อนจึงเข้าหน้าในกลุ่มนี้ได้ */}
-        <Route element={<RequireAuth><Layout /></RequireAuth>}>
+        <Route element={<RequireAuth><RequireFreshPassword><Layout /></RequireFreshPassword></RequireAuth>}>
           {/* เฉพาะผู้ดูแลระบบ */}
           <Route path="/admin/dashboard" element={<RequireRole role="admin"><AdminDashboardPage /></RequireRole>} />
           <Route path="/rooms" element={<RequireRole role="admin"><RoomsPage /></RequireRole>} />

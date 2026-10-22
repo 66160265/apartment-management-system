@@ -71,6 +71,11 @@ Deno.serve(async (req) => {
       }
       const { error } = await admin.auth.admin.updateUserById(userId, { password })
       if (error) return json({ error: `เปลี่ยนรหัสผ่านไม่สำเร็จ: ${error.message}` }, 400)
+      // รหัสที่แอดมินตั้งให้คนอื่นแอดมินรู้อยู่ ให้เจ้าของบัญชีตั้งรหัสใหม่เองตอนเข้าครั้งถัดไป (ตั้งรหัสของตัวเองไม่ต้อง)
+      if (userId !== caller.user.id) {
+        const { error: flagError } = await admin.from('profiles').update({ must_change_password: true }).eq('id', userId)
+        if (flagError) return json({ error: `ตั้งรหัสแล้วแต่บันทึกการบังคับเปลี่ยนรหัสไม่สำเร็จ: ${flagError.message}` }, 500)
+      }
     }
 
     // ข้อมูลผู้เช่า (มีเฉพาะบัญชีที่ผูกกับผู้เช่า)

@@ -14,6 +14,12 @@ export const emailToUsername = (email = '') =>
 let cached = null
 let pending = null
 
+// ล้างแคชให้โหลดข้อมูลผู้ใช้ใหม่ครั้งถัดไป (เช่น หลังเปลี่ยนรหัสผ่านครั้งแรก)
+export function resetCurrentUser() {
+    cached = null
+    pending = null
+}
+
 // ล้างแคชเมื่อสถานะ login เปลี่ยน (login/logout/เปลี่ยนบัญชี)
 supabase.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
@@ -22,6 +28,15 @@ supabase.auth.onAuthStateChange((event) => {
     }
 })
 
+// อ่านสิทธิ์และเครื่องหมายบังคับเปลี่ยนรหัสผ่านจาก profiles
+// ถ้ายังไม่ได้รัน migration hardening (ไม่มีคอลัมน์ must_change_password) ให้อ่านแค่สิทธิ์ ระบบทำงานตามเดิม
+async function fetchProfile(userId) {
+    const full = await supabase.from('profiles').select('role, must_change_password').eq('id', userId).single()
+    if (!full.error) return full.data
+    const basic = await supabase.from('profiles').select('role').eq('id', userId).single()
+    return basic.data
+}
+
 // ดึงข้อมูลผู้ใช้ที่ login: บัญชี สิทธิ์จาก profiles และข้อมูลผู้เช่า (ถ้ามี)
 async function fetchCurrentUser() {
     // getSession อ่านจากเครื่อง ไม่ต้องยิงเซิร์ฟเวอร์เหมือน getUser
@@ -29,8 +44,8 @@ async function fetchCurrentUser() {
     const user = session?.user
     if (!user) return null
     // ดึงสิทธิ์ (profiles) และข้อมูลผู้เช่าของบัญชีนี้พร้อมกัน
-    const [{ data: profile }, { data: tenant }] = await Promise.all([
-        supabase.from('profiles').select('role').eq('id', user.id).single(),
+    const [profile, { data: tenant }] = await Promise.all([
+        fetchProfile(user.id),
         supabase.from('tenants').select('name, room, phone, start_date, end_date').eq('user_id', user.id).maybeSingle(),
     ])
     return {
@@ -38,6 +53,7 @@ async function fetchCurrentUser() {
         email: user.email,
         username: emailToUsername(user.email),
         role: profile?.role,
+        mustChangePassword: Boolean(profile?.must_change_password),
         tenant,
     }
 }
