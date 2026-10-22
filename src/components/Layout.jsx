@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Icon from './Icon.jsx'
 import Sidebar from './Sidebar.jsx'
+import { SkeletonPage } from './Skeleton.jsx'
 import { prefetchPages } from '../lib/pages.js'
 import { useCurrentUser } from '../lib/useCurrentUser.js'
 
@@ -58,7 +59,7 @@ function Layout() {
                 {/* จำกัดความกว้างเนื้อหาบนจอใหญ่มาก ให้อ่านง่ายและเรียงตรงกลาง */}
                 <div className="mx-auto w-full max-w-[1500px]">
                     {/* เมนูข้างอยู่ค้างไว้ ระหว่างโหลดโค้ดของหน้าที่เปิดครั้งแรกแสดงเฉพาะส่วนเนื้อหาว่าง ๆ */}
-                    <Suspense fallback={<div className="p-6 text-muted flex items-center gap-3"><span className="w-4 h-4 rounded-full border-2 border-mist border-t-primary animate-spin" />กำลังโหลด...</div>}>
+                    <Suspense fallback={<SkeletonPage />}>
                         <Outlet />
                     </Suspense>
                 </div>

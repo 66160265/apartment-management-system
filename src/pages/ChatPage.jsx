@@ -6,6 +6,7 @@ import PageHeader from '../components/PageHeader'
 import { loadConversations } from '../lib/chat'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonList, SkeletonPage } from '../components/Skeleton.jsx'
 
 // ความสูงของกล่องแชท: เต็มจอที่เหลือหลังหัวหน้า (จอเล็กมีแถบเมนูด้านบนเพิ่ม)
 const panelHeight = 'h-[calc(100dvh-10.5rem)] lg:h-[calc(100dvh-7.5rem)] min-h-[26rem]'
@@ -22,7 +23,7 @@ const formatListTime = (iso) => {
 // หน้าแชท: ผู้เช่าคุยกับผู้ดูแลหอพัก / ผู้ดูแลเลือกห้องแชทของผู้เช่าแต่ละคน
 function ChatPage() {
     const me = useCurrentUser()
-    if (!me) return <p className="p-6 text-muted">กำลังโหลด...</p>
+    if (!me) return <SkeletonPage />
     return me.role === 'admin' ? <AdminChat /> : <TenantChat me={me} />
 }
 
@@ -116,7 +117,7 @@ function AdminChat() {
                         </div>
                         <div className="flex-1 min-h-0 overflow-y-auto">
                             {loading ? (
-                                <p className="text-center text-muted py-10">กำลังโหลด...</p>
+                                <SkeletonList rows={6} />
                             ) : error ? (
                                 <p className="text-center text-red-600 py-10 px-4 text-sm">{error}</p>
                             ) : visible.length === 0 ? (

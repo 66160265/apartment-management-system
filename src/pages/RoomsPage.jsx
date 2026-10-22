@@ -4,6 +4,7 @@ import PageHeader from '../components/PageHeader'
 import { baht } from '../lib/billing'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
+import { SkeletonCardGrid } from '../components/Skeleton.jsx'
 
 // ค่าเริ่มต้นของฟอร์มเพิ่มห้องใหม่
 const emptyForm = { number: '', floor: '', status: 'vacant', rent: '', note: '' }
@@ -277,7 +278,7 @@ function RoomsPage() {
                 {/* ข้อความกำลังโหลด / error / ไม่มีห้อง */}
                 {(loading || loadError || visible.length === 0) && (
                     <div className={`bg-white rounded-2xl shadow-card py-14 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
-                        {loading ? 'กำลังโหลด...' : loadError || 'ไม่พบห้องในหมวดนี้'}
+                        {loading ? <SkeletonCardGrid count={8} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 p-4 text-left" /> : loadError || 'ไม่พบห้องในหมวดนี้'}
                     </div>
                 )}
 

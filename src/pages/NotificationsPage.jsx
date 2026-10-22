@@ -6,6 +6,7 @@ import PageHeader from '../components/PageHeader'
 import { ConfirmDialog } from '../components/RepairParts'
 import { formatNotificationTime, typeLabels } from '../data/notifications'
 import { clearRead, markAllRead, markRead, removeNotification, useNotifications } from '../lib/useNotifications'
+import { SkeletonList } from '../components/Skeleton.jsx'
 
 // ไอคอนและสีของแจ้งเตือนแต่ละประเภท
 const typeStyle = {
@@ -116,7 +117,7 @@ function NotificationsPage() {
 
                 {/* กำลังโหลด / error / ไม่มีรายการ / รายการแจ้งเตือน (ยังไม่อ่านตัวหนา มีจุดแดง) */}
                 {loading || error ? (
-                    <p className={`py-14 text-center text-sm ${error ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : error}</p>
+                    loading ? <SkeletonList rows={6} /> : <p className="py-14 text-center text-sm text-red-600">{error}</p>
                 ) : visible.length === 0 ? (
                     <div className="py-14 text-center text-muted text-sm">
                         <span className="mx-auto mb-3 grid place-items-center w-12 h-12 rounded-full bg-sand text-muted"><Icon name="bell" className="w-6 h-6" /></span>

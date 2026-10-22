@@ -17,6 +17,7 @@ const AdminUsersPage = lazy(pageLoaders.adminUsers)
 const AuditLogPage = lazy(pageLoaders.audit)
 const ReportsPage = lazy(pageLoaders.reports)
 const NotificationsPage = lazy(pageLoaders.notifications)
+const AnnouncementsPage = lazy(pageLoaders.announcements)
 const SettingsPage = lazy(pageLoaders.settings)
 const ChatPage = lazy(pageLoaders.chat)
 
@@ -49,6 +50,7 @@ function App() {
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
+          <Route path="/announcements" element={<AnnouncementsPage />} />
         </Route>
 
         {/* ที่อยู่ที่ไม่มีในระบบ กลับไปหน้า login (ถ้า login อยู่จะถูกส่งต่อไปหน้าแรกของสิทธิ์) */}

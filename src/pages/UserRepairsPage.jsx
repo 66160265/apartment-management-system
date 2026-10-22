@@ -10,6 +10,7 @@ import { formatSlot, formatThaiDate, removeRepairImage, upcomingSlots, uploadRep
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonCards, SkeletonPage } from '../components/Skeleton.jsx'
 
 // คลาส Tailwind ของช่องกรอก และค่าเริ่มต้นของฟอร์มแจ้งซ่อมใหม่
 const inputClass = 'w-full border border-line rounded-xl px-4 py-2 text-ink text-sm outline-none focus:border-secondary focus:ring-2 focus:ring-secondary/30 bg-white disabled:bg-sand/60'
@@ -126,7 +127,7 @@ function UserRepairsPage() {
     }, [notice])
 
     // รอข้อมูลผู้ใช้ก่อน
-    if (!me) return <p className="p-6 text-muted">กำลังโหลด...</p>
+    if (!me) return <SkeletonPage />
 
     // เปิดฟอร์มแจ้งซ่อมใหม่
     const openNew = () => {
@@ -571,7 +572,7 @@ function UserRepairsPage() {
                         </div>
                     </form>
                 ) : loading || loadError ? (
-                    <p className={`text-center py-10 ${loadError ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : loadError}</p>
+                    loading ? <SkeletonCards count={3} lines={3} /> : <p className="text-center py-10 text-red-600">{loadError}</p>
                 ) : (
                     <>
                         {/* ===== หน้ารายการ: การ์ดสรุปห้องและจำนวนที่ยังไม่เสร็จ ===== */}

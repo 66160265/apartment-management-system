@@ -37,10 +37,8 @@ vi.mock('../lib/supabaseClient', () => {
     }
 })
 // ต้องคืนอ็อบเจ็กต์เดิมทุกครั้ง (หน้าโหลดข้อมูลใหม่เมื่อ me เปลี่ยน ถ้าสร้างใหม่ทุกรอบจะวนไม่จบ)
-vi.mock('../lib/useCurrentUser', () => {
-    const me = { id: 'u1', role: 'user', tenant: { room: '101', name: 'สมชาย', phone: '0800000000' } }
-    return { useCurrentUser: () => me }
-})
+const meRef = vi.hoisted(() => ({ me: { id: 'u1', role: 'user', tenant: { room: '101', name: 'สมชาย', phone: '0800000000' } } }))
+vi.mock('../lib/useCurrentUser', () => ({ useCurrentUser: () => meRef.me }))
 
 const { default: UserDashboardPage } = await import('./UserDashboardPage.jsx')
 
@@ -73,6 +71,7 @@ describe('หน้าภาพรวมผู้เช่า (เรนเด�
     beforeEach(() => {
         for (const k of Object.keys(db)) delete db[k]
         db.rooms = { number: '101', floor: 2 }
+        delete meRef.me.tenant.end_date
         container = document.createElement('div')
         document.body.appendChild(container)
         root = createRoot(container)
@@ -121,5 +120,44 @@ describe('หน้าภาพรวมผู้เช่า (เรนเด�
         await mount()
         expect(text()).not.toContain('ที่ยังต้องชำระ')
         expect(text()).toContain('ชำระเงินเรียบร้อยแล้ว')
+    })
+
+    it('ประกาศล่าสุด (ภายใน 14 วัน) ขึ้นเป็นแถบหน้าแรก กดไปหน้าประกาศได้', async () => {
+        db.invoices = [inv({})]
+        db.announcements = [{ id: 'a1', title: 'งดน้ำวันพรุ่งนี้', body: 'เวลา 9-12 น.', important: true, created_at: new Date().toISOString(), updated_at: null }]
+        await mount()
+        expect(text()).toContain('ประกาศสำคัญ')
+        expect(text()).toContain('งดน้ำวันพรุ่งนี้')
+        expect([...container.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toContain('/announcements')
+    })
+
+    it('ประกาศเก่าเกิน 14 วันหรือไม่มีประกาศ: ไม่ขึ้นแถบ', async () => {
+        db.invoices = [inv({})]
+        db.announcements = [{ id: 'a1', title: 'ประกาศเก่า', body: '', important: false, created_at: new Date(Date.now() - 20 * 86400000).toISOString(), updated_at: null }]
+        await mount()
+        expect(text()).not.toContain('ประกาศเก่า')
+        expect([...container.querySelectorAll('a')].map((a) => a.getAttribute('href'))).not.toContain('/announcements')
+    })
+
+    it('สัญญาจะสิ้นสุดภายใน 30 วัน: เตือนผู้เช่าให้ติดต่อผู้ดูแลหอพัก', async () => {
+        meRef.me.tenant.end_date = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10)
+        db.invoices = [inv({})]
+        await mount()
+        expect(text()).toContain('สัญญาเช่าของคุณจะสิ้นสุดในอีก')
+        expect(text()).toContain('ติดต่อผู้ดูแลหอพัก')
+    })
+
+    it('สัญญาหมดแล้ว: ขึ้นข้อความว่าสิ้นสุดแล้ว', async () => {
+        meRef.me.tenant.end_date = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10)
+        db.invoices = [inv({})]
+        await mount()
+        expect(text()).toContain('สัญญาเช่าของคุณสิ้นสุดแล้ว')
+    })
+
+    it('สัญญายังเหลือมากกว่า 30 วัน: ไม่เตือน', async () => {
+        meRef.me.tenant.end_date = new Date(Date.now() + 120 * 86400000).toISOString().slice(0, 10)
+        db.invoices = [inv({})]
+        await mount()
+        expect(text()).not.toContain('สัญญาเช่าของคุณ')
     })
 })

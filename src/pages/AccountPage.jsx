@@ -1,12 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRealtimeReload } from '../lib/realtime'
 import Icon from '../components/Icon'
 import PageHeader from '../components/PageHeader'
 import { Avatar, ContractBadge } from '../components/TenantParts'
 import { supabase } from '../lib/supabaseClient'
+import { loadRenewals } from '../lib/contracts'
 import { formatDate } from '../lib/tenants'
 import { makeDefaultPassword } from '../lib/tenantAccount'
 import { homeFor } from '../lib/auth'
 import { resetCurrentUser, roleLabels, useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonCard } from '../components/Skeleton.jsx'
 
 // ความยาวรหัสผ่านขั้นต่ำ
 const MIN_PASSWORD = 6
@@ -153,6 +156,34 @@ function ChangePasswordForm({ email, forced, role, tenant }) {
     )
 }
 
+// ประวัติการต่อสัญญาของผู้เช่า (ผู้ดูแลเป็นผู้ต่อ ผู้เช่าดูได้อย่างเดียว) ไม่มีประวัติหรือโหลดไม่ได้ = ไม่แสดงส่วนนี้
+function MyRenewals() {
+    const [renewals, setRenewals] = useState(null)
+    useEffect(() => {
+        let active = true
+        loadRenewals().then((list) => active && setRenewals(list))
+        return () => {
+            active = false
+        }
+    }, [])
+    // แอดมินต่อสัญญาให้ขณะเปิดหน้านี้อยู่ ประวัติโผล่เอง
+    useRealtimeReload(['tenants'], async () => setRenewals(await loadRenewals()))
+    if (!renewals?.length) return null
+    return (
+        <section aria-label="ประวัติการต่อสัญญา" className="bg-white rounded-2xl shadow-card p-5">
+            <h2 className="font-medium text-primary-dark mb-3">ประวัติการต่อสัญญา</h2>
+            <ul className="flex flex-col divide-y divide-line/70 border border-line rounded-xl">
+                {renewals.map((r) => (
+                    <li key={r.id} className="px-4 py-3 text-sm">
+                        <span className="font-medium text-ink">ต่อจาก {formatDate(r.previous_end_date)} เป็น {formatDate(r.new_end_date)}</span>
+                        {r.note && <span className="block text-muted whitespace-pre-wrap">{r.note}</span>}
+                    </li>
+                ))}
+            </ul>
+        </section>
+    )
+}
+
 // หน้าบัญชีของฉัน: ข้อมูลผู้ใช้/ห้อง/สัญญา และฟอร์มเปลี่ยนรหัสผ่าน
 function AccountPage() {
     const info = useCurrentUser()
@@ -164,7 +195,7 @@ function AccountPage() {
 
             {/* รอโหลดข้อมูลผู้ใช้ก่อน */}
             {!info ? (
-                <p className="px-6 text-muted">กำลังโหลด...</p>
+                <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6"><SkeletonCard lines={4} /><SkeletonCard lines={3} /></div>
             ) : (
                 <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6">
                     {/* การ์ดโปรไฟล์: รูปตัวอักษร ชื่อ ป้ายสิทธิ์ สถานะสัญญา และชื่อผู้ใช้ */}
@@ -227,6 +258,7 @@ function AccountPage() {
                             <ChangePasswordForm email={info.email} forced={info.mustChangePassword} role={info.role} tenant={t} />
                         </section>
                     </div>
+                    {t && <MyRenewals />}
                 </div>
             )}
         </>

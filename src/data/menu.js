@@ -7,6 +7,7 @@ export const menuItems = [
     { label: 'ใบแจ้งหนี้', path: '/invoices', icon: 'receipt', group: 'main' },
     { label: 'แจ้งซ่อม', path: '/repairs', icon: 'wrench', group: 'main' },
     { label: 'แชท', path: '/chat', icon: 'chat', group: 'main' },
+    { label: 'ประกาศ', path: '/announcements', icon: 'megaphone', group: 'main' },
     { label: 'แจ้งเตือน', path: '/notifications', icon: 'bell', group: 'main' },
     { label: 'รายงาน', path: '/admin/reports', icon: 'fileText', group: 'main', adminOnly: true },
     { label: 'บัญชีผู้ใช้', path: '/admin/users', icon: 'key', group: 'system', adminOnly: true },

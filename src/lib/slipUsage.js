@@ -1,7 +1,7 @@
 import { supabase } from './supabaseClient'
 import { thaiDateOf } from './billing'
 
-// ตัวนับการตรวจสลิปด้วย EasySlip ของเดือนนี้ (ตาราง slip_verify_log ดู supabase/migrations/20261022030000_slip_quota.sql)
+// ตัวนับการตรวจสลิปด้วย EasySlip ของเดือนนี้ (ตาราง slip_verify_log ดู supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-quota))
 // นับตอนจองสิทธิ์ตรวจ จึงอาจมากกว่าที่ EasySlip นับเล็กน้อย (เช่น รูปใหญ่เกิน 4MB ที่ข้ามก่อนเรียก)
 
 // เวลาเริ่มต้นเดือนปัจจุบันตามเวลาไทย (ISO UTC) ใช้เป็นขอบล่างของการนับ

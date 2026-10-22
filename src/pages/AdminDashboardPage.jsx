@@ -10,6 +10,7 @@ import { useRealtimeReload } from '../lib/realtime'
 import { monthlySummary, occupancy } from '../lib/reports'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
+import { SkeletonList } from '../components/Skeleton.jsx'
 
 // หน้าภาพรวมของแอดมิน: ตอบ 3 คำถามให้จบในหน้าเดียว
 //   1) มีอะไรต้องจัดการตอนนี้ไหม (สลิปรอตรวจ ซ่อมรอนัด เงินรอคืน)  2) เดือนนี้การเงินเป็นอย่างไร (เรียกเก็บ/ได้รับ/ค้าง)  3) ห้องเต็มไหม
@@ -161,7 +162,7 @@ function AdminDashboardPage() {
     }, [data, now, settings.slipQuota])
 
     const received = summary.received + summary.repairReceived
-    const loadingText = <span className="text-muted/50 text-lg font-normal">กำลังโหลด...</span>
+    const loadingText = <span className="inline-block h-6 w-24 align-middle rounded-lg bg-line/70 motion-safe:animate-pulse"><span className="sr-only">กำลังโหลด...</span></span>
 
     return (
         <div className="p-4 sm:p-6 flex flex-col gap-6">
@@ -175,19 +176,19 @@ function AdminDashboardPage() {
             )}
 
             {/* 1) ต้องจัดการตอนนี้ */}
-            <section aria-label="ต้องจัดการตอนนี้" className="flex flex-col gap-3">
-                <h2 className="text-base font-semibold text-primary-dark">ต้องจัดการตอนนี้</h2>
+            <section aria-label="ต้องจัดการตอนนี้" className="bg-white rounded-2xl shadow-card border border-line p-5 flex flex-col gap-4">
+                <h2 className="text-lg font-bold text-primary-dark">ต้องจัดการตอนนี้</h2>
                 {loading ? (
-                    <div className="rounded-2xl bg-white border border-line p-5 text-sm text-muted">กำลังโหลด...</div>
+                    <SkeletonList rows={3} avatar={false} />
                 ) : attention.length === 0 ? (
-                    <div className="rounded-2xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 p-4 flex items-center gap-3 text-sm">
+                    <div className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 p-4 flex items-center gap-3 text-sm">
                         <Icon name="checkCircle" className="w-5 h-5 text-emerald-600 shrink-0" />
                         ไม่มีงานค้าง ไม่มีสลิปรอตรวจ ไม่มีเรื่องซ่อมรอนัด และไม่มีเงินรอคืนผู้เช่า
                     </div>
                 ) : (
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                         {attention.map((item) => (
-                            <Link key={item.key} to={item.to} className={`rounded-2xl ring-1 p-4 flex flex-col gap-1 hover:shadow-md transition ${attentionTone[item.tone]}`}>
+                            <Link key={item.key} to={item.to} className={`rounded-xl ring-1 p-4 flex flex-col gap-1 hover:shadow-md transition ${attentionTone[item.tone]}`}>
                                 <span className="text-3xl font-bold tabular-nums">{item.count}</span>
                                 <span className="text-sm font-medium">{item.label}</span>
                                 {item.amount > 0 && <span className="text-xs opacity-80 tabular-nums">รวม {baht(item.amount)}</span>}
@@ -281,7 +282,7 @@ function AdminDashboardPage() {
                         </thead>
                         <tbody className="divide-y divide-line/60">
                             {loading ? (
-                                <tr><td colSpan={4} className="py-8 text-center text-muted/70 text-sm">กำลังโหลดข้อมูล...</td></tr>
+                                <tr><td colSpan={4} className="p-0"><SkeletonList rows={3} avatar={false} /></td></tr>
                             ) : overdue.length === 0 ? (
                                 <tr><td colSpan={4} className="py-8 text-center text-emerald-600 text-sm font-medium">ไม่มีใบแจ้งหนี้ที่เกินกำหนดชำระ</td></tr>
                             ) : (

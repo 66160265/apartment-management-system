@@ -10,6 +10,7 @@ import { AdminRepairPayment } from './RepairPayment'
 import { formatSlot, formatThaiDate, isInSlots, normalizePeriod, periodsOverlap, removeRepairImage, todayIso, uploadRepairImage } from '../lib/repairs'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
+import { SkeletonTable } from './Skeleton.jsx'
 
 // คลาส Tailwind ของช่องกรอก/ตัวเลือกในฟอร์ม (ใช้ร่วมกันทุกช่อง)
 const inputClass = 'w-full border border-line rounded-xl px-4 py-2 text-ink text-sm outline-none focus:border-secondary focus:ring-2 focus:ring-secondary/30 bg-white disabled:bg-sand/60 disabled:text-muted'
@@ -654,7 +655,7 @@ function AdminRepairs({ adminId }) {
 
                         {/* กำลังโหลด/โหลดไม่สำเร็จ แสดงข้อความ ไม่งั้นแสดงรายการ */}
                         {loading || loadError ? (
-                            <p className={`text-center py-12 ${loadError ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : loadError}</p>
+                            loading ? <SkeletonTable rows={6} cols={5} /> : <p className="text-center py-12 text-red-600">{loadError}</p>
                         ) : (
                             <div className="xl:overflow-auto xl:max-h-[36rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
                                 {/* จอใหญ่ (xl ขึ้นไป): ตาราง กดแถวไหนก็ได้เพื่อเปิดจัดการ รายการรอดำเนินการพื้นสีฟ้า */}

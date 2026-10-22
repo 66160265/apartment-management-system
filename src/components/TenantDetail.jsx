@@ -3,6 +3,7 @@ import PageHeader from './PageHeader'
 import Icon from './Icon'
 import DatePicker from './DatePicker'
 import { Avatar, ContractBadge } from './TenantParts'
+import ContractSection from './ContractSection'
 import MoveOutSection from './MoveOutSection'
 import TenantDocuments from './TenantDocuments'
 import { callAdminUsers } from '../lib/adminUsers'
@@ -58,6 +59,8 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
     })
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
+    // วันสิ้นสุดสัญญาปัจจุบัน (เปลี่ยนทันทีหลังต่อสัญญา)
+    const [contractEnd, setContractEnd] = useState(tenant.endDate)
     const [confirmDelete, setConfirmDelete] = useState(false)
 
     // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key และล้างข้อความ error
@@ -119,12 +122,19 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
     }
 
     // สถานะสัญญา และข้อมูลสรุปที่แสดงบนการ์ดด้านบน
-    const status = contractStatus(tenant.endDate)
+    const status = contractStatus(contractEnd)
+
+    // ต่อสัญญาสำเร็จ: อัปเดตวันที่ในหน้านี้และในฟอร์ม (กันกดบันทึกฟอร์มแล้วเขียนวันสิ้นสุดเดิมทับ) แล้วให้หน้ารายชื่อโหลดใหม่
+    const handleRenewed = async (newEnd) => {
+        setContractEnd(newEnd)
+        setForm((f) => ({ ...f, endDate: newEnd }))
+        await onChanged()
+    }
 
     const facts = [
         { icon: 'door', label: 'ห้องพัก', value: `${tenant.room}${floor ? ` · ชั้น ${floor}` : ''}` },
         { icon: 'phone', label: 'เบอร์โทร', value: tenant.phone },
-        { icon: 'calendar', label: 'ระยะสัญญา', value: `${formatDate(tenant.startDate)} – ${formatDate(tenant.endDate)}` },
+        { icon: 'calendar', label: 'ระยะสัญญา', value: `${formatDate(tenant.startDate)} – ${formatDate(contractEnd)}` },
         { icon: 'clock', label: 'เหลือเวลา', value: status.key === 'expired' ? status.hint : status.hint },
     ]
 
@@ -141,7 +151,7 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
                         <div className="flex-1 min-w-48">
                             <div className="flex items-center gap-3 flex-wrap">
                                 <h2 className="text-xl font-semibold text-primary-dark">{tenant.name}</h2>
-                                <ContractBadge endDate={tenant.endDate} />
+                                <ContractBadge endDate={contractEnd} />
                             </div>
                             {tenant.username && (
                                 <p className="flex items-center gap-1.5 text-sm text-secondary mt-1">
@@ -163,6 +173,9 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
                         ))}
                     </dl>
                 </div>
+
+                {/* สัญญาเช่า: ต่อสัญญาและประวัติการต่อ */}
+                <ContractSection tenant={tenant} endDate={contractEnd} onRenewed={handleRenewed} />
 
                 {/* ฟอร์มแก้ไขข้อมูลผู้เช่า (ปุ่มบันทึกอยู่ที่แถบด้านล่าง ผูกด้วย form="tenant-form") */}
                 <form id="tenant-form" onSubmit={handleSave} className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">

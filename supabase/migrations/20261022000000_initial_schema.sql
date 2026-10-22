@@ -1,7 +1,11 @@
--- โครงสร้างฐานข้อมูลทั้งหมดของระบบจัดการหอพัก (รวมจากไฟล์ SQL เดิมเรียงตามลำดับที่ต้องรัน)
+-- โครงสร้างฐานข้อมูลทั้งหมดของระบบจัดการหอพัก ไฟล์เดียวครบ (รวมจากไฟล์ SQL เดิมเรียงตามลำดับที่ต้องรัน)
+-- ส่วนในไฟล์: profiles, schema, invoices, repairs, tenant-documents, settings, payments, slip-verify, repair-payments, move-out, audit, chat,
+--             notifications, performance, slip-quota, contracts-announcements, hardening, rls-performance
 -- รันได้ทั้งฐานข้อมูลใหม่และฐานข้อมูลที่เคยรันไฟล์เดิมมาแล้ว (รันซ้ำได้ ข้อมูลเดิมไม่หาย)
--- วิธีใช้: Supabase CLI `npx supabase db push` หรือวางทั้งไฟล์ใน SQL Editor แล้วกด Run
+-- วิธีใช้: วางทั้งไฟล์ใน Supabase SQL Editor แล้วกด Run หรือใช้ Supabase CLI `npx supabase db push`
 -- ส่วนที่ไม่บังคับ: เปิด extension pg_cron (Database > Extensions) ก่อนรัน เพื่อให้ระบบเตือนนัดซ่อมและใกล้ครบกำหนดทำงานทุกเช้า
+-- ข้อควรระวัง: ถ้าฐานข้อมูลมีฟังก์ชัน/ตารางที่เพิ่มนอกไฟล์นี้ (เช่น ระบบกันนัดซ่อมซ้อนเวลา) การรันทั้งไฟล์ซ้ำจะเขียนทับฟังก์ชันที่ชื่อซ้ำกัน (repairs_before_insert ฯลฯ) ตรวจก่อนรัน
+-- ส่วน hardening และ rls-performance อยู่ท้ายสุดเสมอ (ไล่แก้ทุกฟังก์ชัน trigger และทุก policy ที่มี ณ ตอนนั้น)
 
 -- ============================================================
 -- profiles (ตารางสิทธิ์ผู้ใช้ ต้องมีก่อนส่วนอื่นเพราะ is_admin() อ่านตารางนี้)
@@ -2652,3 +2656,409 @@ begin
     create index if not exists tenants_user_idx on public.tenants (user_id);
   end if;
 end $$;
+
+-- ============================================================
+-- slip-quota
+-- ============================================================
+-- ตัวนับโควตาตรวจสลิป EasySlip (ตาราง slip_verify_log, app_settings.slip_quota และฟังก์ชันจองสิทธิ์ตรวจที่บันทึกการจอง)
+
+create table if not exists public.slip_verify_log (
+  id bigint generated always as identity primary key,
+  at timestamptz not null default now(),
+  kind text not null check (kind in ('invoice', 'repair'))
+);
+
+create index if not exists slip_verify_log_at_idx on public.slip_verify_log (at);
+
+alter table public.slip_verify_log enable row level security;
+drop policy if exists "slip verify log admin read" on public.slip_verify_log;
+create policy "slip verify log admin read" on public.slip_verify_log for select to authenticated
+  using (public.is_admin());
+revoke insert, update, delete on table public.slip_verify_log from anon, authenticated;
+
+-- โควตาต่อเดือนที่หอพักซื้อไว้ (ว่าง = ไม่ตั้ง ไม่แสดงคำเตือน)
+alter table public.app_settings add column if not exists slip_quota int;
+alter table public.app_settings drop constraint if exists app_settings_slip_quota_check;
+alter table public.app_settings add constraint app_settings_slip_quota_check check (slip_quota is null or slip_quota >= 0);
+
+-- จองสิทธิ์ตรวจ (เหมือนเดิมทุกอย่าง เพิ่มแค่บันทึกลง slip_verify_log เมื่อจองสำเร็จ)
+create or replace function public.claim_slip_verify(p_invoice uuid)
+returns table (id uuid, user_id uuid, slip_path text, total numeric, paid_amount numeric, created_at timestamptz)
+language plpgsql
+security definer set search_path = public
+as $$
+#variable_conflict use_column
+begin
+  return query
+  update public.invoices i
+     set verify_status = 'checking', verify_attempts = i.verify_attempts + 1
+   where i.id = p_invoice
+     and i.status = 'review'
+     and i.slip_path is not null
+     and (i.verify_status is null or i.verify_status = 'error')
+     and i.verify_attempts < 3
+  returning i.id, i.user_id, i.slip_path, i.total, i.paid_amount, i.created_at;
+  if found then
+    insert into public.slip_verify_log (kind) values ('invoice');
+  end if;
+end;
+$$;
+
+-- created_at = เวลาที่ซ่อมเสร็จ (ถ้ามี) ใช้เทียบวันที่โอนในสลิปว่าไม่เก่ากว่าเวลาที่รู้ยอดค่าซ่อม
+create or replace function public.claim_repair_slip_verify(p_payment uuid)
+returns table (id uuid, user_id uuid, slip_path text, total numeric, paid_amount numeric, created_at timestamptz)
+language plpgsql
+security definer set search_path = public
+as $$
+#variable_conflict use_column
+begin
+  return query
+  with c as (
+    update public.repair_payments p
+       set verify_status = 'checking', verify_attempts = p.verify_attempts + 1
+     where p.id = p_payment
+       and p.status = 'review'
+       and (p.verify_status is null or p.verify_status = 'error')
+       and p.verify_attempts < 3
+     returning p.id, p.user_id, p.slip_path, p.amount, p.repair_id
+  )
+  select c.id, c.user_id, c.slip_path, c.amount, 0::numeric, coalesce(r.completed_at, r.created_at)
+  from c join public.repairs r on r.id = c.repair_id;
+  if found then
+    insert into public.slip_verify_log (kind) values ('repair');
+  end if;
+end;
+$$;
+
+-- ============================================================
+-- contracts-announcements
+-- ============================================================
+-- ต่อสัญญาเช่า (แอดมินเป็นผู้ทำ ต่ออย่างเดียว เงินประกันใช้ก้อนเดิม) พร้อมประวัติการต่อ และประกาศถึงผู้เช่าทุกคน
+-- รันซ้ำได้ ข้อมูลเดิมไม่หาย
+
+-- ---------------------------------------------------------------------------
+-- ประวัติการต่อสัญญา: แถวถูกเพิ่มโดยฟังก์ชัน renew_contract เท่านั้น แก้/ลบตรง ๆ ไม่ได้
+-- ---------------------------------------------------------------------------
+create table if not exists public.contract_renewals (
+  id uuid primary key default gen_random_uuid(),
+  room text not null,
+  tenant_user_id uuid references auth.users (id) on delete set null,
+  tenant_name text not null,
+  previous_end_date date not null,
+  new_end_date date not null check (new_end_date > previous_end_date),
+  note text not null default '' check (char_length(note) <= 500),
+  created_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists contract_renewals_room_idx on public.contract_renewals (room, created_at desc);
+create index if not exists contract_renewals_user_idx on public.contract_renewals (tenant_user_id);
+create index if not exists contract_renewals_created_by_idx on public.contract_renewals (created_by);
+
+alter table public.contract_renewals enable row level security;
+
+-- แอดมินเห็นทุกห้อง ผู้เช่าเห็นประวัติของตัวเอง
+drop policy if exists "contract renewals read" on public.contract_renewals;
+create policy "contract renewals read" on public.contract_renewals for select to authenticated
+  using (public.is_admin() or tenant_user_id = auth.uid());
+
+revoke insert, update, delete on table public.contract_renewals from anon, authenticated;
+
+-- ต่อสัญญา: ย้ายวันสิ้นสุดสัญญาของผู้เช่าห้องนี้ไปเป็น p_new_end (ต้องหลังวันสิ้นสุดเดิม) บันทึกประวัติและประวัติการแก้ไข แจ้งผู้เช่าในเว็บ
+-- วันเริ่มสัญญา เงินประกัน และข้อมูลอื่นไม่เปลี่ยน
+create or replace function public.renew_contract(p_room text, p_new_end date, p_note text default '')
+returns uuid
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  t public.tenants;
+  new_id uuid;
+  note_text text := left(btrim(coalesce(p_note, '')), 500);
+begin
+  if not public.is_admin() then
+    raise exception 'ไม่มีสิทธิ์';
+  end if;
+  if p_new_end is null then
+    raise exception 'กรุณาระบุวันสิ้นสุดสัญญาใหม่';
+  end if;
+
+  select * into t from public.tenants where room = p_room for update;
+  if not found then
+    raise exception 'ไม่พบผู้เช่าห้องนี้';
+  end if;
+  if p_new_end <= t.end_date then
+    raise exception 'วันสิ้นสุดสัญญาใหม่ต้องหลังวันสิ้นสุดเดิม (%)', public.thai_date(t.end_date);
+  end if;
+  if p_new_end > public.today_th() + 3650 then
+    raise exception 'วันสิ้นสุดสัญญาใหม่ไกลเกินไป (เกิน 10 ปีนับจากวันนี้)';
+  end if;
+
+  update public.tenants set end_date = p_new_end where room = p_room;
+
+  insert into public.contract_renewals (room, tenant_user_id, tenant_name, previous_end_date, new_end_date, note, created_by)
+  values (t.room, t.user_id, t.name, t.end_date, p_new_end, note_text, auth.uid())
+  returning id into new_id;
+
+  perform public.audit_write('contract.renew', 'tenants', t.room, t.room,
+    'ต่อสัญญาห้อง ' || t.room || ' ' || t.name || ' จาก ' || public.thai_date(t.end_date) || ' เป็น ' || public.thai_date(p_new_end),
+    jsonb_build_object('previous_end_date', t.end_date, 'new_end_date', p_new_end, 'note', note_text));
+
+  perform public.notify(t.user_id, 'system', 'ต่อสัญญาเช่าเรียบร้อย', 'ห้อง ' || t.room,
+    'สัญญาเช่าของคุณถูกต่อออกไปถึงวันที่ ' || public.thai_date(p_new_end), '/account', 'ดูข้อมูลสัญญา');
+
+  return new_id;
+end;
+$$;
+
+revoke all on function public.renew_contract(text, date, text) from public, anon;
+grant execute on function public.renew_contract(text, date, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- ประกาศถึงผู้เช่าทุกคน: แอดมินเขียน/แก้/ลบ ผู้เช่าและแอดมินอ่านได้ เพิ่มประกาศแล้วทุกบัญชีผู้เช่าได้แจ้งเตือนในเว็บทันที
+-- ---------------------------------------------------------------------------
+create table if not exists public.announcements (
+  id uuid primary key default gen_random_uuid(),
+  title text not null check (char_length(btrim(title)) between 1 and 120),
+  body text not null default '' check (char_length(body) <= 2000),
+  important boolean not null default false,
+  created_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz
+);
+
+create index if not exists announcements_created_idx on public.announcements (created_at desc);
+create index if not exists announcements_created_by_idx on public.announcements (created_by);
+
+alter table public.announcements enable row level security;
+
+drop policy if exists "announcements read" on public.announcements;
+create policy "announcements read" on public.announcements for select to authenticated using (true);
+
+drop policy if exists "announcements admin insert" on public.announcements;
+create policy "announcements admin insert" on public.announcements for insert to authenticated
+  with check (public.is_admin());
+
+drop policy if exists "announcements admin update" on public.announcements;
+create policy "announcements admin update" on public.announcements for update to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "announcements admin delete" on public.announcements;
+create policy "announcements admin delete" on public.announcements for delete to authenticated
+  using (public.is_admin());
+
+-- ผู้เขียนและเวลาถูกกำหนดโดยฐานข้อมูล ไม่เชื่อค่าที่ส่งมาจากเว็บ แก้แล้วบันทึกเวลาแก้ไข (ผู้เขียนและเวลาสร้างเปลี่ยนไม่ได้)
+create or replace function public.announcements_before_write()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  new.title := btrim(new.title);
+  new.body := btrim(coalesce(new.body, ''));
+  if tg_op = 'INSERT' then
+    new.created_by := auth.uid();
+    new.created_at := now();
+    new.updated_at := null;
+  else
+    new.created_by := old.created_by;
+    new.created_at := old.created_at;
+    new.updated_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists announcements_before_write on public.announcements;
+create trigger announcements_before_write before insert or update on public.announcements
+  for each row execute function public.announcements_before_write();
+
+-- ประกาศใหม่: แจ้งเตือนในเว็บถึงผู้เช่าทุกคนที่มีบัญชี (แก้ประกาศไม่แจ้งซ้ำ)
+create or replace function public.announcements_notify()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  insert into public.notifications (recipient_id, type, title, subtitle, details, action_link, action_label)
+  select t.user_id, 'system',
+         case when new.important then 'ประกาศสำคัญ: ' else 'ประกาศ: ' end || left(new.title, 100),
+         '', left(new.body, 200), '/announcements', 'อ่านประกาศ'
+  from public.tenants t
+  where t.user_id is not null;
+  return new;
+end;
+$$;
+
+drop trigger if exists announcements_notify on public.announcements;
+create trigger announcements_notify after insert on public.announcements
+  for each row execute function public.announcements_notify();
+
+-- ประวัติการแก้ไข: ลงประกาศ แก้ ลบ
+create or replace function public.audit_announcements()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if tg_op = 'INSERT' then
+    perform public.audit_write('announcement.create', 'announcements', new.id::text, null,
+      'ลงประกาศ: ' || new.title, jsonb_build_object('title', new.title, 'important', new.important));
+    return new;
+  elsif tg_op = 'UPDATE' then
+    perform public.audit_write('announcement.update', 'announcements', new.id::text, null,
+      'แก้ประกาศ: ' || new.title, jsonb_build_object('title', jsonb_build_object('old', old.title, 'new', new.title),
+        'important', jsonb_build_object('old', old.important, 'new', new.important)));
+    return new;
+  end if;
+  perform public.audit_write('announcement.delete', 'announcements', old.id::text, null,
+    'ลบประกาศ: ' || old.title, jsonb_build_object('title', old.title));
+  return old;
+end;
+$$;
+
+drop trigger if exists audit_announcements on public.announcements;
+create trigger audit_announcements after insert or update or delete on public.announcements
+  for each row execute function public.audit_announcements();
+
+-- ให้เว็บรับประกาศใหม่แบบเรียลไทม์
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'announcements'
+  ) then
+    alter publication supabase_realtime add table public.announcements;
+  end if;
+end $$;
+
+-- ============================================================
+-- hardening
+-- ============================================================
+-- ปิดฟังก์ชันที่คนนอกเรียกได้ ตั้ง search_path ให้ฟังก์ชันช่วย และระบบบังคับเปลี่ยนรหัสผ่านครั้งแรก
+
+-- ============================================================
+-- 1) ฟังก์ชัน trigger ไม่ให้ใครเรียกผ่าน API (/rest/v1/rpc/...)
+--    trigger ยังทำงานตามปกติ เพราะ Postgres ตรวจสิทธิ์ EXECUTE ตอนสร้าง trigger เท่านั้น ไม่ตรวจตอนยิง
+-- ============================================================
+
+do $$
+declare
+  f record;
+begin
+  for f in
+    select p.oid::regprocedure as sig
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.prorettype = 'trigger'::regtype
+  loop
+    execute format('revoke execute on function %s from public, anon, authenticated', f.sig);
+  end loop;
+end $$;
+
+-- ============================================================
+-- 2) ฟังก์ชันที่ต้อง login ก่อนใช้ ปิดไม่ให้คนที่ยังไม่ login เรียก
+-- ============================================================
+
+revoke execute on function public.is_admin() from public, anon;
+grant execute on function public.is_admin() to authenticated, service_role;
+
+revoke execute on function public.submit_slip(uuid, text) from public, anon;
+grant execute on function public.submit_slip(uuid, text) to authenticated, service_role;
+
+-- ============================================================
+-- 3) ตั้ง search_path ให้ฟังก์ชันช่วย กันถูกสวมด้วย schema อื่น
+-- ============================================================
+
+do $$
+declare
+  f record;
+begin
+  for f in
+    select p.oid::regprocedure as sig
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.proname in (
+         'repair_valid_period', 'today_th', 'repair_valid_slots', 'invoices_lock_total', 'thai_month', 'fmt_baht',
+         'repair_status_label', 'repair_period_label', 'thai_date', 'repair_appointment_text', 'repair_slots_text',
+         'invoices_reset_verify', 'invoice_late_fee', 'audit_log_immutable', 'asof_date', 'audit_status_label'
+       )
+  loop
+    execute format('alter function %s set search_path = public', f.sig);
+  end loop;
+end $$;
+
+-- ============================================================
+-- 4) บังคับเปลี่ยนรหัสผ่านครั้งแรก
+--    บัญชีที่แอดมินสร้างหรือรีเซ็ตรหัสให้จะถูกตั้ง must_change_password = true (โดย Edge Function)
+--    เว็บพาไปหน้าบัญชีจนกว่าจะตั้งรหัสใหม่ แล้วเรียก clear_must_change_password()
+-- ============================================================
+
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+     where table_schema = 'public' and table_name = 'profiles' and column_name = 'must_change_password'
+  ) then
+    alter table public.profiles add column must_change_password boolean not null default false;
+    -- ผู้เช่าที่มีอยู่แล้วใช้รหัสเริ่มต้นที่เดาได้ (TP+เลขห้อง+เบอร์ 4 ตัวท้าย) ให้เปลี่ยนตอนเข้าครั้งถัดไป (ทำครั้งเดียวตอนเพิ่มคอลัมน์)
+    update public.profiles set must_change_password = true where role = 'user';
+  end if;
+end $$;
+
+-- ผู้ใช้ล้างเครื่องหมายของตัวเองได้เท่านั้น (ไม่มี policy ให้แก้ profiles ตรง ๆ)
+create or replace function public.clear_must_change_password()
+returns void
+language sql
+security definer set search_path = public
+as $$
+  update public.profiles set must_change_password = false where id = auth.uid();
+$$;
+
+revoke execute on function public.clear_must_change_password() from public, anon;
+grant execute on function public.clear_must_change_password() to authenticated, service_role;
+
+-- ============================================================
+-- rls-performance
+-- ============================================================
+-- ห่อ auth.uid() ใน policy ทุกตัวให้คำนวณครั้งเดียวต่อคำสั่ง และเพิ่มดัชนี FK
+
+-- ============================================================
+-- 1) policy ที่เรียก auth.uid() ตรง ๆ จะถูกคำนวณซ้ำทุกแถว ห่อด้วย (select ...) ให้คำนวณครั้งเดียวต่อคำสั่ง
+--    แก้ทุก policy ในโครงสร้าง public ที่ยังไม่ได้ห่อ (ไม่แตะบทบาทหรือคำสั่งของ policy)
+-- ============================================================
+
+do $$
+declare
+  p record;
+  new_qual text;
+  new_check text;
+begin
+  for p in
+    select schemaname, tablename, policyname, qual, with_check
+      from pg_policies
+     where schemaname = 'public'
+       and (coalesce(qual, '') ~ 'auth\.uid\(\)' or coalesce(with_check, '') ~ 'auth\.uid\(\)')
+  loop
+    -- ข้ามอันที่ห่อแล้ว (ตรวจจาก "select auth.uid()" ที่ Postgres แสดงเป็น ( SELECT auth.uid() AS uid))
+    new_qual := case when p.qual is null or p.qual ~* 'select\s+auth\.uid\(\)' then p.qual
+                     else replace(p.qual, 'auth.uid()', '(select auth.uid())') end;
+    new_check := case when p.with_check is null or p.with_check ~* 'select\s+auth\.uid\(\)' then p.with_check
+                      else replace(p.with_check, 'auth.uid()', '(select auth.uid())') end;
+    if new_qual is distinct from p.qual or new_check is distinct from p.with_check then
+      execute format('alter policy %I on %I.%I', p.policyname, p.schemaname, p.tablename)
+        || case when new_qual is not null then format(' using (%s)', new_qual) else '' end
+        || case when new_check is not null then format(' with check (%s)', new_check) else '' end;
+    end if;
+  end loop;
+end $$;
+
+-- ============================================================
+-- 2) ดัชนีให้ foreign key ที่ยังไม่มี (ลบ/แก้แถวต้นทางจะไม่ต้องสแกนทั้งตาราง)
+-- ============================================================
+
+create index if not exists chat_messages_sender_idx on public.chat_messages (sender_id);
+create index if not exists invoice_payments_confirmed_by_idx on public.invoice_payments (confirmed_by);
+create index if not exists move_outs_created_by_idx on public.move_outs (created_by);
+create index if not exists repair_payments_reviewed_by_idx on public.repair_payments (reviewed_by);

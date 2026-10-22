@@ -9,6 +9,7 @@ import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { createTenantAccount, makeDefaultPassword, makeUsername } from '../lib/tenantAccount'
 import { REQUIRED_DOCS, contractStatus, formatDate } from '../lib/tenants'
+import { SkeletonTable } from '../components/Skeleton.jsx'
 
 // เรียงผู้เช่าตามเลขห้องแบบตัวเลข
 const byRoom = (a, b) => a.room.localeCompare(b.room, undefined, { numeric: true })
@@ -519,7 +520,7 @@ function TenantsPage() {
                         {(loading || loadError || visible.length === 0) && (
                             <div className={`py-12 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
                                 {loading ? (
-                                    'กำลังโหลด...'
+                                    <SkeletonTable rows={6} cols={5} className="border-0 rounded-none text-left" />
                                 ) : loadError ? (
                                     loadError
                                 ) : (

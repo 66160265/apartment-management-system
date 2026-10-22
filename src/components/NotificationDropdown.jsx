@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatNotificationTime, readDotClass, typeLabels, unreadDotClass } from '../data/notifications'
 import { markAllRead, markRead, useNotifications } from '../lib/useNotifications'
+import { SkeletonList } from './Skeleton.jsx'
 
 // จำนวนแจ้งเตือนล่าสุดที่แสดงในป็อปอัป
 const PREVIEW_COUNT = 8
@@ -81,7 +82,7 @@ function NotificationDropdown({ emptyText }) {
                     {/* รายการ: กำลังโหลด / error / ว่าง / แจ้งเตือนล่าสุด (ยังไม่อ่านพื้นสีแดงอ่อน ตัวหนา) */}
                     <div className="max-h-84 overflow-y-auto divide-y divide-line">
                         {loading ? (
-                            <p className="py-8 text-center text-sm text-muted">กำลังโหลด...</p>
+                            <SkeletonList rows={4} />
                         ) : error ? (
                             <p className="py-8 px-4 text-center text-sm text-red-600">{error}</p>
                         ) : items.length === 0 ? (

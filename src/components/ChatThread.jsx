@@ -4,6 +4,7 @@ import { ConfirmDialog } from './RepairParts'
 import { MAX_MESSAGE_LENGTH, deleteMessage, editMessage, getChatImageUrl, loadThread, markChatRead, sendMessage, validateChatImage } from '../lib/chat'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonChat } from './Skeleton.jsx'
 
 // รูปในข้อความ: ขอลิงก์ชั่วคราวแล้วแสดง กดเพื่อเปิดรูปเต็มขนาด
 function ChatImage({ path, onLoad }) {
@@ -237,7 +238,7 @@ function ChatThread({ tenantUserId, isAdmin, title, subtitle, onBack }) {
             {/* รายการข้อความ */}
             <div ref={listRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 bg-sand/40">
                 {loading ? (
-                    <p className="text-center text-muted py-10">กำลังโหลด...</p>
+                    <SkeletonChat />
                 ) : messages.length === 0 ? (
                     <div className="h-full grid place-items-center text-center text-muted">
                         <div>

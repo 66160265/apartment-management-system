@@ -11,6 +11,8 @@ let profilesFull
 let profilesBasic
 let tenantRow
 const selects = []
+// ตัวฟังเหตุการณ์ real-time ของตาราง tenants
+const tenantEvents = []
 
 vi.mock('./supabaseClient', () => ({
     supabase: {
@@ -18,6 +20,11 @@ vi.mock('./supabaseClient', () => ({
             getSession: () => Promise.resolve({ data: { session } }),
             onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
         },
+        channel: () => {
+            const ch = { on: (_t, _f, cb) => { tenantEvents.push(cb); return ch }, subscribe: () => ch }
+            return ch
+        },
+        removeChannel: () => {},
         from: (table) => ({
             select: (cols) => {
                 selects.push(`${table}:${cols}`)
@@ -50,6 +57,7 @@ async function render() {
 describe('useCurrentUser', () => {
     beforeEach(() => {
         selects.length = 0
+        tenantEvents.length = 0
         session = { user: { id: 'u1', email: 't101@apartment.app' } }
         profilesFull = { data: { role: 'user', must_change_password: true }, error: null }
         profilesBasic = { data: { role: 'user' }, error: null }
@@ -75,7 +83,7 @@ describe('useCurrentUser', () => {
         expect(get()).toMatchObject({ role: 'admin', mustChangePassword: false })
     })
 
-    it('ยังไม่ได้รัน migration hardening (ไม่มีคอลัมน์): อ่านแค่สิทธิ์ ไม่บังคับ และระบบยังใช้ได้', async () => {
+    it('ยังไม่ได้รัน ส่วน hardening ของไฟล์ migration (ไม่มีคอลัมน์): อ่านแค่สิทธิ์ ไม่บังคับ และระบบยังใช้ได้', async () => {
         profilesFull = { data: null, error: { message: 'column profiles.must_change_password does not exist' } }
         const { get } = await render()
         expect(get()).toMatchObject({ role: 'user', mustChangePassword: false })
@@ -86,5 +94,24 @@ describe('useCurrentUser', () => {
         session = null
         const { get } = await render()
         expect(get()).toBeNull()
+    })
+
+    it('แอดมินแก้สัญญา/ห้องของผู้เช่า: ข้อมูลผู้ใช้อัปเดตเองโดยไม่ต้องรีเฟรช', async () => {
+        const { get } = await render()
+        expect(get().tenant.end_date).toBe('2026-12-31')
+        tenantRow = { ...tenantRow, end_date: '2027-06-30' }
+        await act(async () => { tenantEvents.forEach((cb) => cb({})) })
+        await act(async () => { await new Promise((r) => setTimeout(r, 500)) })
+        for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve() })
+        expect(get().tenant.end_date).toBe('2027-06-30')
+    })
+
+    it('เหตุการณ์ที่เนื้อหาไม่เปลี่ยน: ไม่สร้างออบเจ็กต์ใหม่ (หน้าที่ผูกกับข้อมูลนี้ไม่โหลดซ้ำเปล่า ๆ)', async () => {
+        const { get } = await render()
+        const before = get()
+        await act(async () => { tenantEvents.forEach((cb) => cb({})) })
+        await act(async () => { await new Promise((r) => setTimeout(r, 500)) })
+        for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve() })
+        expect(get()).toBe(before)
     })
 })

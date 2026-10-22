@@ -8,6 +8,7 @@ import { useRealtimeReload } from '../lib/realtime'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
+import { SkeletonCards } from './Skeleton.jsx'
 
 // ข้อจำกัดรูปสลิป: ไม่เกิน 5 MB และชนิดไฟล์ที่รับ (MIME -> นามสกุล)
 const MAX_SIZE = 5 * 1024 * 1024
@@ -283,7 +284,7 @@ function TenantInvoices({ userId }) {
             ) : (
                 <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
                     {loading || loadError ? (
-                        <p className={`text-center py-10 ${loadError ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : loadError}</p>
+                        loading ? <SkeletonCards count={2} lines={4} /> : <p className="text-center py-10 text-red-600">{loadError}</p>
                     ) : (
                         <>
                             {/* การ์ดเด่นด้านบน: ยอดที่ต้องจ่าย/รอตรวจ หรือข้อความ "ไม่มียอดค้างชำระ" */}

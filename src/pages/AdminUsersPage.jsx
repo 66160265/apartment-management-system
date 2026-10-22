@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useRealtimeReload } from '../lib/realtime'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import { Avatar } from '../components/TenantParts'
@@ -6,6 +7,7 @@ import DatePicker from '../components/DatePicker'
 import { callAdminUsers } from '../lib/adminUsers'
 import { makeDefaultPassword } from '../lib/tenantAccount'
 import { emailToUsername, roleLabels, useCurrentUser } from '../lib/useCurrentUser'
+import { SkeletonTable } from '../components/Skeleton.jsx'
 
 // คลาส Tailwind ของช่องกรอกในฟอร์ม
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
@@ -242,6 +244,12 @@ function AdminUsersPage() {
         }
     }, [applyResult])
 
+    // อัปเดตเองเมื่อมีผู้เช่าถูกเพิ่ม/แก้/ลบ (โหลดเงียบ ถ้าพลาดใช้รายชื่อเดิมต่อ)
+    useRealtimeReload(['tenants'], async () => {
+        const result = await fetchUsers()
+        if (!result.error) applyResult(result)
+    }, { enabled: isAdmin })
+
     // กรองรายชื่อตามคำค้นหา: ชื่อผู้ใช้ ชื่อผู้เช่า หรือเลขห้อง
     const keyword = search.trim().toLowerCase()
     const visible = users.filter((u) =>
@@ -385,7 +393,7 @@ function AdminUsersPage() {
                             {/* ข้อความกำลังโหลด / error / ไม่พบบัญชี */}
                             {(loading || loadError || visible.length === 0) && (
                                 <div className={`py-12 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
-                                    {loading ? 'กำลังโหลด...' : loadError || 'ไม่พบบัญชีผู้ใช้'}
+                                    {loading ? <SkeletonTable rows={6} cols={5} className="border-0 rounded-none text-left" /> : loadError || 'ไม่พบบัญชีผู้ใช้'}
                                 </div>
                             )}
                         </div>

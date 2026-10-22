@@ -13,6 +13,7 @@ import { inputClass } from './invoiceFormClasses'
 import AdminInvoiceDetail from './AdminInvoiceDetail'
 import InvoiceDeleteModal from './InvoiceDeleteModal'
 import MeterCard from './MeterCard'
+import { SkeletonTable } from './Skeleton.jsx'
 
 // อัตราค่าบริการเป็น null = ใช้ค่าเริ่มต้นจากหน้า "ตั้งค่า" (แก้ในฟอร์มเพื่อกำหนดเฉพาะใบนี้)
 const makeEmptyForm = () => ({
@@ -649,7 +650,7 @@ function AdminInvoices() {
                         {(loading || loadError || visible.length === 0) && (
                             <div className={`py-10 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
                                 {loading ? (
-                                    'กำลังโหลด...'
+                                    <SkeletonTable rows={5} cols={5} className="border-0 rounded-none text-left" />
                                 ) : loadError ? (
                                     loadError
                                 ) : (

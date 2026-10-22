@@ -87,7 +87,7 @@ const optionalColumns = {
     late_fee_per_day: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
     late_fee_grace_days: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
     late_fee_cap: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
-    slip_quota: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/migrations/20261022030000_slip_quota.sql' },
+    slip_quota: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-quota)' },
 }
 
 // บันทึกการตั้งค่า (เฉพาะแอดมิน) คืนค่า null เมื่อสำเร็จ หรือข้อความ error
