@@ -412,23 +412,6 @@ function UserDashboardPage() {
                         </div>
                     </div>
 
-                    {/* ค่าซ่อมที่ยังไม่ได้ชำระ (ไม่แสดงถ้าไม่มี) */}
-                    <RepairCostBanner />
-
-                    {/* ประกาศล่าสุดจากหอพัก (ภายใน 14 วัน) */}
-                    <AnnouncementBanner />
-
-                    {/* สัญญาใกล้หมดหรือหมดแล้ว: บอกผู้เช่าให้ติดต่อผู้ดูแล (ต่อสัญญาทำโดยผู้ดูแล) */}
-                    {contractRemainingDays !== null && contractRemainingDays <= 30 && (
-                        <div role="status" className={`rounded-2xl ring-1 p-4 flex items-start gap-3 text-sm ${contractRemainingDays > 0 ? 'bg-amber-50 ring-amber-200 text-amber-950' : 'bg-red-50 ring-red-200 text-red-950'}`}>
-                            <Icon name="calendar" className="w-5 h-5 shrink-0 mt-0.5" />
-                            <p>
-                                <strong>{contractRemainingDays > 0 ? `สัญญาเช่าของคุณจะสิ้นสุดในอีก ${contractRemainingDays} วัน` : 'สัญญาเช่าของคุณสิ้นสุดแล้ว'}</strong>
-                                {' '}({formatShortDate(tenantInfo.end_date)}) หากต้องการต่อสัญญา กรุณาติดต่อผู้ดูแลหอพัก
-                            </p>
-                        </div>
-                    )}
-
                     {/* ค้างชำระหลายใบ: แสดงรายการทั้งหมด เลือกใบที่จะดู/จ่ายได้ (ถ้ามีใบเดียว การ์ดการดำเนินการด้านล่างครอบคลุมแล้ว) */}
                     {unpaid.length > 1 && (
                         <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-col gap-3">
@@ -463,6 +446,23 @@ function UserDashboardPage() {
                             </div>
                         </section>
                     )}
+
+                    {/* ค่าซ่อมที่ยังไม่ได้ชำระ (ไม่แสดงถ้าไม่มี) */}
+                    <RepairCostBanner />
+
+                    {/* สัญญาใกล้หมดหรือหมดแล้ว: บอกผู้เช่าให้ติดต่อผู้ดูแล (ต่อสัญญาทำโดยผู้ดูแล) */}
+                    {contractRemainingDays !== null && contractRemainingDays <= 30 && (
+                        <div role="status" className={`rounded-2xl ring-1 p-4 flex items-start gap-3 text-sm ${contractRemainingDays > 0 ? 'bg-amber-50 ring-amber-200 text-amber-950' : 'bg-red-50 ring-red-200 text-red-950'}`}>
+                            <Icon name="calendar" className="w-5 h-5 shrink-0 mt-0.5" />
+                            <p>
+                                <strong>{contractRemainingDays > 0 ? `สัญญาเช่าของคุณจะสิ้นสุดในอีก ${contractRemainingDays} วัน` : 'สัญญาเช่าของคุณสิ้นสุดแล้ว'}</strong>
+                                {' '}({formatShortDate(tenantInfo.end_date)}) หากต้องการต่อสัญญา กรุณาติดต่อผู้ดูแลหอพัก
+                            </p>
+                        </div>
+                    )}
+
+                    {/* ประกาศล่าสุดจากหอพัก (ภายใน 14 วัน) */}
+                    <AnnouncementBanner />
 
                     {/* การ์ดสรุปตัวเลข */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
