@@ -26,10 +26,10 @@ function AnnouncementBanner() {
     useRealtimeReload(['announcements'], reload)
 
     if (!latest) return null
-    const tone = latest.important ? 'bg-amber-50 ring-amber-200 text-amber-950' : 'bg-sky-50 ring-sky-200 text-sky-950'
+    const tone = latest.important ? 'bg-rose-50 ring-rose-200 text-rose-950' : 'bg-sky-50 ring-sky-200 text-sky-950'
     return (
         <Link to="/announcements" className={`rounded-2xl ring-1 p-4 flex items-start gap-3 hover:shadow-md transition ${tone}`}>
-            <span className="grid place-items-center w-9 h-9 rounded-xl bg-white/70 shrink-0"><Icon name="megaphone" className="w-5 h-5" /></span>
+            <span className="grid place-items-center w-9 h-9 rounded-xl bg-white/70 shrink-0"><Icon name="megaphone" className={`w-5 h-5 ${latest.important ? 'text-rose-600' : 'text-sky-600'}`} /></span>
             <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold">{latest.important ? 'ประกาศสำคัญ' : 'ประกาศจากหอพัก'} · {formatDateTime(latest.created_at)}</p>
                 <p className="font-semibold break-words">{latest.title}</p>
