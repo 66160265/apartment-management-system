@@ -13,7 +13,7 @@ const cellInput = 'w-20 border border-line bg-white rounded-lg px-2 py-1 text-ri
 const prevInput = 'w-16 border border-transparent bg-transparent rounded px-1 py-1 text-right text-xs text-muted tabular-nums outline-none hover:border-line focus:border-secondary focus:bg-white'
 const rateInput = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
 
-function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone, onCancel }) {
+function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
     const [month, setMonth] = useState(currentMonth())
     // อัตราที่ใช้กับทุกห้องในรอบนี้ (ค่าเริ่มต้นจากหน้าตั้งค่า แก้ได้)
     const [rates, setRates] = useState({ waterRate: String(settings.rateWater), elecRate: String(settings.rateElectric), commonFee: String(settings.commonFee) })
@@ -84,10 +84,6 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone, onCancel 
 
     return (
         <div className="px-4 sm:px-6 pb-8 flex flex-col gap-4">
-            <button onClick={onCancel} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm">
-                <Icon name="arrowLeft" className="w-4 h-4" />กลับไปรายการใบแจ้งหนี้
-            </button>
-
             {/* เดือนและอัตราค่าบริการของรอบนี้ */}
             <div className="bg-white rounded-2xl shadow-card p-5 grid gap-4 md:grid-cols-[auto_1fr] items-start">
                 <div>
@@ -192,7 +188,7 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone, onCancel 
             {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
 
             {/* แถบสรุปและปุ่มสร้าง (ต้องกดยืนยันอีกครั้ง เพราะผู้เช่าทุกคนจะได้รับแจ้งเตือนใบแจ้งหนี้ใหม่ทันที) */}
-            <div className="sticky bottom-0 -mx-4 sm:-mx-6 px-4 sm:px-6 py-3 bg-white/95 backdrop-blur border-t border-line flex flex-wrap items-center justify-between gap-3">
+            <div className="sticky bottom-4 px-4 sm:px-5 py-3 bg-white rounded-2xl border border-line shadow-card flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm">
                     <span className="font-medium text-primary-dark">พร้อมสร้าง {summary.records.length} ใบ รวม {baht(summary.total)}</span>
                     {errorCount > 0 && <span className="text-red-600"> · มีแถวที่กรอกไม่ถูกต้อง {errorCount} ห้อง</span>}

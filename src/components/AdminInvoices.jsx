@@ -254,13 +254,12 @@ function AdminInvoices() {
     if (bulk) {
         return (
             <>
-                <PageHeader title="สร้างใบแจ้งหนี้" subtitle="กรอกเลขมิเตอร์ปัจจุบันของห้องที่ต้องการ (ห้องเดียวหรือทุกห้องก็ได้) แล้วสร้างใบแจ้งหนี้พร้อมกัน" />
+                <PageHeader title="สร้างใบแจ้งหนี้" subtitle="กรอกเลขมิเตอร์ปัจจุบันของห้องที่ต้องการ (ห้องเดียวหรือทุกห้องก็ได้) แล้วสร้างใบแจ้งหนี้พร้อมกัน" onBack={() => setBulk(false)} backLabel="กลับไปรายการใบแจ้งหนี้" />
                 <BulkInvoiceForm
                     tenants={tenants}
                     rents={rents}
                     invoices={invoices}
                     settings={settings}
-                    onCancel={() => setBulk(false)}
                     onDone={async (count) => {
                         await load()
                         setBulk(false)
