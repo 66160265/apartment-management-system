@@ -1,18 +1,19 @@
 // สถานะการแจ้งซ่อม (ค่าที่เก็บในฐานข้อมูล -> ป้ายและสี)
-// pending รอนัดหมาย -> scheduled นัดหมายแล้ว -> in_progress กำลังซ่อม -> done เสร็จสิ้น, cancelled ยกเลิก/ไม่รับเรื่อง
+// pending รอดำเนินการ -> in_progress กำลังดำเนินการ (มีวันนัดเข้าซ่อม) -> done เสร็จสิ้น, cancelled ยกเลิก/ไม่รับเรื่อง
+// (scheduled นัดหมายแล้ว = สถานะเดิมที่เลิกใช้ เก็บป้ายไว้แสดงข้อมูลเก่าเท่านั้น)
 export const repairStatuses = {
-    pending: { label: 'รอนัดหมาย', color: 'bg-sky-50 text-sky-800 ring-1 ring-sky-200', dot: 'bg-sky-500' },
+    pending: { label: 'รอดำเนินการ', color: 'bg-sky-50 text-sky-800 ring-1 ring-sky-200', dot: 'bg-sky-500' },
     scheduled: { label: 'นัดหมายแล้ว', color: 'bg-violet-50 text-violet-800 ring-1 ring-violet-200', dot: 'bg-violet-500' },
-    in_progress: { label: 'กำลังซ่อม', color: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200', dot: 'bg-amber-500' },
+    in_progress: { label: 'กำลังดำเนินการ', color: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200', dot: 'bg-amber-500' },
     done: { label: 'เสร็จสิ้น', color: 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200', dot: 'bg-emerald-500' },
     cancelled: { label: 'ยกเลิก', color: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200', dot: 'bg-slate-400' },
 }
 
 // รายชื่อสถานะทั้งหมดตามลำดับ (ใช้ทำแท็บและตัวเลือกสถานะ)
-export const repairStatusKeys = Object.keys(repairStatuses)
+export const repairStatusKeys = ['pending', 'in_progress', 'done', 'cancelled']
 
 // ขั้นตอนบนแถบความคืบหน้า (ไม่รวม "ยกเลิก" ซึ่งเป็นทางแยก)
-export const repairProgressKeys = ['pending', 'scheduled', 'in_progress', 'done']
+export const repairProgressKeys = ['pending', 'in_progress', 'done']
 
 // ประเภทงานซ่อม
 export const repairCategories = {
@@ -32,9 +33,9 @@ export const repairUrgencies = {
     emergency: { label: 'ฉุกเฉิน', hint: 'อันตรายหรือเสียหายต่อเนื่อง เช่น น้ำรั่วหนัก ไฟช็อต', color: 'bg-red-50 text-red-700 ring-1 ring-red-200' },
 }
 
-// ช่วงเวลาเข้าซ่อม: ระบุเวลาเองระหว่าง 09:00-20:00 ทีละ 30 นาที เก็บเป็น "HH:MM-HH:MM" (ตรงกับ constraint ในฐานข้อมูล)
-export const REPAIR_HOURS = { start: '09:00', end: '20:00', step: 30 }
-export const DEFAULT_PERIOD = '09:00-12:00'
+// เวลาเข้าซ่อม: เลือกเวลาเริ่มทีละ 1 ชั่วโมง ตั้งแต่ 09:00 ถึง 17:00 เก็บเป็นช่วง 1 ชั่วโมง "HH:MM-HH:MM" เช่น "09:00-10:00"
+// (start/end = เวลาเริ่มแรกสุด/สุดท้ายที่เลือกได้, step = ความยาวของนัดหนึ่งครั้งเป็นนาที)
+export const REPAIR_HOURS = { start: '09:00', end: '17:00', step: 60 }
 
 // ค่าแบบเดิม (ก่อนให้ระบุเวลาเอง) ที่ยังอยู่ในรายการเก่า
 export const legacyPeriods = {
@@ -43,5 +44,5 @@ export const legacyPeriods = {
     evening: '17:00-20:00',
 }
 
-// จำนวนช่วงเวลาที่ผู้เช่าเลือกได้สูงสุด (ตรงกับ constraint ในฐานข้อมูล)
-export const MAX_SLOTS = 3
+// จำนวนวันเวลาที่ผู้เช่าเลือกได้ (ผู้เช่าเลือกได้ 1 เวลา ฐานข้อมูลยังรับได้สูงสุด 3 สำหรับรายการเดิม)
+export const MAX_SLOTS = 1

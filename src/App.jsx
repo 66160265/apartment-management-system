@@ -13,7 +13,6 @@ import AdminUsersPage from './pages/AdminUsersPage.jsx'
 import AuditLogPage from './pages/AuditLogPage.jsx'
 import NotificationsPage from './pages/NotificationsPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
-import ChatPage from './pages/ChatPage.jsx'
 
 // กำหนดเส้นทาง (route) ทั้งหมดของแอป: หน้า login, หน้าของแอดมิน, หน้าของผู้เช่า และหน้าที่ใช้ร่วมกัน
 function App() {
@@ -40,7 +39,6 @@ function App() {
           {/* ทั้งสองสิทธิ์ใช้ร่วมกัน */}
           <Route path="/invoices" element={<InvoicesPage />} />
           <Route path="/repairs" element={<RepairsPage />} />
-          <Route path="/chat" element={<ChatPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
         </Route>

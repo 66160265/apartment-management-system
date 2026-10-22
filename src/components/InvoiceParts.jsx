@@ -79,6 +79,8 @@ export function InvoiceBreakdown({ invoice }) {
         { icon: 'droplet', tone: 'bg-cyan-50 text-cyan-700', label: 'ค่าน้ำ', detail: `${c.waterUnits} หน่วย × ${baht(invoice.water_rate)}`, value: c.water },
         { icon: 'bolt', tone: 'bg-amber-50 text-amber-700', label: 'ค่าไฟ', detail: `${c.elecUnits} หน่วย × ${baht(invoice.elec_rate)}`, value: c.elec },
         { icon: 'building', tone: 'bg-violet-50 text-violet-700', label: 'ค่าส่วนกลาง', detail: '', value: Number(invoice.common_fee) },
+        // ค่าซ่อมที่ผู้เช่าต้องชำระ รวมมาในใบนี้ (แสดงเฉพาะเมื่อมี)
+        ...(Number(invoice.repair_fee) > 0 ? [{ icon: 'wrench', tone: 'bg-rose-50 text-rose-700', label: 'ค่าซ่อม', detail: '', value: Number(invoice.repair_fee) }] : []),
     ]
     return (
         <div className="rounded-2xl border border-line overflow-hidden bg-white">

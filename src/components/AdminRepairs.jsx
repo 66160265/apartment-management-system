@@ -2,12 +2,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import PageHeader from './PageHeader'
 import Icon from './Icon'
-import DatePicker from './DatePicker'
-import { AppointmentBox, ConfirmDialog, RepairImagePicker, RepairStatusBadge, SlotList, TimeRangePicker, UrgencyBadge } from './RepairParts'
-import { DEFAULT_PERIOD, repairCategories, repairStatuses, repairStatusKeys } from '../data/repairs'
+import { AppointmentBox, ConfirmDialog, RepairImagePicker, RepairStatusBadge, SlotList, UrgencyBadge } from './RepairParts'
+import { repairCategories, repairStatuses, repairStatusKeys } from '../data/repairs'
 import { formatDateTime } from '../lib/billing'
 import { AdminRepairPayment } from './RepairPayment'
-import { formatSlot, formatThaiDate, isInSlots, normalizePeriod, periodsOverlap, removeRepairImage, todayIso, uploadRepairImage } from '../lib/repairs'
+import { formatSlot, formatThaiDate, isBooked, isInSlots, isValidPeriod, normalizePeriod, removeRepairImage, todayIso, upcomingSlots, uploadRepairImage } from '../lib/repairs'
 import { supabase } from '../lib/supabaseClient'
 
 // คลาส Tailwind ของช่องกรอก/ตัวเลือกในฟอร์ม (ใช้ร่วมกันทุกช่อง)
@@ -23,7 +22,7 @@ const emptyForm = {
     urgency: 'normal',
     // นัดหมาย: วัน ช่วงเวลา ช่าง และ confirmed = ตกลงกับผู้เช่าแล้ว (เช่น คุยทางโทรศัพท์) ไม่ต้องรอผู้เช่ากดยืนยัน
     appointment_date: '',
-    appointment_period: DEFAULT_PERIOD,
+    appointment_period: '',
     technician: '',
     confirmed: false,
     // ค่าใช้จ่ายและผู้รับผิดชอบ
@@ -70,7 +69,6 @@ async function fetchData() {
 const summaryMeta = {
     all: { icon: 'wrench', tone: 'bg-slate-100 text-slate-600' },
     pending: { icon: 'clock', tone: 'bg-sky-50 text-sky-700' },
-    scheduled: { icon: 'calendar', tone: 'bg-violet-50 text-violet-700' },
     in_progress: { icon: 'review', tone: 'bg-amber-50 text-amber-700' },
     done: { icon: 'checkCircle', tone: 'bg-emerald-50 text-emerald-700' },
     cancelled: { icon: 'ban', tone: 'bg-slate-100 text-slate-600' },
@@ -96,6 +94,8 @@ function AdminRepairs({ adminId }) {
     // รูปใหม่ที่เลือก และ removeExisting = กดนำรูปเดิมออก
     const [file, setFile] = useState(null)
     const [removeExisting, setRemoveExisting] = useState(false)
+    // true = กด "ให้ผู้เช่าเลือกเวลาใหม่" ตอนบันทึกจะล้างเวลาที่ผู้เช่าเลือกและแจ้งเตือนให้ผู้เช่าเลือกใหม่
+    const [askNewTime, setAskNewTime] = useState(false)
     // กำลังบันทึก/ลบ (ใช้ล็อกปุ่มและช่องกรอก), ข้อความ error ของฟอร์ม, เปิดหน้าต่างยืนยันลบ
     const [saving, setSaving] = useState(false)
     const [formError, setFormError] = useState('')
@@ -131,9 +131,14 @@ function AdminRepairs({ adminId }) {
     const upcoming = useMemo(() => {
         const today = todayIso()
         return repairs
-            .filter((r) => r.status === 'scheduled' && r.appointment_date >= today)
+            .filter((r) => r.status === 'in_progress' && r.appointment_date >= today)
             .sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || normalizePeriod(a.appointment_period).localeCompare(normalizePeriod(b.appointment_period)))
     }, [repairs])
+    // เวลาที่ไม่ว่าง (ไม่นับรายการที่กำลังแก้ไข): นัดของห้องอื่น + วันเวลาที่ผู้เช่าห้องอื่นเลือกไว้ในเรื่องที่รอดำเนินการ
+    const booked = [
+        ...upcoming.filter((r) => r.id !== editing?.id).map((r) => ({ date: r.appointment_date, period: r.appointment_period })),
+        ...repairs.filter((r) => r.status === 'pending' && r.id !== editing?.id).flatMap((r) => (r.available_slots ?? []).filter((s) => s.date >= todayIso())),
+    ]
 
     // รายการที่แสดง: กรองตามแท็บสถานะและประเภท แล้วค้นหาจากเลขห้อง
     const visible = repairs.filter((r) => {
@@ -149,6 +154,7 @@ function AdminRepairs({ adminId }) {
     const resetImageState = () => {
         setFile(null)
         setRemoveExisting(false)
+        setAskNewTime(false)
     }
 
     // เปิดฟอร์มเพิ่มรายการแจ้งซ่อมใหม่
@@ -170,7 +176,7 @@ function AdminRepairs({ adminId }) {
             category: item.category ?? 'other',
             urgency: item.urgency ?? 'normal',
             appointment_date: item.appointment_date ?? '',
-            appointment_period: normalizePeriod(item.appointment_period) || DEFAULT_PERIOD,
+            appointment_period: normalizePeriod(item.appointment_period),
             technician: item.technician ?? '',
             confirmed: item.appointment_state === 'confirmed',
             cost: Number(item.cost) > 0 ? String(item.cost) : '',
@@ -191,6 +197,16 @@ function AdminRepairs({ adminId }) {
     // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key
     const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
+    // เปลี่ยนสถานะ: เปลี่ยนเป็น "กำลังดำเนินการ" ครั้งแรก ให้ใช้วันเวลาที่ผู้เช่าเลือกไว้เป็นวันนัด (ถ้าเวลานั้นยังว่าง)
+    const changeStatus = (status) => {
+        setAskNewTime(false)
+        setForm((f) => {
+            if (status !== 'in_progress' || f.appointment_date || editing === 'new') return { ...f, status }
+            const slot = upcomingSlots(editing.available_slots).find((s) => !isBooked(booked, s.date, s.period))
+            return slot ? { ...f, status, appointment_date: slot.date, appointment_period: slot.period } : { ...f, status }
+        })
+    }
+
     // บันทึกรายการแจ้งซ่อม: ตรวจข้อมูล อัปโหลด/ลบรูป แล้วเพิ่มหรืออัปเดตในฐานข้อมูล
     const handleSave = async (e) => {
         e.preventDefault()
@@ -199,11 +215,14 @@ function AdminRepairs({ adminId }) {
         const problem = form.problem.trim()
         if (!form.room) return setFormError('กรุณาเลือกห้อง')
         if (!problem) return setFormError('กรุณาระบุปัญหา')
-        // นัดหมาย: ต้องมีวันและช่วงเวลา และนัดใหม่ต้องไม่ใช่วันที่ผ่านมาแล้ว
+        // กำลังดำเนินการ: วันนัด = เวลาที่ผู้เช่าเลือก (ใส่ให้ตอนเปลี่ยนสถานะ) ถ้าเวลานั้นไม่ว่างหรือผ่านไปแล้ว ให้ผู้เช่าเลือกใหม่
+        // (ผู้เช่าไม่ได้เลือกเวลา เช่น อนุญาตให้เข้าห้องได้เลย หรือแอดมินแจ้งซ่อมเอง = ไม่มีวันนัด)
         const apptChanged = isNew || form.appointment_date !== (editing.appointment_date ?? '') || form.appointment_period !== normalizePeriod(editing.appointment_period)
-        if (form.status === 'scheduled') {
-            if (!form.appointment_date) return setFormError('กรุณาเลือกวันนัดเข้าซ่อม')
-            if (apptChanged && form.appointment_date < todayIso()) return setFormError('วันนัดต้องไม่ใช่วันที่ผ่านมาแล้ว')
+        if (form.status === 'in_progress' && !isNew && editing.status !== 'in_progress' && !form.appointment_date && editing.available_slots?.length > 0)
+            return setFormError('เวลาที่ผู้เช่าเลือกไม่ว่างหรือผ่านไปแล้ว กรุณากด "ให้ผู้เช่าเลือกเวลาใหม่"')
+        if (form.status === 'in_progress' && form.appointment_date && apptChanged) {
+            if (form.appointment_date < todayIso() || !isValidPeriod(form.appointment_period) || isBooked(booked, form.appointment_date, form.appointment_period))
+                return setFormError(`${formatSlot(form.appointment_date, form.appointment_period)} ไม่ว่างหรือผ่านไปแล้ว กรุณากด "ให้ผู้เช่าเลือกเวลาใหม่"`)
         }
         // ยกเลิก/ไม่รับเรื่อง ต้องบอกเหตุผลให้ผู้เช่าทราบ
         if (form.status === 'cancelled' && !form.admin_note.trim()) return setFormError('กรุณาระบุเหตุผลที่ยกเลิกในช่องหมายเหตุถึงผู้เช่า')
@@ -234,13 +253,13 @@ function AdminRepairs({ adminId }) {
         // สถานะนัด: ห้องว่าง / ตรงกับช่วงที่ผู้เช่าเลือกไว้ / แอดมินติ๊กว่าตกลงกันแล้ว = ยืนยันเลย, ไม่งั้นรอผู้เช่ายืนยัน
         const ownerId = isNew ? tenant?.user_id : editing.user_id
         const slots = isNew ? [] : editing.available_slots
-        const scheduled = form.status === 'scheduled'
-        const appointmentState = !scheduled
+        const withAppt = form.status === 'in_progress'
+        const appointmentState = !withAppt
             ? isNew ? null : editing.appointment_state
             : !ownerId || form.confirmed || isInSlots(slots, form.appointment_date, form.appointment_period)
               ? 'confirmed'
               : 'proposed'
-        const keepAppt = scheduled || form.status === 'in_progress' || form.status === 'done'
+        const keepAppt = withAppt || form.status === 'done'
         const fields = {
             problem,
             detail: form.detail.trim(),
@@ -255,6 +274,8 @@ function AdminRepairs({ adminId }) {
             technician: form.technician.trim(),
             cost,
             cost_payer: form.cost_payer,
+            // ให้ผู้เช่าเลือกเวลาใหม่: ล้างเวลาที่ผู้เช่าเลือกไว้ (ฐานข้อมูลจะแจ้งเตือนผู้เช่าให้เลือกใหม่)
+            ...(askNewTime && { available_slots: [], allow_entry: false }),
         }
         const { error } = isNew
             ? await supabase.from('repairs').insert({
@@ -306,21 +327,6 @@ function AdminRepairs({ adminId }) {
     const existingPath = editing && !isNew && !removeExisting ? editing.image_path : null
     // การ์ดสรุปด้านบน (ไม่แสดงสถานะยกเลิก แต่ยังนับรวมใน "ทั้งหมด")
     const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.filter((k) => k !== 'cancelled').map((k) => ({ key: k, label: repairStatuses[k].label }))]
-    // ช่วงที่เลือกตรงกับที่ผู้เช่าสะดวกไหม / มีงานอื่นนัดช่วงเดียวกันไหม (เตือนนัดชน)
-    const tenantSlots = editing && !isNew ? editing.available_slots : []
-    const hasTenant = isNew ? Boolean(tenantOf(form.room)?.user_id) : Boolean(editing?.user_id)
-    const pickedInSlots = isInSlots(tenantSlots, form.appointment_date, form.appointment_period)
-    const clashes =
-        editing && form.status === 'scheduled' && form.appointment_date
-            ? repairs.filter(
-                  (r) =>
-                      r.id !== editing.id &&
-                      r.status === 'scheduled' &&
-                      r.appointment_date === form.appointment_date &&
-                      periodsOverlap(r.appointment_period, form.appointment_period),
-              )
-            : []
-
     return (
         <div className="p-4 sm:p-6 flex flex-col gap-5">
             {/* หัวหน้า: ชื่อหน้า + ปุ่ม "แจ้งซ่อม" (แสดงเฉพาะตอนอยู่หน้ารายการ) */}
@@ -392,9 +398,37 @@ function AdminRepairs({ adminId }) {
                                 slots={editing.available_slots}
                                 allowEntry={editing.allow_entry}
                                 note={editing.availability_note}
-                                picked={form.status === 'scheduled' ? { date: form.appointment_date, period: form.appointment_period } : null}
-                                onPick={(slot) => setForm((f) => ({ ...f, status: 'scheduled', appointment_date: slot.date, appointment_period: slot.period }))}
                             />
+                            {/* ช่างไม่ว่างตามเวลาที่ผู้เช่าเลือก: กดแล้วบันทึก = ล้างเวลาเดิมและแจ้งเตือนให้ผู้เช่าเลือกเวลาใหม่ */}
+                            {(editing.available_slots?.length > 0 || editing.allow_entry) && ['pending', 'in_progress'].includes(editing.status) &&
+                                (askNewTime ? (
+                                    <div className="self-start flex flex-wrap items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-amber-50 border border-amber-200 text-amber-900">
+                                        <Icon name="alert" className="w-4 h-4 shrink-0" />
+                                        <span>บันทึกแล้วจะแจ้งให้ผู้เช่าเลือกเวลาใหม่</span>
+                                        <button type="button" onClick={() => {
+                                                setAskNewTime(false)
+                                                setForm((f) => ({ ...f, status: editing.status, appointment_date: editing.appointment_date ?? '', appointment_period: normalizePeriod(editing.appointment_period) }))
+                                            }}
+                                            disabled={saving}
+                                            className="text-xs text-primary hover:underline"
+                                        >
+                                            ยกเลิก
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setAskNewTime(true)
+                                            setForm((f) => ({ ...f, status: 'pending', appointment_date: '', appointment_period: '' }))
+                                        }}
+                                        disabled={saving}
+                                        className="self-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white border border-line text-primary-dark hover:bg-mist/40"
+                                    >
+                                        <Icon name="calendar" className="w-4 h-4" />
+                                        ให้ผู้เช่าเลือกเวลาใหม่
+                                    </button>
+                                ))}
                             {editing.contact_phone && (
                                 <a href={`tel:${editing.contact_phone}`} className="text-sm text-primary hover:underline flex items-center gap-1.5">
                                     <Icon name="phone" className="w-4 h-4" />
@@ -431,53 +465,20 @@ function AdminRepairs({ adminId }) {
                     {/* เปลี่ยนสถานะงานซ่อม (ผู้เช่าจะได้รับแจ้งเตือนเมื่อสถานะเปลี่ยน) */}
                     <div>
                         <label className="block text-sm text-muted mb-1">สถานะ</label>
-                        <select value={form.status} onChange={set('status')} disabled={saving} className={inputClass}>
-                            {repairStatusKeys.map((k) => (
-                                <option key={k} value={k}>{repairStatuses[k].label}</option>
-                            ))}
+                        <select value={form.status} onChange={(e) => changeStatus(e.target.value)} disabled={saving} className={inputClass}>
+                            {/* เลือก "รอดำเนินการ" และ "ยกเลิก" ไม่ได้ (ถ้ารายการอยู่ในสถานะนั้น ยังแสดงค่าปัจจุบันไว้แต่กดเลือกไม่ได้) */}
+                            {repairStatusKeys.map((k) => {
+                                const locked = k === 'pending' || k === 'cancelled'
+                                if (locked && form.status !== k) return null
+                                return (
+                                    <option key={k} value={k} disabled={locked} hidden={locked}>{repairStatuses[k].label}</option>
+                                )
+                            })}
                         </select>
                     </div>
 
-                    {/* นัดหมาย (เมื่อสถานะเป็น "นัดหมายแล้ว") */}
-                    {form.status === 'scheduled' && (
-                        <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4 flex flex-col gap-3">
-                            <div className="text-sm font-medium text-violet-900">นัดวันเข้าซ่อม</div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <DatePicker value={form.appointment_date} onChange={(v) => setForm((f) => ({ ...f, appointment_date: v }))} min={todayIso()} disabled={saving} placeholder="เลือกวันนัด" />
-                                <TimeRangePicker
-                                    value={form.appointment_period}
-                                    onChange={(v) => setForm((f) => ({ ...f, appointment_period: v }))}
-                                    disabled={saving}
-                                    selectClassName={`${inputClass} min-w-0 !px-3`}
-                                />
-                            </div>
-                            <input maxLength={100} value={form.technician} onChange={set('technician')} disabled={saving} placeholder="ชื่อช่าง / เบอร์ช่าง (ถ้ามี)" className={inputClass} />
-                            {/* บอกแอดมินว่านัดนี้ผู้เช่าต้องยืนยันก่อนหรือไม่ */}
-                            {form.appointment_date &&
-                                (!hasTenant ? (
-                                    <p className="text-xs text-muted">ห้องนี้ไม่มีผู้เช่า นัดหมายจะยืนยันทันที</p>
-                                ) : pickedInSlots ? (
-                                    <p className="text-xs text-emerald-700">ตรงกับเวลาที่ผู้เช่าสะดวก นัดหมายจะยืนยันทันทีและแจ้งผู้เช่า</p>
-                                ) : (
-                                    <label className="flex items-start gap-2 text-sm text-ink">
-                                        <input type="checkbox" className="mt-1" checked={form.confirmed} onChange={(e) => setForm((f) => ({ ...f, confirmed: e.target.checked }))} disabled={saving} />
-                                        <span>
-                                            ตกลงวันเวลากับผู้เช่าแล้ว (เช่น คุยทางโทรศัพท์)
-                                            <span className="block text-xs text-muted">ถ้าไม่ติ๊ก ระบบจะส่งวันนัดนี้ให้ผู้เช่ากดยืนยันหรือขอเปลี่ยนเวลา</span>
-                                        </span>
-                                    </label>
-                                ))}
-                            {clashes.length > 0 && (
-                                <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2 flex items-start gap-1.5">
-                                    <Icon name="alert" className="w-4 h-4 mt-0.5 shrink-0" />
-                                    ช่วงเวลานี้มีนัดซ่อมอยู่แล้ว: {clashes.map((r) => `ห้อง ${r.room} (${r.problem}${r.technician ? `, ${r.technician}` : ''})`).join(', ')}
-                                </p>
-                            )}
-                        </div>
-                    )}
-
-                    {/* กำลังซ่อม/เสร็จ: แสดงนัดเดิม (ถ้ามี) และค่าใช้จ่าย */}
-                    {(form.status === 'in_progress' || form.status === 'done') && (
+                    {/* เสร็จสิ้น: นัดเดิม ค่าใช้จ่าย ผู้รับผิดชอบค่าใช้จ่าย และชื่อช่าง */}
+                    {form.status === 'done' && (
                         <div className="flex flex-col gap-3">
                             {!isNew && editing.appointment_date && <AppointmentBox repair={editing} />}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -501,7 +502,7 @@ function AdminRepairs({ adminId }) {
                     {!isNew && <AdminRepairPayment repair={editing} />}
 
                     {/* คำแนะนำเมื่อเลือกสถานะที่ล้างนัดเดิม */}
-                    {!isNew && editing.appointment_date && (form.status === 'pending' || form.status === 'cancelled') && editing.status === 'scheduled' && (
+                    {!isNew && editing.appointment_date && (form.status === 'pending' || form.status === 'cancelled') && editing.status === 'in_progress' && (
                         <p className="-mt-2 text-xs text-muted">
                             นัดเดิม ({formatSlot(editing.appointment_date, editing.appointment_period)}) จะถูกยกเลิก
                             {form.status === 'pending' && ' ใช้กรณีช่างไปแล้วไม่พบผู้เช่า หรือต้องเลื่อนนัด'}

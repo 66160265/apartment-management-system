@@ -20,7 +20,8 @@ create table if not exists public.repairs (
 -- ข้อมูลเพิ่มเติมสำหรับนัดวันเวลาเข้าซ่อม (ใช้ alter เพื่อให้ฐานข้อมูลเดิมที่มีตารางอยู่แล้วได้คอลัมน์ใหม่ด้วย)
 -- ---------------------------------------------------------------------------
 
--- สถานะ: pending รอนัดหมาย -> scheduled นัดหมายแล้ว -> in_progress กำลังซ่อม -> done เสร็จสิ้น, cancelled ยกเลิก/ไม่รับเรื่อง
+-- สถานะ: pending รอดำเนินการ -> in_progress กำลังดำเนินการ (มีวันนัดเข้าซ่อม) -> done เสร็จสิ้น, cancelled ยกเลิก/ไม่รับเรื่อง
+-- (scheduled นัดหมายแล้ว = สถานะเดิม เลิกใช้แล้ว รายการเก่าถูกย้ายเป็น in_progress ท้ายไฟล์)
 alter table public.repairs drop constraint if exists repairs_status_check;
 alter table public.repairs add constraint repairs_status_check
   check (status in ('pending', 'scheduled', 'in_progress', 'done', 'cancelled'));
@@ -205,7 +206,7 @@ begin
       new.appointment_state := null;
     end if;
     -- ห้องว่าง (ไม่มีผู้เช่า) ไม่มีใครต้องยืนยันนัด
-    if new.status = 'scheduled' and new.user_id is null then
+    if new.status = 'in_progress' and new.appointment_date is not null and new.user_id is null then
       new.appointment_state := 'confirmed';
     end if;
   end if;
@@ -273,7 +274,7 @@ as $$
 begin
   perform set_config('app.repair_tenant_action', 'on', true);
   update public.repairs set appointment_state = 'confirmed', tenant_message = ''
-  where id = p_id and user_id = auth.uid() and status = 'scheduled' and appointment_state = 'proposed';
+  where id = p_id and user_id = auth.uid() and status = 'in_progress' and appointment_state = 'proposed';
   if not found then raise exception 'ไม่พบนัดหมายที่รอการยืนยัน'; end if;
   perform set_config('app.repair_tenant_action', 'off', true);
 end;
@@ -295,7 +296,7 @@ begin
   update public.repairs
   set status = 'pending', appointment_date = null, appointment_period = null, appointment_state = null,
       available_slots = p_slots, allow_entry = p_allow_entry, tenant_message = left(coalesce(p_note, ''), 500)
-  where id = p_id and user_id = auth.uid() and status = 'scheduled' and appointment_state = 'proposed';
+  where id = p_id and user_id = auth.uid() and status = 'in_progress' and appointment_state = 'proposed';
   if not found then raise exception 'ยืนยันนัดหมายแล้ว ไม่สามารถเปลี่ยนเวลาได้ กรุณาติดต่อผู้ดูแล'; end if;
   perform set_config('app.repair_tenant_action', 'off', true);
 end;
@@ -330,3 +331,136 @@ revoke all on function public.repair_confirm_done(uuid, boolean, text) from publ
 grant execute on function public.repair_accept_appointment(uuid) to authenticated;
 grant execute on function public.repair_request_new_time(uuid, jsonb, text, boolean) to authenticated;
 grant execute on function public.repair_confirm_done(uuid, boolean, text) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- กันนัดซ่อมชนกัน: เวลาที่เป็นนัดของห้องหนึ่งแล้ว ห้องอื่นนัดซ้อนไม่ได้
+-- (เวลานัด 1 ครั้ง = "09:00-10:00" ค่าแบบเดิมอาจเป็นช่วงยาวกว่า หรือ morning/afternoon/evening)
+-- ---------------------------------------------------------------------------
+
+-- "09:00-10:00" / morning -> array['09:00', '10:00'] (เวลาเริ่ม, เวลาสิ้นสุด)
+create or replace function public.repair_period_range(p text)
+returns text[]
+language sql
+immutable
+as $$
+  select case p
+    when 'morning' then array['09:00', '12:00']
+    when 'afternoon' then array['13:00', '17:00']
+    when 'evening' then array['17:00', '20:00']
+    else array[split_part(p, '-', 1), split_part(p, '-', 2)] end;
+$$;
+
+-- สองช่วงเวลาซ้อนกันไหม
+create or replace function public.repair_periods_overlap(a text, b text)
+returns boolean
+language sql
+immutable
+as $$
+  select (public.repair_period_range(a))[1] < (public.repair_period_range(b))[2]
+     and (public.repair_period_range(b))[1] < (public.repair_period_range(a))[2];
+$$;
+
+-- เวลาที่ไม่ว่างของทุกห้อง ให้หน้าเว็บปิดเวลานั้น (คืนแค่วันและเวลา ไม่มีข้อมูลห้อง/ผู้เช่า)
+-- นับ: นัดที่แอดมินกำหนดแล้ว + วันเวลาที่ผู้เช่าห้องอื่นเลือกไว้ในเรื่องที่ยังรอดำเนินการ
+-- p_exclude = รายการที่กำลังแก้ไขอยู่ (ไม่นับเวลาของตัวเอง)
+create or replace function public.repair_booked_times(p_exclude uuid default null)
+returns table (appointment_date date, appointment_period text)
+language sql
+stable
+security definer set search_path = public
+as $$
+  select r.appointment_date, r.appointment_period
+  from public.repairs r
+  where r.status = 'in_progress'
+    and r.appointment_date >= public.today_th()
+    and r.id is distinct from p_exclude
+  union
+  select (s ->> 'date')::date, s ->> 'period'
+  from public.repairs r, jsonb_array_elements(r.available_slots) s
+  where r.status = 'pending'
+    and (s ->> 'date') >= public.today_th()::text
+    and r.id is distinct from p_exclude;
+$$;
+
+revoke all on function public.repair_booked_times(uuid) from public, anon;
+grant execute on function public.repair_booked_times(uuid) to authenticated;
+
+-- วัน + เวลานี้ไม่ว่างไหม (นัดที่กำหนดแล้ว หรือเวลาที่ผู้เช่าห้องอื่นเลือกไว้) ไม่นับรายการ p_self
+create or replace function public.repair_time_taken(p_self uuid, p_date date, p_period text)
+returns boolean
+language sql
+stable
+security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.repairs r
+    where r.id <> p_self and r.status = 'in_progress'
+      and r.appointment_date = p_date
+      and public.repair_periods_overlap(r.appointment_period, p_period)
+  ) or exists (
+    select 1 from public.repairs r, jsonb_array_elements(r.available_slots) s
+    where r.id <> p_self and r.status = 'pending'
+      and s ->> 'date' = p_date::text
+      and public.repair_periods_overlap(s ->> 'period', p_period)
+  );
+$$;
+
+revoke all on function public.repair_time_taken(uuid, date, text) from public, anon, authenticated;
+
+-- กันเวลาซ้ำกับห้องอื่น (ล็อกตามวัน กันสองคนบันทึกเวลาเดียวกันพร้อมกัน)
+--   แอดมินตั้ง/เปลี่ยนนัด: ห้ามชนกับนัดที่กำหนดแล้ว
+--   ผู้เช่าเลือก/เปลี่ยนวันเวลาที่สะดวก: ห้ามชนกับนัดที่กำหนดแล้ว และเวลาที่ผู้เช่าห้องอื่นเลือกไว้
+create or replace function public.repairs_no_double_booking()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  s jsonb;
+  d text;
+begin
+  if new.status = 'in_progress' and new.appointment_date is not null
+     and (tg_op = 'INSERT'
+          or old.status is distinct from 'in_progress'
+          or new.appointment_date is distinct from old.appointment_date
+          or new.appointment_period is distinct from old.appointment_period) then
+    perform pg_advisory_xact_lock(hashtext('repair-appointment-' || new.appointment_date::text));
+    if exists (
+      select 1 from public.repairs r
+      where r.id <> new.id
+        and r.status = 'in_progress'
+        and r.appointment_date = new.appointment_date
+        and public.repair_periods_overlap(r.appointment_period, new.appointment_period)
+    ) then
+      raise exception 'เวลานี้มีนัดซ่อมของห้องอื่นแล้ว กรุณาเลือกเวลาอื่น';
+    end if;
+  end if;
+
+  if new.status = 'pending' and jsonb_array_length(new.available_slots) > 0
+     and (tg_op = 'INSERT' or old.status is distinct from 'pending' or new.available_slots is distinct from old.available_slots) then
+    -- ล็อกทุกวันที่เลือก (เรียงวันก่อน กันล็อกค้างกันเอง)
+    for d in select distinct x ->> 'date' from jsonb_array_elements(new.available_slots) x order by 1 loop
+      perform pg_advisory_xact_lock(hashtext('repair-appointment-' || d));
+    end loop;
+    for s in select * from jsonb_array_elements(new.available_slots) loop
+      if (s ->> 'date') >= public.today_th()::text
+         and public.repair_time_taken(new.id, (s ->> 'date')::date, s ->> 'period') then
+        raise exception 'เวลานี้มีห้องอื่นเลือกไว้แล้ว กรุณาเลือกเวลาอื่น';
+      end if;
+    end loop;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists repairs_no_double_booking on public.repairs;
+create trigger repairs_no_double_booking before insert or update on public.repairs
+  for each row execute function public.repairs_no_double_booking();
+
+-- ---------------------------------------------------------------------------
+-- เลิกใช้สถานะ "นัดหมายแล้ว" (scheduled): ย้ายรายการเดิมเป็น "กำลังดำเนินการ" (in_progress) โดยเก็บวันนัดไว้
+-- (เปิด app.repair_tenant_action ชั่วคราวเพื่อข้ามการล็อกคอลัมน์ใน trigger, ไม่มีผู้ใช้จึงไม่ส่งแจ้งเตือน)
+-- ---------------------------------------------------------------------------
+select set_config('app.repair_tenant_action', 'on', false);
+update public.repairs set status = 'in_progress' where status = 'scheduled';
+select set_config('app.repair_tenant_action', 'off', false);

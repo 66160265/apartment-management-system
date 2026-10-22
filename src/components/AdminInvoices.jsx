@@ -7,6 +7,7 @@ import MonthPicker from './MonthPicker'
 import { CopyButton, InvoiceBreakdown, InvoiceStepper, PaymentHistory, SlipImage, StatusBadge, VerifyBox } from './InvoiceParts'
 import { invoiceStatuses } from '../data/billing'
 import { balanceAtSlip, baht, calcInvoice, currentMonth, daysLate, formatDateTime, formatMonth, lateFeeSnapshot, paidOf } from '../lib/billing'
+import { loadUnbilledRepairFees } from '../lib/repairPayments'
 import { requestSlipVerify, suggestedAmountOf } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
@@ -355,6 +356,8 @@ function AdminInvoices() {
     const [tenants, setTenants] = useState([])
     const [rents, setRents] = useState({})
     const [invoices, setInvoices] = useState([])
+    // ค่าซ่อมที่ยังไม่ได้เรียกเก็บ { ห้อง: ยอด } จะรวมเข้าใบแจ้งหนี้ใบถัดไปของห้องนั้นอัตโนมัติ (ใช้แสดงยอดตัวอย่าง)
+    const [repairFees, setRepairFees] = useState({})
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
     const settings = useSettings()
@@ -388,11 +391,15 @@ function AdminInvoices() {
     }, [])
 
     // โหลดซ้ำหลังบันทึก/ลบ
-    const load = useCallback(async () => applyResult(await fetchData()), [applyResult])
+    const load = useCallback(async () => {
+        loadUnbilledRepairFees().then(setRepairFees)
+        applyResult(await fetchData())
+    }, [applyResult])
 
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {
         let active = true
+        loadUnbilledRepairFees().then((fees) => active && setRepairFees(fees))
         fetchData().then((result) => {
             if (active) applyResult(result)
         })
@@ -447,6 +454,8 @@ function AdminInvoices() {
         commonFee: Number(view.commonFee),
     }
     const calc = calcInvoice({ rent, ...numbers })
+    // ค่าซ่อมในใบ: ตอนแก้ไขใช้ยอดที่รวมไว้แล้ว ใบใหม่ใช้ค่าซ่อมที่ยังไม่ได้เรียกเก็บของห้อง (ฐานข้อมูลบวกให้ตอนสร้างใบ)
+    const repairFee = editing ? Number(editing.repair_fee ?? 0) : (repairFees[form.room] ?? 0)
 
     // เริ่มแก้ไขใบแจ้งหนี้: เติมข้อมูลเดิมลงในฟอร์ม
     const startEdit = (invoice) => {
@@ -503,7 +512,8 @@ function AdminInvoices() {
             elec_curr: numbers.elecCurr,
             elec_rate: numbers.elecRate,
             common_fee: numbers.commonFee,
-            total: calc.total,
+            // แก้ไขใบเดิม: ยอดรวมต้องรวมค่าซ่อมที่อยู่ในใบด้วย (ใบใหม่ฐานข้อมูลบวกค่าซ่อมให้เอง)
+            total: calc.total + (editingId ? repairFee : 0),
         }
         setSaving(true)
         // แก้ไขได้ทุกสถานะ (สถานะและสลิปคงเดิม) ค่าเช่าใช้ค่าที่บันทึกไว้เดิม
@@ -560,6 +570,7 @@ function AdminInvoices() {
                     rents={rents}
                     invoices={invoices}
                     settings={settings}
+                    repairFees={repairFees}
                     onCancel={() => setBulk(false)}
                     onDone={async (count) => {
                         await load()
@@ -749,7 +760,8 @@ function AdminInvoices() {
                                 elec_curr: form.elecCurr === '' ? numbers.elecPrev : numbers.elecCurr,
                                 elec_rate: numbers.elecRate || 0,
                                 common_fee: numbers.commonFee || 0,
-                                total: calc.total || 0,
+                                repair_fee: repairFee,
+                                total: (calc.total || 0) + repairFee,
                             }}
                         />
                         {/* เตือนเมื่อแก้ใบที่ส่งสลิปหรือจ่ายแล้ว */}
@@ -927,7 +939,7 @@ function AdminInvoices() {
                                             </div>
                                         </button>
                                         <div className="text-xs text-muted tabular-nums">
-                                            ค่าเช่า {baht(i.rent)} · น้ำ {baht(c.water)} · ไฟ {baht(c.elec)}{Number(i.common_fee) > 0 ? ` · ส่วนกลาง ${baht(i.common_fee)}` : ''}
+                                            ค่าเช่า {baht(i.rent)} · น้ำ {baht(c.water)} · ไฟ {baht(c.elec)}{Number(i.common_fee) > 0 ? ` · ส่วนกลาง ${baht(i.common_fee)}` : ''}{Number(i.repair_fee) > 0 ? ` · ค่าซ่อม ${baht(i.repair_fee)}` : ''}
                                         </div>
                                         <div className="flex gap-2">
                                             <button

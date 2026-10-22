@@ -116,15 +116,15 @@ language sql
 immutable
 as $$
   select case s
-    when 'pending' then 'รอนัดหมาย'
+    when 'pending' then 'รอดำเนินการ'
     when 'scheduled' then 'นัดหมายแล้ว'
-    when 'in_progress' then 'กำลังซ่อม'
+    when 'in_progress' then 'กำลังดำเนินการ'
     when 'done' then 'เสร็จสิ้น'
     when 'cancelled' then 'ยกเลิก'
     else s end;
 $$;
 
--- 13:00-15:30 -> 13:00-15:30 น. (ค่าแบบเดิม morning -> 09:00-12:00 น.)
+-- 09:00-10:00 (นัด 1 ชั่วโมง) -> 09:00 น. / ช่วงแบบเดิม 13:00-15:30 -> 13:00-15:30 น. / morning -> 09:00-12:00 น.
 create or replace function public.repair_period_label(p text)
 returns text
 language sql
@@ -134,7 +134,11 @@ as $$
     when 'morning' then '09:00-12:00 น.'
     when 'afternoon' then '13:00-17:00 น.'
     when 'evening' then '17:00-20:00 น.'
-    else coalesce(p || ' น.', '') end;
+    else case
+      -- ตรวจรูปแบบก่อนแปลงเป็นเวลา (case ตรวจตามลำดับ ไม่แปลงค่าที่รูปแบบไม่ถูก)
+      when p !~ '^\d\d:\d\d-\d\d:\d\d$' then coalesce(p || ' น.', '')
+      when split_part(p, '-', 2)::time - split_part(p, '-', 1)::time = interval '1 hour' then split_part(p, '-', 1) || ' น.'
+      else p || ' น.' end end;
 $$;
 
 -- 2026-10-20 -> จ. 20 ต.ค. 69
@@ -196,12 +200,12 @@ begin
     if v_admin then
       perform public.notify(
         new.user_id, 'repair',
-        case when new.status = 'scheduled' and new.appointment_state = 'proposed'
+        case when new.status = 'in_progress' and new.appointment_state = 'proposed'
              then 'ผู้ดูแลบันทึกเรื่องแจ้งซ่อมและเสนอวันเข้าซ่อม กรุณายืนยัน'
              else 'ผู้ดูแลบันทึกเรื่องแจ้งซ่อมให้คุณ' end,
         'ห้อง ' || new.room || ' · ' || new.problem,
         'รายการ: ' || new.problem || case when new.detail <> '' then E'\n' || new.detail else '' end
-          || case when new.status = 'scheduled'
+          || case when new.status = 'in_progress' and new.appointment_date is not null
                   then E'\nวันนัด: ' || public.repair_appointment_text(new.appointment_date, new.appointment_period)
                   else '' end,
         '/repairs', 'ดูรายการแจ้งซ่อม');
@@ -226,38 +230,47 @@ begin
 
     if v_admin then
       v_text := 'รายการ: ' || new.problem || E'\nสถานะ: ' || public.repair_status_label(new.status);
-      if new.status = 'scheduled' then
+      if new.status = 'in_progress' and new.appointment_date is not null then
         v_text := v_text || E'\nวันนัด: ' || public.repair_appointment_text(new.appointment_date, new.appointment_period)
           || case when new.technician <> '' then E'\nช่าง: ' || new.technician else '' end
           || E'\nช่างจะโทรไปคอนเฟิร์มอีกครั้งก่อนถึงเวลานัด 30 นาที';
       end if;
-      if new.status in ('in_progress', 'done') and new.cost > 0 then
-        v_text := v_text || E'\nค่าใช้จ่าย: ' || public.fmt_baht(new.cost)
-          || case when new.cost_payer = 'tenant' then ' (ผู้เช่าเป็นผู้ชำระ)' else ' (หอพักรับผิดชอบ)' end
-          || case when new.cost_payer = 'tenant' and new.status = 'done' then E'\nชำระค่าซ่อมและแนบสลิปได้ที่หน้าแจ้งซ่อม' else '' end;
+      -- ค่าใช้จ่ายแจ้งเฉพาะที่ผู้เช่าต้องชำระ (หอพักรับผิดชอบไม่ต้องแจ้ง)
+      if new.status in ('in_progress', 'done') and new.cost > 0 and new.cost_payer = 'tenant' then
+        v_text := v_text || E'\nค่าใช้จ่าย: ' || public.fmt_baht(new.cost) || ' (ผู้เช่าเป็นผู้ชำระ)'
+          || case when new.status = 'done' then E'\nค่าซ่อมจะรวมในใบแจ้งหนี้ค่าห้องรอบถัดไป ไม่ต้องชำระแยก' else '' end;
       end if;
       if new.admin_note <> '' then
         v_text := v_text || E'\n\nข้อความจากผู้ดูแล: ' || new.admin_note;
       end if;
 
-      if new.status = 'scheduled' and new.appointment_state = 'proposed'
-         and (v_appt_changed or old.status is distinct from 'scheduled' or old.appointment_state is distinct from 'proposed') then
+      -- ผู้ดูแลกด "ให้ผู้เช่าเลือกเวลาใหม่" (ล้างเวลาที่ผู้เช่าเลือกไว้ เช่น ช่างไม่ว่าง)
+      if new.status = 'pending' and new.available_slots = '[]'::jsonb and not new.allow_entry
+         and (old.available_slots <> '[]'::jsonb or old.allow_entry) then
+        v_title := 'กรุณาเลือกวันเวลาเข้าซ่อมใหม่';
+        v_text := 'รายการ: ' || new.problem
+          || E'\nช่างไม่สะดวกตามเวลาที่คุณเลือกไว้'
+          || coalesce(E'\n' || nullif(public.repair_slots_text(old.available_slots, false, ''), ''), '')
+          || case when new.admin_note <> '' then E'\nสาเหตุ: ' || new.admin_note else '' end
+          || E'\n\nกรุณากด "แก้ไข" ในหน้าแจ้งซ่อมเพื่อเลือกวันและเวลาที่สะดวกใหม่';
+      elsif new.status = 'in_progress' and new.appointment_date is not null and new.appointment_state = 'proposed'
+         and (v_appt_changed or old.status is distinct from 'in_progress' or old.appointment_state is distinct from 'proposed') then
         v_title := 'ผู้ดูแลเสนอวันเข้าซ่อม กรุณายืนยัน';
         v_text := v_text || E'\n\nหากไม่สะดวก กด "ขอเปลี่ยนเวลา" ในหน้าแจ้งซ่อมเพื่อเลือกวันใหม่';
-      elsif new.status = 'scheduled' and (v_appt_changed or old.status is distinct from 'scheduled'
+      elsif new.status = 'in_progress' and new.appointment_date is not null and (v_appt_changed or old.status is distinct from 'in_progress'
             or old.appointment_state is distinct from new.appointment_state) then
         v_title := 'นัดเข้าซ่อม ' || public.repair_appointment_text(new.appointment_date, new.appointment_period);
       elsif new.status is distinct from old.status then
         v_title := case new.status
           when 'done' then case when new.cost_payer = 'tenant' and new.cost > 0
-                                then 'ซ่อมเสร็จแล้ว มีค่าซ่อมที่ต้องชำระ ' || public.fmt_baht(new.cost)
+                                then 'ซ่อมเสร็จแล้ว ค่าซ่อม ' || public.fmt_baht(new.cost) || ' จะรวมในค่าห้องรอบถัดไป'
                                 else 'ซ่อมเสร็จแล้ว กรุณาตรวจสอบและยืนยัน' end
           when 'cancelled' then 'เรื่องแจ้งซ่อมถูกยกเลิก'
           when 'pending' then 'ต้องนัดวันเข้าซ่อมใหม่'
           else 'สถานะแจ้งซ่อมเปลี่ยนเป็น "' || public.repair_status_label(new.status) || '"' end;
       elsif new.status = 'done' and new.cost_payer = 'tenant' and new.cost > 0
             and (new.cost is distinct from old.cost or new.cost_payer is distinct from old.cost_payer) then
-        v_title := 'มีค่าซ่อมที่ต้องชำระ ' || public.fmt_baht(new.cost);
+        v_title := 'ค่าซ่อม ' || public.fmt_baht(new.cost) || ' จะรวมในค่าห้องรอบถัดไป';
       elsif new.admin_note is distinct from old.admin_note or new.technician is distinct from old.technician then
         v_title := 'ผู้ดูแลส่งข้อความเกี่ยวกับงานซ่อม';
       end if;
@@ -273,7 +286,7 @@ begin
         'ผู้เช่าห้อง ' || new.room || ' ยืนยันนัด ' || public.repair_appointment_text(new.appointment_date, new.appointment_period)
           || E'\nรายการ: ' || new.problem,
         '/repairs', 'ไปที่ระบบแจ้งซ่อม');
-    elsif old.status = 'scheduled' and new.status = 'pending' then
+    elsif old.status = 'in_progress' and new.status = 'pending' then
       perform public.notify_admins(
         'repair', 'ผู้เช่าขอเปลี่ยนวันนัดซ่อม', v_head,
         'ผู้เช่าห้อง ' || new.room || ' ไม่สะดวกวันนัด ' || public.repair_appointment_text(old.appointment_date, old.appointment_period)
@@ -338,7 +351,7 @@ declare
 begin
   for r in
     select * from public.repairs
-    where status = 'scheduled' and appointment_state = 'confirmed' and appointment_date = public.today_th()
+    where status = 'in_progress' and appointment_state = 'confirmed' and appointment_date = public.today_th()
   loop
     perform public.notify(
       r.user_id, 'repair', 'วันนี้มีนัดเข้าซ่อม ' || public.repair_period_label(r.appointment_period),
@@ -356,25 +369,6 @@ begin
         || case when r.contact_phone <> '' then E'\nเบอร์ผู้เช่า: ' || r.contact_phone else '' end,
       '/repairs', 'ไปที่ระบบแจ้งซ่อม');
   end loop;
-
-  -- ค่าซ่อมที่ผู้เช่ายังไม่ชำระ: เตือนทุก 3 วันนับจากวันที่ซ่อมเสร็จ (วันที่ 3, 6, 9, ...) ไม่เตือนเรื่องที่ส่งสลิปแล้วหรือชำระแล้ว
-  -- ตาราง repair_payments มาจาก repair-payments.sql ถ้ายังไม่ได้รันให้ข้ามส่วนนี้ (ใช้ dynamic SQL กัน error ตอนยังไม่มีตาราง)
-  if to_regclass('public.repair_payments') is not null then
-    for r in execute
-      'select r.* from public.repairs r
-        where r.status = ''done'' and r.cost_payer = ''tenant'' and r.cost > 0
-          and r.user_id is not null and r.completed_at is not null
-          and (public.today_th() - (r.completed_at at time zone ''Asia/Bangkok'')::date) >= 3
-          and (public.today_th() - (r.completed_at at time zone ''Asia/Bangkok'')::date) % 3 = 0
-          and not exists (select 1 from public.repair_payments p where p.repair_id = r.id and p.status in (''review'', ''paid''))'
-    loop
-      perform public.notify(
-        r.user_id, 'repair', 'ค่าซ่อมยังไม่ได้ชำระ ' || public.fmt_baht(r.cost),
-        'ห้อง ' || r.room || ' · ' || r.problem,
-        'ค่าซ่อม "' || r.problem || '" ยอด ' || public.fmt_baht(r.cost) || E' ยังไม่ได้ชำระ\nชำระและแนบสลิปได้ที่หน้าแจ้งซ่อม',
-        '/repairs', 'ชำระค่าซ่อม');
-    end loop;
-  end if;
 end;
 $$;
 

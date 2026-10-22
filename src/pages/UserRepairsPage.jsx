@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
-import { RepairCostBanner, TenantRepairPayment } from '../components/RepairPayment'
-import { useRepairCosts } from '../lib/useRepairCosts'
+import { TenantRepairPayment } from '../components/RepairPayment'
 import { AppointmentBox, ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge, SlotList, SlotPicker, UrgencyBadge } from '../components/RepairParts'
 import { repairCategories, repairProgressKeys, repairStatuses, repairStatusKeys } from '../data/repairs'
 import { baht, formatDateTime } from '../lib/billing'
-import { formatSlot, formatThaiDate, removeRepairImage, upcomingSlots, uploadRepairImage, validateAvailability } from '../lib/repairs'
+import { formatSlot, formatThaiDate, loadBookedTimes, removeRepairImage, upcomingSlots, uploadRepairImage, validateAvailability } from '../lib/repairs'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
 
@@ -20,8 +19,11 @@ const emptyForm = {
     slots: [],
 }
 
+// ผู้ดูแลขอให้เลือกเวลาใหม่ (ล้างเวลาที่เลือกไว้ เช่น ช่างไม่ว่าง)
+const needsNewTime = (r) => r.status === 'pending' && (r.available_slots ?? []).length === 0 && !r.allow_entry
+
 // รายการที่ผู้เช่าต้องทำอะไรต่อ: ยืนยันวันนัดที่ผู้ดูแลเสนอ หรือยืนยันผลการซ่อม
-const needsAction = (r) => (r.status === 'scheduled' && r.appointment_state === 'proposed') || (r.status === 'done' && !r.tenant_confirmed_at)
+const needsAction = (r) => (r.status === 'in_progress' && r.appointment_state === 'proposed') || (r.status === 'done' && !r.tenant_confirmed_at)
 
 // ข้อมูลตั้งต้นก่อนโหลดเสร็จ
 const initialData = { repairs: [], loading: true, loadError: '' }
@@ -33,12 +35,12 @@ async function fetchRepairs(userId) {
     return { repairs: data, loading: false, loadError: '' }
 }
 
-// แถบความคืบหน้า 4 ขั้น: รอนัดหมาย -> นัดหมายแล้ว -> กำลังซ่อม -> เสร็จสิ้น
+// แถบความคืบหน้า 3 ขั้น: รอดำเนินการ -> กำลังดำเนินการ -> เสร็จสิ้น
 function Progress({ status }) {
-    // ลำดับของสถานะปัจจุบัน (0 = รอนัด, 1 = นัดแล้ว, 2 = กำลังซ่อม, 3 = เสร็จ)
+    // ลำดับของสถานะปัจจุบัน (0 = รอดำเนินการ, 1 = กำลังดำเนินการ, 2 = เสร็จ)
     const current = repairProgressKeys.indexOf(status)
     return (
-        <ol className="grid grid-cols-4">
+        <ol className="grid grid-cols-3">
             {repairProgressKeys.map((k, i) => {
                 // ขั้นที่ผ่านแล้ว (มีเครื่องหมายถูก), ขั้นปัจจุบัน (วงกลมเน้น), และขั้นที่ไปถึงแล้ว (เส้นเชื่อมเป็นสี)
                 const isDone = i < current || status === 'done'
@@ -84,7 +86,6 @@ function UserRepairsPage() {
     const [categoryFilter, setCategoryFilter] = useState('all')
     const [oldestFirst, setOldestFirst] = useState(false)
     // เรื่องที่มีค่าซ่อมค้างชำระ (ทำป้าย "ค้างชำระ" ในรายการ)
-    const unpaidIds = new Set(useRepairCosts().map((r) => r.id))
 
     // editing: null = หน้ารายการ, 'new' = แจ้งซ่อมใหม่, ออบเจ็กต์ = แก้ไขรายการนั้น
     const [editing, setEditing] = useState(null)
@@ -98,6 +99,9 @@ function UserRepairsPage() {
     // การตอบกลับของผู้เช่าในหน้ารายละเอียด: null | 'reschedule' (ขอเปลี่ยนเวลา) | 'notFixed' (แจ้งว่ายังไม่หาย)
     const [action, setAction] = useState(null)
     const [actionForm, setActionForm] = useState({ slots: [], allow_entry: false, note: '' })
+    // เวลาที่มีนัดซ่อมของห้องอื่นแล้ว (เลือกในฟอร์มไม่ได้) โหลดใหม่ทุกครั้งที่เปิดฟอร์ม
+    const [booked, setBooked] = useState([])
+    const refreshBooked = (excludeId = null) => loadBookedTimes(excludeId).then(setBooked)
 
     // โหลดซ้ำหลังแจ้ง/แก้ไข/ยกเลิก
     const load = async () => setData(await fetchRepairs(userId))
@@ -130,6 +134,7 @@ function UserRepairsPage() {
         setFile(null)
         setRemoveExisting(false)
         setFormError('')
+        refreshBooked()
         setEditing('new')
     }
 
@@ -146,6 +151,7 @@ function UserRepairsPage() {
         setFile(null)
         setRemoveExisting(false)
         setFormError('')
+        refreshBooked(repair.id)
         setEditing(repair)
     }
 
@@ -168,7 +174,7 @@ function UserRepairsPage() {
         const problem = form.problem.trim()
         if (!problem) return setFormError('กรุณาระบุปัญหาที่พบ')
         // ต้องบอกว่าช่างเข้าได้เมื่อไร (ยกเว้นอนุญาตให้เข้าห้องได้แม้ไม่อยู่)
-        const slotError = validateAvailability({ slots: form.slots, allowEntry: form.allow_entry, urgency: 'normal' })
+        const slotError = validateAvailability({ slots: form.slots, allowEntry: form.allow_entry, urgency: 'normal', booked })
         if (slotError) return setFormError(slotError)
 
         setSaving(true)
@@ -261,13 +267,14 @@ function UserRepairsPage() {
     // เปิดกล่องขอเปลี่ยนเวลา / แจ้งว่ายังไม่หาย
     const openAction = (type) => {
         setActionForm({ slots: upcomingSlots(editing.available_slots), allow_entry: editing.allow_entry, note: '' })
+        if (type === 'reschedule') refreshBooked(editing.id)
         setFormError('')
         setAction(type)
     }
 
     // ส่งช่วงเวลาใหม่ที่สะดวก (รายการจะกลับไปรอผู้ดูแลนัดใหม่)
     const submitReschedule = () => {
-        const err = validateAvailability({ slots: actionForm.slots, allowEntry: actionForm.allow_entry, urgency: 'normal' })
+        const err = validateAvailability({ slots: actionForm.slots, allowEntry: actionForm.allow_entry, urgency: 'normal', booked })
         if (err) return setFormError(err)
         runAction(
             'repair_request_new_time',
@@ -289,7 +296,7 @@ function UserRepairsPage() {
     const existingPath = editing && !isNew && !removeExisting ? editing.image_path : null
     // จำนวนรายการที่ยังไม่เสร็จ และรายการแท็บ (ทั้งหมด + ทุกสถานะ)
     const active = repairs.filter((r) => r.status !== 'done' && r.status !== 'cancelled').length
-    const actionCount = repairs.filter(needsAction).length
+    const actionCount = repairs.filter((r) => needsAction(r) || needsNewTime(r)).length
     const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.map((k) => ({ key: k, label: repairStatuses[k].label }))]
     // นับจำนวนรายการตามแท็บสถานะ ('all' = ทั้งหมด)
     const countOf = (key) => (key === 'all' ? repairs.length : repairs.filter((r) => r.status === key).length)
@@ -318,11 +325,6 @@ function UserRepairsPage() {
                     <div role="status" className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 text-sm px-4 py-3">
                         {notice}
                     </div>
-                )}
-
-                {/* ค่าซ่อมที่ยังไม่ได้ชำระ (กดรายการเพื่อเปิดเรื่องนั้น) */}
-                {!editing && room && (
-                    <RepairCostBanner onOpen={(id) => { const r = repairs.find((x) => x.id === id); if (r) openEdit(r) }} />
                 )}
 
                 {/* ไม่มีห้อง: แจ้งให้ติดต่อผู้ดูแล / กำลังเปิดฟอร์ม: ฟอร์มแจ้งซ่อม / ไม่งั้น: หน้ารายการ */}
@@ -355,7 +357,7 @@ function UserRepairsPage() {
                         )}
 
                         {/* วันนัดเข้าซ่อม: ผู้ดูแลเสนอมา = ยืนยัน/ขอเปลี่ยนเวลาได้, ยืนยันนัดแล้ว = เปลี่ยนเวลาไม่ได้ */}
-                        {!isNew && editing.status === 'scheduled' && (
+                        {!isNew && editing.status === 'in_progress' && editing.appointment_date && (
                             <AppointmentBox repair={editing}>
                                 <p className="mt-2 flex items-start gap-1.5 text-sm text-violet-900">
                                     <Icon name="phone" className="w-4 h-4 mt-0.5 shrink-0" />
@@ -379,7 +381,7 @@ function UserRepairsPage() {
                         {action === 'reschedule' && (
                             <div className="rounded-xl border border-line p-4 flex flex-col gap-3">
                                 <div className="font-medium text-primary-dark">เลือกช่วงเวลาที่สะดวกใหม่</div>
-                                <SlotPicker slots={actionForm.slots} onChange={(slots) => setActionForm((f) => ({ ...f, slots }))} disabled={saving} />
+                                <SlotPicker slots={actionForm.slots} onChange={(slots) => setActionForm((f) => ({ ...f, slots }))} booked={booked} disabled={saving} />
                                 <label className="flex items-center gap-2 text-sm text-ink">
                                     <input type="checkbox" checked={actionForm.allow_entry} onChange={(e) => setActionForm((f) => ({ ...f, allow_entry: e.target.checked }))} disabled={saving} />
                                     อนุญาตให้ช่างเข้าห้องได้แม้ฉันไม่อยู่
@@ -453,17 +455,17 @@ function UserRepairsPage() {
                             <textarea rows={4} maxLength={2000} value={form.detail} onChange={set('detail')} disabled={saving || readOnly} placeholder="อธิบายอาการและตำแหน่ง เช่น ก๊อกอ่างล้างหน้าในห้องน้ำมีน้ำหยดตลอด" className={inputClass} />
                         </div>
 
-                        {/* วันเวลาที่สะดวกให้ช่างเข้า: แก้ได้เฉพาะตอนยังรอนัดหมาย, ดูอย่างเดียวแสดงเป็นรายการ */}
+                        {/* วันเวลาที่สะดวกให้ช่างเข้า: แก้ได้เฉพาะตอนยังรอดำเนินการ, ดูอย่างเดียวแสดงเป็นรายการ */}
                         <div className="rounded-xl border border-line p-4 flex flex-col gap-3">
                             <div>
                                 <div className="text-sm font-medium text-primary-dark">วันเวลาที่สะดวกให้ช่างเข้าซ่อม</div>
-                                {!readOnly && <div className="text-xs text-muted">เลือกได้สูงสุด 3 ช่วงเวลา ผู้ดูแลจะเลือกช่วงใดช่วงหนึ่งเป็นวันนัด</div>}
+                                {!readOnly && <div className="text-xs text-muted">เลือกวันและเวลาที่สะดวก 1 เวลา ผู้ดูแลจะยืนยันเป็นวันนัด</div>}
                             </div>
                             {readOnly ? (
                                 <SlotList slots={editing.available_slots} allowEntry={editing.allow_entry} note={editing.availability_note} />
                             ) : (
                                 <>
-                                    <SlotPicker slots={form.slots} onChange={(slots) => setForm((f) => ({ ...f, slots }))} disabled={saving} />
+                                    <SlotPicker slots={form.slots} onChange={(slots) => setForm((f) => ({ ...f, slots }))} booked={booked} disabled={saving} />
                                     <label className="flex items-start gap-2 text-sm text-ink">
                                         <input type="checkbox" className="mt-1" checked={form.allow_entry} onChange={(e) => setForm((f) => ({ ...f, allow_entry: e.target.checked }))} disabled={saving} />
                                         <span>
@@ -515,17 +517,16 @@ function UserRepairsPage() {
                                 <p className="text-sm text-ink whitespace-pre-line wrap-break-word">{editing.tenant_message}</p>
                             </div>
                         )}
-
-                        {/* ค่าใช้จ่าย (แสดงเมื่อผู้ดูแลระบุ) */}
-                        {!isNew && Number(editing.cost) > 0 && (
+                        {/* ค่าใช้จ่ายที่ผู้เช่าต้องชำระ (หอพักรับผิดชอบไม่ต้องแสดง) */}
+                        {!isNew && Number(editing.cost) > 0 && editing.cost_payer === 'tenant' && (
                             <p className="text-sm text-ink">
                                 ค่าใช้จ่าย <span className="font-semibold">{baht(editing.cost)}</span>{' '}
-                                {editing.cost_payer === 'tenant' ? <span className="text-red-600">(ผู้เช่าเป็นผู้ชำระ)</span> : <span className="text-muted">(หอพักรับผิดชอบ)</span>}
+                                <span className="text-red-600">(ผู้เช่าเป็นผู้ชำระ)</span>
                             </p>
                         )}
 
                         {/* ชำระค่าซ่อม (ซ่อมเสร็จและผู้ดูแลระบุให้ผู้เช่าเป็นผู้ชำระ) */}
-                        {!isNew && <TenantRepairPayment repair={editing} userId={userId} />}
+                        {!isNew && <TenantRepairPayment repair={editing} />}
 
                         {/* ผู้เช่ายืนยันผลการซ่อมแล้ว */}
                         {!isNew && editing.tenant_confirmed_at && (
@@ -580,7 +581,7 @@ function UserRepairsPage() {
                                 {actionCount > 0 && (
                                     <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-sm">
                                         <Icon name="bell" className="w-4 h-4" />
-                                        {actionCount} รายการรอคุณยืนยัน
+                                        {actionCount} รายการรอคุณดำเนินการ
                                     </div>
                                 )}
                             </div>
@@ -678,12 +679,12 @@ function UserRepairsPage() {
                                                             </span>
                                                         </td>
                                                         <td className="px-3 py-3 border-x border-line/60 text-muted whitespace-nowrap">
-                                                            {r.status === 'scheduled' ? formatSlot(r.appointment_date, r.appointment_period) : '-'}
+                                                            {r.status === 'in_progress' && r.appointment_date ? formatSlot(r.appointment_date, r.appointment_period) : '-'}
                                                         </td>
                                                         <td className="px-3 py-3 border-x border-line/60 text-center">
                                                             <RepairStatusBadge status={r.status} />
                                                             {needsAction(r) && <div className="text-xs font-semibold text-red-600 mt-1">รอคุณยืนยัน</div>}
-                                                            {unpaidIds.has(r.id) && <div className="text-xs font-semibold text-amber-700 mt-1">ค้างชำระ {baht(r.cost)}</div>}
+                                                            {needsNewTime(r) && <div className="text-xs font-semibold text-red-600 mt-1">กรุณาเลือกเวลาใหม่</div>}
                                                         </td>
                                                         <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                                                             <button onClick={() => openEdit(r)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist whitespace-nowrap">
@@ -708,7 +709,7 @@ function UserRepairsPage() {
                                                                 {r.image_path && <Icon name="image" className="inline-block ml-2 -mt-0.5 w-4 h-4 text-secondary" />}
                                                             </div>
                                                             <div className="text-xs text-muted mt-0.5">แจ้งเมื่อ {formatThaiDate(r.created_at)}</div>
-                                                            {r.status === 'scheduled' && (
+                                                            {r.status === 'in_progress' && r.appointment_date && (
                                                                 <div className="text-xs text-violet-700 mt-0.5">นัด {formatSlot(r.appointment_date, r.appointment_period)}</div>
                                                             )}
                                                         </div>
@@ -718,7 +719,7 @@ function UserRepairsPage() {
                                                         </div>
                                                     </div>
                                                     {needsAction(r) && <div className="text-xs font-semibold text-red-600">รอคุณยืนยัน</div>}
-                                                    {unpaidIds.has(r.id) && <div className="text-xs font-semibold text-amber-700">ค้างชำระ {baht(r.cost)}</div>}
+                                                    {needsNewTime(r) && <div className="text-xs font-semibold text-red-600">กรุณาเลือกเวลาใหม่</div>}
                                                     <button onClick={() => openEdit(r)} className="py-2 rounded-xl text-sm bg-mist/60 text-primary-dark hover:bg-mist">
                                                         {r.status === 'pending' ? 'แก้ไขเรื่องนี้' : needsAction(r) ? 'ตรวจสอบและยืนยัน' : 'ดูรายละเอียด'}
                                                     </button>
