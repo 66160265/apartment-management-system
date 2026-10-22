@@ -64,10 +64,8 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
 
     return (
         <>
-            <PageHeader title="รายละเอียดใบแจ้งหนี้" />
-            <div className="mx-6 mb-6 flex flex-col gap-4">
-                {/* ปุ่มกลับไปรายการ */}
-                <button onClick={onBack} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm"><Icon name="arrowLeft" className="w-4 h-4" />กลับไปรายการใบแจ้งหนี้</button>
+            <PageHeader title="รายละเอียดใบแจ้งหนี้" onBack={onBack} backLabel="กลับไปรายการใบแจ้งหนี้" />
+            <div className="mx-4 sm:mx-6 mb-6 flex flex-col gap-4">
 
                 {/* การ์ดหัว: เลขห้อง ชื่อผู้เช่า สถานะ ปุ่ม PDF/แก้ไข/ลบ และไทม์ไลน์ขั้นตอน */}
                 <div className="bg-white rounded-2xl shadow-card p-5 flex flex-wrap items-center gap-4">

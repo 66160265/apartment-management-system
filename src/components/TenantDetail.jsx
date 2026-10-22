@@ -130,14 +130,9 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
 
     return (
         <>
-            <PageHeader title="รายละเอียดผู้เช่า" subtitle="ตรวจสอบและแก้ไขข้อมูลผู้เช่า พร้อมจัดการเอกสาร" />
+            <PageHeader title="รายละเอียดผู้เช่า" subtitle="ตรวจสอบและแก้ไขข้อมูลผู้เช่า พร้อมจัดการเอกสาร" onBack={onBack} backLabel="กลับไปรายชื่อผู้เช่า" />
 
             <div className="px-4 sm:px-6 pb-28 flex flex-col gap-4">
-                {/* ปุ่มกลับไปรายชื่อผู้เช่า */}
-                <button onClick={onBack} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm">
-                    <Icon name="arrowLeft" className="w-4 h-4" />
-                    กลับไปรายชื่อผู้เช่า
-                </button>
 
                 {/* การ์ดสรุป: ชื่อ สถานะสัญญา บัญชีเข้าสู่ระบบ และข้อมูลห้อง/เบอร์/ระยะสัญญา/เวลาที่เหลือ */}
                 <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-5">

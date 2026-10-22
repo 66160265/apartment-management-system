@@ -57,7 +57,7 @@ function Card({ title, children, hint, action }) {
     return (
         <div className="bg-white rounded-2xl p-5 shadow-card border border-line flex flex-col gap-3">
             <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-gray-600">{title}</span>
+                <span className="text-sm font-medium text-muted">{title}</span>
                 {action}
             </div>
             {children}
@@ -161,7 +161,7 @@ function AdminDashboardPage() {
     }, [data, now, settings.slipQuota])
 
     const received = summary.received + summary.repairReceived
-    const loadingText = <span className="text-gray-300 text-lg font-normal">กำลังโหลด...</span>
+    const loadingText = <span className="text-muted/50 text-lg font-normal">กำลังโหลด...</span>
 
     return (
         <div className="p-4 sm:p-6 flex flex-col gap-6">
@@ -210,7 +210,7 @@ function AdminDashboardPage() {
                     <dl className="flex flex-col gap-2">
                         <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-sm text-muted">เรียกเก็บ ({summary.issuedCount} ใบ)</dt>
-                            <dd className="text-xl font-semibold text-gray-900 tabular-nums">{loading ? loadingText : baht(summary.billed)}</dd>
+                            <dd className="text-xl font-semibold text-ink tabular-nums">{loading ? loadingText : baht(summary.billed)}</dd>
                         </div>
                         <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-sm text-muted">ได้รับแล้ว</dt>
@@ -218,7 +218,7 @@ function AdminDashboardPage() {
                         </div>
                         <div className="flex items-baseline justify-between gap-3 border-t border-line pt-2">
                             <dt className="text-sm text-muted">ยังค้างของใบเดือนนี้ ({summary.unpaidCount} ใบ)</dt>
-                            <dd className={`text-xl font-semibold tabular-nums ${summary.outstanding > 0 ? 'text-amber-700' : 'text-gray-900'}`}>{loading ? loadingText : baht(summary.outstanding)}</dd>
+                            <dd className={`text-xl font-semibold tabular-nums ${summary.outstanding > 0 ? 'text-amber-700' : 'text-ink'}`}>{loading ? loadingText : baht(summary.outstanding)}</dd>
                         </div>
                     </dl>
                 </Card>
@@ -229,8 +229,8 @@ function AdminDashboardPage() {
                     ) : (
                         <>
                             <div className="flex items-baseline gap-2">
-                                <span className={`text-4xl font-bold tabular-nums ${overdue.length > 0 ? 'text-red-600' : 'text-gray-900'}`}>{uniqueRooms(overdue)}</span>
-                                <span className="text-xl text-gray-400">ห้อง</span>
+                                <span className={`text-4xl font-bold tabular-nums ${overdue.length > 0 ? 'text-red-600' : 'text-ink'}`}>{uniqueRooms(overdue)}</span>
+                                <span className="text-xl text-muted/70">ห้อง</span>
                             </div>
                             <div className="text-sm text-muted tabular-nums">รวมยอดค้าง {baht(overdueTotal)} (รวมค่าปรับของวันนี้)</div>
                         </>
@@ -243,8 +243,8 @@ function AdminDashboardPage() {
                     ) : (
                         <>
                             <div className="flex items-baseline gap-2">
-                                <span className="text-4xl font-bold text-gray-900 tabular-nums">{occ.rate}%</span>
-                                <span className="text-xl text-gray-400">ว่าง {occ.vacant} ห้อง</span>
+                                <span className="text-4xl font-bold text-ink tabular-nums">{occ.rate}%</span>
+                                <span className="text-xl text-muted/70">ว่าง {occ.vacant} ห้อง</span>
                             </div>
                             <div className="h-2 rounded-full bg-sand overflow-hidden" role="presentation">
                                 <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, occ.rate)}%` }} />
@@ -258,7 +258,7 @@ function AdminDashboardPage() {
             <div className="bg-white rounded-2xl p-6 shadow-card border border-line">
                 <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
                     <div className="flex items-center gap-2">
-                        <h2 className="text-lg font-bold text-gray-900">เกินกำหนดชำระ</h2>
+                        <h2 className="text-lg font-bold text-ink">เกินกำหนดชำระ</h2>
                         {!loading && overdue.length > 0 && (
                             <span className="text-xs bg-red-100 text-red-800 font-semibold px-2.5 py-0.5 rounded-full">{overdue.length} ใบ</span>
                         )}
@@ -272,24 +272,24 @@ function AdminDashboardPage() {
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead>
-                            <tr className="border-b border-gray-200 text-xs text-gray-400 font-normal">
+                            <tr className="border-b border-line text-xs text-muted/70 font-normal">
                                 <th className="py-3 px-2 font-normal">ห้อง / ผู้เช่า</th>
                                 <th className="py-3 px-2 font-normal">เดือน</th>
                                 <th className="py-3 px-2 font-normal text-right">ค้างชำระ (บาท)</th>
                                 <th className="py-3 px-2 font-normal text-right">เกินกำหนด</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-line/60">
                             {loading ? (
-                                <tr><td colSpan={4} className="py-8 text-center text-gray-400 text-sm">กำลังโหลดข้อมูล...</td></tr>
+                                <tr><td colSpan={4} className="py-8 text-center text-muted/70 text-sm">กำลังโหลดข้อมูล...</td></tr>
                             ) : overdue.length === 0 ? (
                                 <tr><td colSpan={4} className="py-8 text-center text-emerald-600 text-sm font-medium">ไม่มีใบแจ้งหนี้ที่เกินกำหนดชำระ</td></tr>
                             ) : (
                                 overdue.slice(0, 8).map((r) => (
                                     <tr key={r.id} onClick={() => navigate('/invoices')} className="hover:bg-sand/30 transition-colors cursor-pointer" title="คลิกเพื่อไปที่หน้าใบแจ้งหนี้">
-                                        <td className="py-3.5 px-2 font-medium text-gray-900">{r.room} <span className="font-normal text-gray-600">· {r.tenant}</span></td>
-                                        <td className="py-3.5 px-2 text-gray-600">{formatMonth(r.month)}</td>
-                                        <td className="py-3.5 px-2 text-right text-gray-900 font-semibold tabular-nums">{baht(r.balance)}</td>
+                                        <td className="py-3.5 px-2 font-medium text-ink">{r.room} <span className="font-normal text-muted">· {r.tenant}</span></td>
+                                        <td className="py-3.5 px-2 text-muted">{formatMonth(r.month)}</td>
+                                        <td className="py-3.5 px-2 text-right text-ink font-semibold tabular-nums">{baht(r.balance)}</td>
                                         <td className="py-3.5 px-2 text-right"><span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 ring-1 ring-red-200">{r.daysLate} วัน</span></td>
                                     </tr>
                                 ))
