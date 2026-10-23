@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import DatePicker from './DatePicker'
 import { baht, formatDateTime } from '../lib/billing'
-import { buildDeductions, moveOutOutcome, reviewingInvoicesOf, settlement, unpaidInvoicesOf, validateCustoms } from '../lib/moveOut'
+import { buildDeductions, firstYearEnd, forfeitDeduction, forfeitsDeposit, moveOutOutcome, reviewingInvoicesOf, settlement, unpaidInvoicesOf, validateCustoms } from '../lib/moveOut'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { formatDate } from '../lib/tenants'
@@ -59,10 +59,15 @@ function MoveOutSection({ tenant }) {
     // อัปเดตเองเมื่อบันทึกย้ายออกหรือใบแจ้งหนี้ของห้องเปลี่ยน (เช่น ผู้เช่าเพิ่งจ่าย)
     useRealtimeReload(['move_outs', 'invoices'], load, { enabled: !unavailable })
 
-    const unpaid = useMemo(() => unpaidInvoicesOf(invoices, tenant.room), [invoices, tenant.room])
-    const reviewing = useMemo(() => reviewingInvoicesOf(invoices, tenant.room), [invoices, tenant.room])
+    // เฉพาะใบของผู้เช่าคนนี้ (ใบค้างของผู้เช่าคนก่อนในห้องเดียวกันไม่เกี่ยว)
+    const unpaid = useMemo(() => unpaidInvoicesOf(invoices, { room: tenant.room, userId: tenant.userId }), [invoices, tenant.room, tenant.userId])
+    const reviewing = useMemo(() => reviewingInvoicesOf(invoices, { room: tenant.room, userId: tenant.userId }), [invoices, tenant.room, tenant.userId])
     const selected = unpaid.filter((i) => picked[i.id] ?? true)
-    const deductions = buildDeductions(selected, customs)
+    const baseDeductions = buildDeductions(selected, customs)
+    // ย้ายออกก่อนครบสัญญาปีแรก: ไม่คืนเงินประกัน (เพิ่มรายการหักส่วนที่เหลือให้อัตโนมัติ)
+    const forfeit = forfeitsDeposit(tenant.startDate, date)
+    const forfeitRows = forfeit ? forfeitDeduction(tenant.deposit, baseDeductions) : []
+    const deductions = [...baseDeductions, ...forfeitRows]
     const result = settlement(tenant.deposit, deductions)
     const customError = validateCustoms(customs)
 
@@ -204,6 +209,12 @@ function MoveOutSection({ tenant }) {
                         ))}
                         <button type="button" onClick={() => setCustoms([...customs, { label: '', amount: '' }])} className="self-start text-sm text-primary hover:underline">+ เพิ่มรายการหัก</button>
                     </div>
+
+                    {forfeit && (
+                        <p className="text-sm font-medium text-amber-900 bg-amber-50 ring-1 ring-amber-200 rounded-lg px-3 py-2">
+                            ย้ายออกก่อนครบสัญญา 1 ปี (ครบวันที่ {formatDate(firstYearEnd(tenant.startDate))}) ไม่คืนเงินประกัน
+                        </p>
+                    )}
 
                     <dl className="rounded-lg bg-sand/60 p-3 text-sm flex flex-col gap-1.5">
                         <div className="flex justify-between"><dt className="text-muted">เงินประกัน</dt><dd className="tabular-nums">{baht(result.deposit)}</dd></div>

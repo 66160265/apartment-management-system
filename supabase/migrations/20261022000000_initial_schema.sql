@@ -1581,9 +1581,10 @@ begin
       exception when others then
         raise exception 'รหัสใบแจ้งหนี้ไม่ถูกต้อง';
       end;
-      select * into inv from public.invoices where id = inv_id and room = t.room for update;
+      -- ต้องเป็นใบของผู้เช่าคนนี้ (ใบค้างของผู้เช่าคนก่อนในห้องเดียวกันหักจากเงินประกันคนนี้ไม่ได้)
+      select * into inv from public.invoices where id = inv_id and room = t.room and user_id = t.user_id for update;
       if not found then
-        raise exception 'ไม่พบใบแจ้งหนี้ของห้องนี้';
+        raise exception 'ไม่พบใบแจ้งหนี้ของผู้เช่าคนนี้';
       end if;
       if inv.status <> 'pending' then
         raise exception 'ใบแจ้งหนี้เดือน % ไม่ได้อยู่ในสถานะรอชำระ (ชำระแล้วหรือรอตรวจสลิปอยู่ กรุณาจัดการก่อน)', public.thai_month(inv.month);

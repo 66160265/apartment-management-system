@@ -153,6 +153,13 @@ function UserDashboardPage() {
 
     // ใบที่ต้องจ่ายอยู่ทั้งหมด (เก่าสุดก่อน) ใช้แถบ "ต้องชำระ" เมื่อค้างหลายเดือน
     const unpaid = useMemo(() => tenantUnpaid(invoices, new Date(), settings.dueDay), [invoices, settings.dueDay])
+    // ข้อความเตือนค่าปรับชำระล่าช้า (ใช้อัตราที่จำไว้ในใบ ถ้าใบไม่มีใช้ค่าจากหน้าตั้งค่า) อัตรา 0 = ไม่คิดค่าปรับ ไม่แสดง
+    const lateFeeNotice = (invoice) => {
+        const rate = Number(invoice?.late_fee_rate ?? settings.lateFeePerDay ?? 0)
+        if (!(rate > 0)) return ''
+        const grace = Number(invoice?.late_fee_grace ?? settings.lateFeeGraceDays ?? 0)
+        return `หากเกินกำหนด${grace > 0 ? ` ${grace} วัน` : ''} คิดค่าปรับเพิ่มวันละ ${baht(rate)}`
+    }
 
     // ใบแจ้งหนี้ที่กำลังแสดงผล
     const activeInvoice = useMemo(() => {
@@ -646,6 +653,7 @@ function UserDashboardPage() {
                                             {isPartiallyPaid(activeInvoice)
                                                 ? `ได้รับชำระแล้ว ${baht(paidOf(activeInvoice))} กรุณาโอนส่วนที่เหลือ ${baht(balanceOf(activeInvoice))} และแนบหลักฐานการโอน`
                                                 : `กรุณาชำระเงินและแนบหลักฐานการโอนภายในวันที่ ${formatDueDate(activeInvoice, settings.dueDay)}`}
+                                            {lateFeeNotice(activeInvoice) && <span className="block mt-1 font-semibold">{lateFeeNotice(activeInvoice)}</span>}
                                         </div>
 
                                         {/* ปุ่มชำระเงิน / อัปโหลดสลิป ตามรูปแรก เมื่อกดจะเปิดหน้าในรูปที่สอง */}
@@ -722,6 +730,7 @@ function UserDashboardPage() {
                         <span className="text-xs md:text-sm text-red-600 font-semibold mt-2">
                             ภายในวันที่ {activeInvoice ? formatDueDate(activeInvoice, settings.dueDay) : '-'}
                         </span>
+                        {lateFeeNotice(activeInvoice) && <span className="text-xs text-red-600 mt-1">{lateFeeNotice(activeInvoice)}</span>}
                     </div>
 
                     {/* กล่องการชำระเงินและแนบสลิป (Desktop 2 คอลัมน์) */}

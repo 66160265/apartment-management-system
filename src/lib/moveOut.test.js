@@ -2,7 +2,28 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('./supabaseClient', () => ({ supabase: {} }))
 
-const { settlement, unpaidInvoicesOf, reviewingInvoicesOf, validateCustoms, buildDeductions, moveOutOutcome } = await import('./moveOut')
+const { settlement, unpaidInvoicesOf, reviewingInvoicesOf, validateCustoms, buildDeductions, moveOutOutcome, forfeitsDeposit, forfeitDeduction, firstYearEnd } = await import('./moveOut')
+
+describe('ไม่คืนเงินประกันถ้าย้ายออกก่อนครบปีแรก', () => {
+    it('ครบปีแรก = วันเริ่มสัญญา + 12 เดือน', () => {
+        expect(firstYearEnd('2026-01-31')).toBe('2027-01-31')
+        expect(firstYearEnd(null)).toBe(null)
+    })
+
+    it('ย้ายออกก่อนวันครบปี = ไม่คืน, ตั้งแต่วันครบปี = คืนตามปกติ', () => {
+        expect(forfeitsDeposit('2026-01-15', '2027-01-14')).toBe(true)
+        expect(forfeitsDeposit('2026-01-15', '2027-01-15')).toBe(false)
+        expect(forfeitsDeposit(null, '2026-05-01')).toBe(false)
+    })
+
+    it('หักส่วนที่เหลือหลังหักรายการอื่น ยอดคืนจึงเป็น 0', () => {
+        const others = [{ label: 'ค่าเช่า', amount: 1500 }]
+        const rows = forfeitDeduction(4000, others)
+        expect(rows).toEqual([{ label: 'ไม่คืนเงินประกัน (ย้ายออกก่อนครบสัญญา 1 ปี)', amount: 2500 }])
+        expect(settlement(4000, [...others, ...rows])).toEqual({ deposit: 4000, total: 4000, refund: 0, owed: 0 })
+        expect(forfeitDeduction(4000, [{ label: 'ค่าเช่า', amount: 5450 }])).toEqual([])
+    })
+})
 
 describe('settlement (ต้องตรงกับ record_move_out ในฐานข้อมูล)', () => {
     it('คืนส่วนที่เหลือ: 5000 หัก 500+700 = คืน 3800', () => {
@@ -30,24 +51,31 @@ describe('settlement (ต้องตรงกับ record_move_out ในฐ�
 
 describe('unpaidInvoicesOf', () => {
     const now = new Date('2026-11-10T10:00:00+07:00')
-    const inv = (id, room, month, over = {}) => ({ id, room, month, total: 1000, paid_amount: 0, status: 'pending', ...over })
+    const inv = (id, room, month, over = {}) => ({ id, room, month, user_id: 'u1', total: 1000, paid_amount: 0, status: 'pending', ...over })
+    const owner = { room: '101', userId: 'u1' }
 
     it('เฉพาะใบรอชำระของห้องนั้น เรียงเดือนเก่าก่อน', () => {
-        const list = unpaidInvoicesOf([inv('b', '101', '2026-10'), inv('a', '101', '2026-09'), inv('c', '102', '2026-09'), inv('d', '101', '2026-08', { status: 'paid' })], '101', now)
+        const list = unpaidInvoicesOf([inv('b', '101', '2026-10'), inv('a', '101', '2026-09'), inv('c', '102', '2026-09'), inv('d', '101', '2026-08', { status: 'paid' })], owner, now)
         expect(list.map((i) => i.id)).toEqual(['a', 'b'])
+    })
+
+    it('ไม่นับใบของผู้เช่าคนก่อนในห้องเดียวกัน', () => {
+        const previous = [inv('old', '101', '2026-09', { user_id: 'u0' }), inv('gone', '101', '2026-08', { user_id: null })]
+        expect(unpaidInvoicesOf([...previous, inv('mine', '101', '2026-10')], owner, now).map((i) => i.id)).toEqual(['mine'])
+        expect(unpaidInvoicesOf(previous, { room: '101', userId: null }, now)).toEqual([])
     })
 
     it('ยอดคือยอดค้างรวมค่าปรับวันนี้ และหักที่ได้รับแล้ว', () => {
         const late = inv('x', '101', '2026-10', { due_date: '2026-11-05', late_fee_rate: 50, late_fee_grace: 0, paid_amount: 400 })
-        expect(unpaidInvoicesOf([late], '101', now)[0].balance).toBe(850)
+        expect(unpaidInvoicesOf([late], owner, now)[0].balance).toBe(850)
     })
 
     it('ใบที่ค้าง 0 ไม่แสดง และใบที่รอตรวจสลิปไม่อยู่ในรายการหักได้', () => {
-        expect(unpaidInvoicesOf([inv('z', '101', '2026-10', { paid_amount: 1000 }), inv('r', '101', '2026-09', { status: 'review' })], '101', now)).toEqual([])
+        expect(unpaidInvoicesOf([inv('z', '101', '2026-10', { paid_amount: 1000 }), inv('r', '101', '2026-09', { status: 'review' })], owner, now)).toEqual([])
     })
 
     it('reviewingInvoicesOf หาใบที่รอตรวจสลิป', () => {
-        expect(reviewingInvoicesOf([inv('r', '101', '2026-09', { status: 'review' }), inv('p', '101', '2026-10')], '101').map((i) => i.id)).toEqual(['r'])
+        expect(reviewingInvoicesOf([inv('r', '101', '2026-09', { status: 'review' }), inv('p', '101', '2026-10'), inv('o', '101', '2026-08', { status: 'review', user_id: 'u0' })], owner).map((i) => i.id)).toEqual(['r'])
     })
 })
 
