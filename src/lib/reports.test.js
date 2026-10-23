@@ -246,7 +246,7 @@ describe('คอลัมน์ส่งออก', () => {
 
     it('ยอดค้าง: ใช้ข้อมูลที่คำนวณแล้ว', () => {
         const rows = outstandingRows([inv({ due_date: '2026-11-05', late_fee_rate: 50, late_fee_grace: 0 })], now)
-        expect(toCsv(rows, outstandingColumns).split('\r\n')[1]).toBe('101,สมชาย,2026-10,4200,0,4450,5,รอชำระ')
+        expect(toCsv(rows, outstandingColumns).split('\r\n')[1]).toBe('101,สมชาย,2026-10,4200,4450,5,รอชำระ')
     })
 
     it('รายเดือน', () => {

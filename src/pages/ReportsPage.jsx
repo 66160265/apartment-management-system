@@ -160,7 +160,7 @@ function ReportsPage() {
                         <section className="grid gap-3 sm:grid-cols-3">
                             <Stat label="อัตราเข้าพัก" value={`${occ.rate}%`} hint={`มีผู้เช่า ${occ.occupied} จาก ${occ.total - occ.maintenance} ห้อง (ไม่รวมปิดปรับปรุง)`} />
                             <Stat label="ห้องว่าง" value={occ.vacant} hint={occ.maintenance > 0 ? `ปิดปรับปรุง ${occ.maintenance} ห้อง` : undefined} />
-                            <Stat label="ยอดค้างชำระทั้งหมด (วันนี้)" value={baht(outstandingTotal)} hint={`${outstanding.length} ใบ รวมค่าปรับของวันนี้`} tone={outstandingTotal > 0 ? 'text-amber-700' : 'text-primary-dark'} />
+                            <Stat label="ยอดค้างชำระทั้งหมด" value={baht(outstandingTotal)} hint={`${outstanding.length} ใบ ทุกเดือนที่ยังไม่ชำระ`} tone={outstandingTotal > 0 ? 'text-amber-700' : 'text-primary-dark'} />
                         </section>
 
                         {/* สรุปเดือนที่เลือก */}
@@ -198,7 +198,6 @@ function ReportsPage() {
                                                 <th className="py-2 pr-3">ห้อง / ผู้เช่า</th>
                                                 <th className="py-2 px-3">เดือน</th>
                                                 <th className="py-2 px-3 text-right">ยอดบิล</th>
-                                                <th className="py-2 px-3 text-right">รับแล้ว</th>
                                                 <th className="py-2 px-3 text-right">ค้างชำระ</th>
                                                 <th className="py-2 pl-3 text-right">เกินกำหนด</th>
                                             </tr>
@@ -209,7 +208,6 @@ function ReportsPage() {
                                                     <td className="py-2 pr-3 text-ink">{r.room} <span className="text-muted">· {r.tenant}</span></td>
                                                     <td className="py-2 px-3">{formatMonth(r.month)}</td>
                                                     <td className="py-2 px-3 text-right tabular-nums">{baht(r.total)}</td>
-                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(r.paid)}</td>
                                                     <td className="py-2 px-3 text-right tabular-nums font-medium text-amber-700">{baht(r.balance)}</td>
                                                     <td className={`py-2 pl-3 text-right tabular-nums ${r.daysLate > 0 ? 'text-red-600 font-medium' : 'text-muted'}`}>{r.daysLate > 0 ? `${r.daysLate} วัน` : '-'}</td>
                                                 </tr>
