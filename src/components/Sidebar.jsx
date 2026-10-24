@@ -5,6 +5,7 @@ import { menuItems, systemGroupLabel } from "../data/menu";
 import { supabase } from "../lib/supabaseClient";
 import { roleLabels, useCurrentUser } from "../lib/useCurrentUser";
 import { useNotifications } from "../lib/useNotifications";
+import { useRepairCosts } from "../lib/useRepairCosts";
 
 // หน้าแรกของแต่ละสิทธิ์ (เมนู "ภาพรวม" ใช้ร่วมกัน)
 const ADMIN_DASHBOARD = "/admin/dashboard";
@@ -17,7 +18,9 @@ function Sidebar({ open = false, onClose = () => {} }) {
   const role = me?.role;
   // จำนวนแจ้งเตือนที่ยังไม่อ่าน แสดงเป็นป้ายแดงที่เมนู "แจ้งเตือน"
   const { unreadCount } = useNotifications();
-  const badges = { "/notifications": unreadCount };
+  // จำนวนค่าซ่อมที่ผู้เช่ายังไม่ได้ชำระ แสดงเป็นป้ายแดงที่เมนู "แจ้งซ่อม" (แอดมินเป็น 0)
+  const unpaidRepairs = useRepairCosts().length;
+  const badges = { "/notifications": unreadCount, "/repairs": unpaidRepairs };
   const [loggingOut, setLoggingOut] = useState(false);
 
   // เมนูภาพรวมพาไปหน้าที่ตรงกับสิทธิ์

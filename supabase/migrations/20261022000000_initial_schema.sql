@@ -345,6 +345,10 @@ begin
     new.tenant_confirmed_at := null;
     new.reopen_count := 0;
   end if;
+  -- ห้องว่าง (ไม่มีผู้เช่า) หอพักรับผิดชอบค่าซ่อมเสมอ
+  if new.user_id is null then
+    new.cost_payer := 'owner';
+  end if;
   return new;
 end;
 $$;
@@ -381,6 +385,10 @@ begin
     new.tenant_confirmed_at := old.tenant_confirmed_at;
     new.reopen_count := old.reopen_count;
   else
+    -- ห้องว่าง (ไม่มีผู้เช่า) หอพักรับผิดชอบค่าซ่อมเสมอ
+    if new.user_id is null then
+      new.cost_payer := 'owner';
+    end if;
     if new.status is distinct from old.status then
       new.completed_at := case when new.status = 'done' then now() else null end;
       -- ปิดงานใหม่ ต้องให้ผู้เช่ายืนยันใหม่
@@ -1612,6 +1620,12 @@ begin
            else jsonb_build_object('label', lbl, 'amount', amt, 'invoice_id', inv_id) end);
   end loop;
 
+  -- ย้ายออกก่อนครบสัญญาปีแรก: ไม่คืนเงินประกัน (หักส่วนที่เหลือหลังหักรายการอื่น ถ้าหน้าเว็บใส่มาแล้วก็ไม่เหลือให้หักซ้ำ)
+  if t.start_date is not null and p_date < (t.start_date + interval '1 year')::date and t.deposit - total_ded > 0 then
+    clean := clean || jsonb_build_array(jsonb_build_object('label', 'ไม่คืนเงินประกัน (ย้ายออกก่อนครบสัญญา 1 ปี)', 'amount', t.deposit - total_ded));
+    total_ded := t.deposit;
+  end if;
+
   insert into public.move_outs (
     room, tenant_name, tenant_phone, tenant_user_id, start_date, end_date, move_out_date, deposit,
     deductions, deductions_total, refund_amount, owed_amount, refund_status, note, created_by)
@@ -2203,7 +2217,7 @@ begin
       -- ค่าใช้จ่ายแจ้งเฉพาะที่ผู้เช่าต้องชำระ (หอพักรับผิดชอบไม่ต้องแจ้ง)
       if new.status in ('in_progress', 'done') and new.cost > 0 and new.cost_payer = 'tenant' then
         v_text := v_text || E'\nค่าใช้จ่าย: ' || public.fmt_baht(new.cost) || ' (ผู้เช่าเป็นผู้ชำระ)'
-          || case when new.status = 'done' then E'\nค่าซ่อมจะรวมในใบแจ้งหนี้ค่าห้องรอบถัดไป ไม่ต้องชำระแยก' else '' end;
+          || case when new.status = 'done' then E'\nชำระค่าซ่อมและแนบสลิปได้ที่หน้าแจ้งซ่อม' else '' end;
       end if;
       if new.admin_note <> '' then
         v_text := v_text || E'\n\nข้อความจากผู้ดูแล: ' || new.admin_note;
@@ -2228,14 +2242,14 @@ begin
       elsif new.status is distinct from old.status then
         v_title := case new.status
           when 'done' then case when new.cost_payer = 'tenant' and new.cost > 0
-                                then 'ซ่อมเสร็จแล้ว ค่าซ่อม ' || public.fmt_baht(new.cost) || ' จะรวมในค่าห้องรอบถัดไป'
+                                then 'ซ่อมเสร็จแล้ว มีค่าซ่อมที่ต้องชำระ ' || public.fmt_baht(new.cost)
                                 else 'ซ่อมเสร็จแล้ว กรุณาตรวจสอบและยืนยัน' end
           when 'cancelled' then 'เรื่องแจ้งซ่อมถูกยกเลิก'
           when 'pending' then 'ต้องนัดวันเข้าซ่อมใหม่'
           else 'สถานะแจ้งซ่อมเปลี่ยนเป็น "' || public.repair_status_label(new.status) || '"' end;
       elsif new.status = 'done' and new.cost_payer = 'tenant' and new.cost > 0
             and (new.cost is distinct from old.cost or new.cost_payer is distinct from old.cost_payer) then
-        v_title := 'ค่าซ่อม ' || public.fmt_baht(new.cost) || ' จะรวมในค่าห้องรอบถัดไป';
+        v_title := 'มีค่าซ่อมที่ต้องชำระ ' || public.fmt_baht(new.cost);
       elsif new.admin_note is distinct from old.admin_note or new.technician is distinct from old.technician then
         v_title := 'ผู้ดูแลส่งข้อความเกี่ยวกับงานซ่อม';
       end if;
@@ -2333,6 +2347,23 @@ begin
         || case when r.technician <> '' then E'\nช่าง: ' || r.technician else '' end
         || case when r.contact_phone <> '' then E'\nเบอร์ผู้เช่า: ' || r.contact_phone else '' end,
       '/repairs', 'ไปที่ระบบแจ้งซ่อม');
+  end loop;
+
+  -- ค่าซ่อมที่ผู้เช่ายังไม่ชำระ: เตือนทุก 3 วันนับจากวันที่ซ่อมเสร็จ (วันที่ 3, 6, 9, ...) ไม่เตือนเรื่องที่ส่งสลิปแล้วหรือชำระแล้ว
+  -- และไม่เตือนเรื่องเก่าที่เคยรวมในใบแจ้งหนี้ค่าห้องแล้ว (invoice_id)
+  for r in
+    select rp.* from public.repairs rp
+    where rp.status = 'done' and rp.cost_payer = 'tenant' and rp.cost > 0 and rp.invoice_id is null
+      and rp.user_id is not null and rp.completed_at is not null
+      and (public.today_th() - (rp.completed_at at time zone 'Asia/Bangkok')::date) >= 3
+      and (public.today_th() - (rp.completed_at at time zone 'Asia/Bangkok')::date) % 3 = 0
+      and not exists (select 1 from public.repair_payments p where p.repair_id = rp.id and p.status in ('review', 'paid'))
+  loop
+    perform public.notify(
+      r.user_id, 'repair', 'ค่าซ่อมยังไม่ได้ชำระ ' || public.fmt_baht(r.cost),
+      'ห้อง ' || r.room || ' · ' || r.problem,
+      'ค่าซ่อม "' || r.problem || '" ยอด ' || public.fmt_baht(r.cost) || E' ยังไม่ได้ชำระ\nชำระและแนบสลิปได้ที่หน้าแจ้งซ่อม',
+      '/repairs', 'ชำระค่าซ่อม');
   end loop;
 end;
 $$;
@@ -2859,6 +2890,13 @@ begin
       perform pg_advisory_xact_lock(hashtext('repair-appointment-' || d));
     end loop;
     for s in select * from jsonb_array_elements(new.available_slots) loop
+      -- เวลาที่เพิ่งเลือก: วันที่ผ่านมาแล้ว หรือวันนี้แต่เวลาเริ่มเลยมาแล้ว เลือกไม่ได้ (เวลาไทย)
+      if (tg_op = 'INSERT' or not coalesce(old.available_slots, '[]'::jsonb) @> jsonb_build_array(s))
+         and ((s ->> 'date') < public.today_th()::text
+              or ((s ->> 'date') = public.today_th()::text
+                  and (public.repair_period_range(s ->> 'period'))[1] <= to_char(now() at time zone 'Asia/Bangkok', 'HH24:MI'))) then
+        raise exception 'เวลานี้ผ่านไปแล้ว กรุณาเลือกเวลาอื่น';
+      end if;
       if (s ->> 'date') >= public.today_th()::text
          and public.repair_time_taken(new.id, (s ->> 'date')::date, s ->> 'period') then
         raise exception 'เวลานี้มีห้องอื่นเลือกไว้แล้ว กรุณาเลือกเวลาอื่น';
@@ -2880,97 +2918,22 @@ update public.repairs set status = 'in_progress' where status = 'scheduled';
 select set_config('app.repair_tenant_action', 'off', false);
 
 -- ============================================================
--- ค่าซ่อมรวมในใบแจ้งหนี้ค่าห้อง
+-- ค่าซ่อมที่ผู้เช่าจ่าย: ชำระแยกตอนซ่อมเสร็จ (ส่วน repair-payments) ไม่รวมในใบแจ้งหนี้ค่าห้องแล้ว
 -- ============================================================
---
--- แนวคิด: ค่าซ่อมที่ผู้เช่าต้องชำระ (ซ่อมเสร็จแล้ว, cost_payer = tenant, cost > 0) ไม่ต้องจ่ายแยก
---   ตอนสร้างใบแจ้งหนี้ใหม่ของห้องนั้น (ทีละใบหรือทั้งเดือน) ระบบรวมค่าซ่อมที่ยังไม่ได้เรียกเก็บเข้าไปในใบอัตโนมัติ
---   เก็บยอดไว้ใน invoices.repair_fee (รวมอยู่ใน total แล้ว) และจำว่าเรื่องซ่อมไหนอยู่ในใบไหนที่ repairs.invoice_id
---   ลบใบแจ้งหนี้ = เรื่องซ่อมกลับไปรอเรียกเก็บในใบถัดไป (on delete set null)
--- เรื่องเก่าที่ผู้เช่าส่งสลิปค่าซ่อมแยกไปแล้ว (รอตรวจ/ชำระแล้ว ใน repair_payments) ไม่ถูกนำมาเรียกเก็บซ้ำ
+-- ช่วงหนึ่งค่าซ่อมเคยถูกรวมในใบแจ้งหนี้ใบถัดไป คอลัมน์ที่ใช้ตอนนั้นเก็บไว้ให้ใบเก่ายังแสดงยอดถูก
+--   invoices.repair_fee = ค่าซ่อมที่รวมอยู่ในใบ, repairs.invoice_id = เรื่องซ่อมนี้ถูกเก็บในใบไหนแล้ว (ไม่ต้องจ่ายแยกซ้ำ)
+-- ไม่มีการบวกค่าซ่อมเข้าใบใหม่อีก: ลบ trigger และฟังก์ชันของระบบเดิม (รันซ้ำได้)
 
 alter table public.invoices add column if not exists repair_fee numeric(12, 2) not null default 0;
-alter table public.invoices drop constraint if exists invoices_repair_fee_check;
-alter table public.invoices add constraint invoices_repair_fee_check check (repair_fee >= 0);
-
 alter table public.repairs add column if not exists invoice_id uuid references public.invoices (id) on delete set null;
-create index if not exists repairs_invoice_idx on public.repairs (invoice_id) where invoice_id is not null;
-
--- เรื่องซ่อมของห้อง/ผู้เช่านี้ที่ต้องเรียกเก็บในใบแจ้งหนี้ใบถัดไป
-create or replace function public.repair_unbilled(p_room text, p_user uuid)
-returns setof public.repairs
-language sql
-stable
-security definer set search_path = public
-as $$
-  select r.* from public.repairs r
-  where r.room = p_room
-    and r.user_id is not distinct from p_user
-    and r.status = 'done' and r.cost_payer = 'tenant' and r.cost > 0
-    and r.invoice_id is null
-    and not exists (select 1 from public.repair_payments p where p.repair_id = r.id and p.status in ('review', 'paid'));
-$$;
-
-revoke all on function public.repair_unbilled(text, uuid) from public, anon, authenticated;
-
--- ก่อนเพิ่มใบแจ้งหนี้: บวกค่าซ่อมที่ยังไม่ได้เรียกเก็บเข้ายอดรวม (ล็อกแถวไว้ กันสองใบดึงค่าซ่อมเดียวกัน)
-create or replace function public.invoices_add_repair_fee()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-declare
-  v_fee numeric;
-begin
-  perform 1 from public.repairs r where r.id in (select id from public.repair_unbilled(new.room, new.user_id)) for update;
-  select coalesce(sum(cost), 0) into v_fee from public.repair_unbilled(new.room, new.user_id);
-  new.repair_fee := v_fee;
-  new.total := new.total + v_fee;
-  return new;
-end;
-$$;
 
 drop trigger if exists invoices_add_repair_fee on public.invoices;
-create trigger invoices_add_repair_fee before insert on public.invoices
-  for each row execute function public.invoices_add_repair_fee();
-
--- หลังเพิ่มใบแจ้งหนี้: ผูกเรื่องซ่อมที่ถูกรวมไว้กับใบนี้
-create or replace function public.invoices_link_repairs()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-begin
-  if new.repair_fee > 0 then
-    update public.repairs set invoice_id = new.id
-    where id in (select id from public.repair_unbilled(new.room, new.user_id));
-  end if;
-  return new;
-end;
-$$;
-
 drop trigger if exists invoices_link_repairs on public.invoices;
-create trigger invoices_link_repairs after insert on public.invoices
-  for each row execute function public.invoices_link_repairs();
-
--- เรื่องที่รวมในใบแจ้งหนี้แล้ว ห้ามแก้ยอดค่าใช้จ่ายหรือผู้ชำระ (ไม่งั้นยอดในใบกับเรื่องซ่อมไม่ตรงกัน)
-create or replace function public.repairs_lock_billed_cost()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-begin
-  if old.invoice_id is not null and new.invoice_id is not distinct from old.invoice_id
-     and (new.cost is distinct from old.cost or new.cost_payer is distinct from old.cost_payer) then
-    raise exception 'ค่าซ่อมนี้รวมในใบแจ้งหนี้แล้ว แก้ไขค่าใช้จ่ายไม่ได้ (ลบใบแจ้งหนี้นั้นก่อนถ้าต้องการแก้)';
-  end if;
-  return new;
-end;
-$$;
-
 drop trigger if exists repairs_lock_billed_cost on public.repairs;
-create trigger repairs_lock_billed_cost before update of cost, cost_payer on public.repairs
-  for each row execute function public.repairs_lock_billed_cost();
+drop function if exists public.invoices_add_repair_fee();
+drop function if exists public.invoices_link_repairs();
+drop function if exists public.repairs_lock_billed_cost();
+drop function if exists public.repair_unbilled(text, uuid);
 
 -- ล็อกการแก้ไขเรื่องแจ้งซ่อมของแอดมิน (ผู้เช่าล็อกไว้แล้วใน repairs_before_update)
 --   เสร็จสิ้นแล้ว: แก้อะไรไม่ได้อีก (ยกเว้นระบบผูกเรื่องกับใบแจ้งหนี้ invoice_id และการกระทำของผู้เช่า เช่น แจ้งว่ายังไม่หาย)

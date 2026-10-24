@@ -5,7 +5,7 @@ vi.mock('./supabaseClient', () => ({ supabase: {} }))
 const {
     formatSize, validateImage, repairTimeOptions, normalizePeriod, parsePeriod, isValidPeriod, formatPeriod,
     periodsOverlap, formatSlot, isInSlots, upcomingSlots, validateAvailability, todayIso,
-    periodAt, toSlotPeriod, isBooked,
+    periodAt, toSlotPeriod, isBooked, isPastTime,
 } = await import('./repairs')
 
 // ตรึงเวลาเป็น 20 ต.ค. 2026 เที่ยงวัน (เวลาท้องถิ่น) ให้ผลของ "วันนี้" คงที่
@@ -31,10 +31,10 @@ describe('ไฟล์รูป', () => {
 })
 
 describe('ช่วงเวลาเข้าซ่อม', () => {
-    it('ตัวเลือกเวลาเริ่ม 09:00-17:00 ทีละ 1 ชั่วโมง', () => {
+    it('ตัวเลือกเวลาเริ่ม 09:00-18:00 ทีละ 1 ชั่วโมง', () => {
         expect(repairTimeOptions[0]).toBe('09:00')
-        expect(repairTimeOptions.at(-1)).toBe('17:00')
-        expect(repairTimeOptions).toHaveLength(9)
+        expect(repairTimeOptions.at(-1)).toBe('18:00')
+        expect(repairTimeOptions).toHaveLength(10)
         expect(repairTimeOptions).not.toContain('13:30')
     })
 
@@ -52,9 +52,9 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
 
     it('isValidPeriod: ต้องเป็นนัด 1 ชั่วโมงที่เริ่มตามเวลาที่เลือกได้', () => {
         expect(isValidPeriod('09:00-10:00')).toBe(true)
-        expect(isValidPeriod('17:00-18:00')).toBe(true)
+        expect(isValidPeriod('18:00-19:00')).toBe(true)
         expect(isValidPeriod('09:00-12:00')).toBe(false)
-        expect(isValidPeriod('18:00-19:00')).toBe(false)
+        expect(isValidPeriod('19:00-20:00')).toBe(false)
         expect(isValidPeriod('13:00-13:00')).toBe(false)
         expect(isValidPeriod('15:00-13:00')).toBe(false)
         expect(isValidPeriod('08:00-10:00')).toBe(false)
@@ -102,6 +102,15 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
         expect(toSlotPeriod('10:00-11:00')).toBe('10:00-11:00')
     })
 
+    it('isPastTime: วันนี้เวลาที่เลยมาแล้วเลือกไม่ได้ (ตอนนี้ 12:00)', () => {
+        expect(isPastTime('2026-10-20', '11:00-12:00')).toBe(true)
+        expect(isPastTime('2026-10-20', '12:00-13:00')).toBe(true)
+        expect(isPastTime('2026-10-20', '13:00-14:00')).toBe(false)
+        expect(isPastTime('2026-10-19', '17:00-18:00')).toBe(true)
+        expect(isPastTime('2026-10-21', '09:00-10:00')).toBe(false)
+        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '10:00-11:00' }], allowEntry: false, urgency: 'normal' })).toContain('ผ่านไปแล้ว')
+    })
+
     it('isBooked: เวลาที่ห้องอื่นใช้แล้วเลือกไม่ได้', () => {
         const booked = [{ date: '2026-10-21', period: '09:00-10:00' }]
         expect(isBooked(booked, '2026-10-21', '09:00-10:00')).toBe(true)
@@ -130,7 +139,7 @@ describe('validateAvailability', () => {
 
     it('เวลาไม่ใช่นัด 1 ชั่วโมงในเวลาที่เลือกได้', () => {
         expect(validateAvailability({ ...ok, slots: [{ date: '2026-10-21', period: '12:00-09:00' }] })).toContain('กรุณาเลือกเวลาระหว่าง')
-        expect(validateAvailability({ ...ok, slots: [{ date: '2026-10-21', period: '18:00-19:00' }] })).toContain('กรุณาเลือกเวลาระหว่าง')
+        expect(validateAvailability({ ...ok, slots: [{ date: '2026-10-21', period: '19:00-20:00' }] })).toContain('กรุณาเลือกเวลาระหว่าง')
     })
 
     it('วันที่ผ่านมาแล้ว', () => {

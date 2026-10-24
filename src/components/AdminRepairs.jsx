@@ -6,6 +6,7 @@ import { ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge, SlotL
 import { repairCategories, repairStatuses, repairStatusKeys } from '../data/repairs'
 import { baht, formatDateTime } from '../lib/billing'
 import { AdminRepairPayment } from './RepairPayment'
+import { owesRepairCost } from '../lib/repairPayments'
 import { formatSlot, formatThaiDate, isBooked, isInSlots, isValidPeriod, normalizePeriod, removeRepairImage, todayIso, upcomingSlots, uploadRepairImage } from '../lib/repairs'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
@@ -45,15 +46,16 @@ const formatTimeDate = (iso) => {
 const byRoom = (a, b) => a.localeCompare(b, undefined, { numeric: true })
 
 // ข้อมูลตั้งต้นก่อนโหลดเสร็จ: รายการแจ้งซ่อม เลขห้อง ผู้เช่า และสถานะการโหลด
-const initialData = { repairs: [], rooms: [], tenants: [], loading: true, loadError: '' }
+const initialData = { repairs: [], rooms: [], tenants: [], payments: [], loading: true, loadError: '' }
 
 // ดึงข้อมูลทั้งหมดที่หน้านี้ใช้ (ไม่แตะ state เพื่อเรียกใช้ได้ทั้งใน effect และหลังบันทึก)
 async function fetchData() {
-    // ดึง 3 ตารางพร้อมกัน: แจ้งซ่อม (ใหม่สุดก่อน), เลขห้องทั้งหมด, ผู้เช่าของแต่ละห้อง
-    const [repairsRes, roomsRes, tenantsRes] = await Promise.all([
+    // ดึงพร้อมกัน: แจ้งซ่อม (ใหม่สุดก่อน), เลขห้องทั้งหมด, ผู้เช่าของแต่ละห้อง, สถานะการชำระค่าซ่อม
+    const [repairsRes, roomsRes, tenantsRes, paymentsRes] = await Promise.all([
         supabase.from('repairs').select('*').order('created_at', { ascending: false }),
         supabase.from('rooms').select('number'),
         supabase.from('tenants').select('room, name, user_id'),
+        supabase.from('repair_payments').select('repair_id, status').in('status', ['review', 'paid']),
     ])
     // ตารางไหนโหลดไม่สำเร็จ ให้แสดงข้อความ error แทนข้อมูล
     const error = repairsRes.error || roomsRes.error || tenantsRes.error
@@ -62,9 +64,22 @@ async function fetchData() {
         repairs: repairsRes.data,
         rooms: roomsRes.data.map((r) => r.number).sort(byRoom),
         tenants: tenantsRes.data,
+        // ตารางชำระค่าซ่อมโหลดไม่ได้ = ไม่แสดงสถานะการชำระ หน้ายังใช้ได้
+        payments: paymentsRes.error ? [] : paymentsRes.data,
         loading: false,
         loadError: '',
     }
+}
+
+// สถานะการชำระค่าซ่อมที่ผู้เช่าจ่าย แสดงใต้ป้ายสถานะ (ไม่มีค่าซ่อมที่ผู้เช่าต้องจ่าย = ไม่แสดง)
+const payLabels = {
+    review: { text: 'รอตรวจสอบสลิป', tone: 'text-sky-700' },
+    unpaid: { text: 'รอผู้เช่าชำระ', tone: 'text-amber-700' },
+    paid: { text: 'ชำระค่าซ่อมแล้ว', tone: 'text-emerald-700' },
+}
+function PayState({ state }) {
+    const label = payLabels[state]
+    return label ? <div className={`text-xs font-semibold mt-1 ${label.tone}`}>{label.text}</div> : null
 }
 
 // ค่าซ่อมและผู้รับผิดชอบ (ไม่มีค่าใช้จ่าย = "-") ใช้ในตารางและการ์ดรายการ
@@ -121,7 +136,15 @@ function AdminRepairs({ adminId }) {
     const load = async () => setData(await fetchData())
 
     // อัปเดตเองเมื่อผู้เช่าแจ้งซ่อมใหม่ ยืนยัน/ขอเปลี่ยนนัด หรือยืนยันผลซ่อม
-    useRealtimeReload(['repairs'], load)
+    useRealtimeReload(['repairs', 'repair_payments'], load)
+
+    // สถานะการชำระค่าซ่อมของแต่ละเรื่อง: review = ส่งสลิปรอตรวจ, paid = ชำระแล้ว, unpaid = ยังไม่ส่งสลิป
+    const payState = (r) => {
+        const p = data.payments.filter((x) => x.repair_id === r.id)
+        if (p.some((x) => x.status === 'review')) return 'review'
+        if (p.some((x) => x.status === 'paid')) return 'paid'
+        return owesRepairCost(r) ? 'unpaid' : null
+    }
 
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {
@@ -312,6 +335,8 @@ function AdminRepairs({ adminId }) {
                 user_id: tenant?.user_id ?? null,
                 // แอดมินแจ้งซ่อมเองได้เฉพาะห้องว่าง ผู้แจ้งจึงเป็นผู้ดูแล
                 tenant_name: tenant?.name ?? 'ผู้ดูแล',
+                // สร้างเป็น "เสร็จสิ้น" ทันที: บันทึกเวลาเสร็จด้วย (ฐานข้อมูลตั้งให้เฉพาะตอนเปลี่ยนสถานะ) ไม่งั้นรายงานไม่นับค่าซ่อมนี้
+                completed_at: form.status === 'done' ? new Date().toISOString() : null,
             })
             : await supabase.from('repairs').update(fields).eq('id', editing.id)
 
@@ -751,7 +776,7 @@ function AdminRepairs({ adminId }) {
                                                     {r.status === 'done' && r.completed_at ? formatThaiDate(r.completed_at) : '-'}
                                                 </td>
                                                 <td className="px-3 py-3 border-x border-line/60 text-center text-muted whitespace-nowrap"><RepairCost repair={r} /></td>
-                                                <td className="px-3 py-3 border-x border-line/60 text-center"><RepairStatusBadge status={r.status} /></td>
+                                                <td className="px-3 py-3 border-x border-line/60 text-center"><RepairStatusBadge status={r.status} /><PayState state={payState(r)} /></td>
                                                 <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                                                     <button onClick={() => openEdit(r)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist">จัดการ</button>
                                                 </td>
@@ -778,6 +803,7 @@ function AdminRepairs({ adminId }) {
                                                 </div>
                                                 <div className="flex flex-col items-end gap-1">
                                                     <RepairStatusBadge status={r.status} />
+                                                    <PayState state={payState(r)} />
                                                     <UrgencyBadge urgency={r.urgency} />
                                                 </div>
                                             </div>

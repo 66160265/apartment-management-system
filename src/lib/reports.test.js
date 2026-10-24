@@ -60,6 +60,8 @@ describe('monthlySummary', () => {
         const oct = monthlySummary({ ...data, repairs }, '2026-10', now)
         expect(oct.repairCount).toBe(2)
         expect(oct.repairCost).toBe(300)
+        expect(oct.repairTenantCost).toBe(500)
+        expect(oct.repairTenantCount).toBe(1)
         expect(monthlySummary(data, '2026-10', now).repairCost).toBe(0)
     })
 
@@ -68,6 +70,7 @@ describe('monthlySummary', () => {
         // ตุลาคม: a 1100 + b 500 + d 999 (ใบเดือนก.ย. แต่ได้รับเงินเดือนต.ค.)
         expect(oct.received).toBe(2599)
         expect(oct.repairReceived).toBe(350)
+        expect(oct.receivedTotal).toBe(oct.received + 350)
         const nov = monthlySummary(data, '2026-11', now)
         expect(nov.received).toBe(3300)
         expect(nov.repairReceived).toBe(200)
@@ -191,12 +194,12 @@ describe('การใช้น้ำ-ไฟ', () => {
     it('รายห้องเรียงตามเลขห้องแบบตัวเลข', () => {
         const rows = roomUsage([u('102', 0, 5, 0, 6), u('20', 0, 1, 0, 2), u('101', 0, 3, 0, 4)])
         expect(rows.map((r) => r.room)).toEqual(['20', '101', '102'])
-        expect(rows[0]).toMatchObject({ water: 1, electric: 2 })
+        expect(rows[0]).toMatchObject({ water: 1, electric: 2, waterCost: 18, elecCost: 14, totalCost: 32 })
     })
 
     it('ส่งออก CSV รายห้อง', () => {
         const csv = toCsv(roomUsage([u('101', 0, 3, 0, 4)]), utilityColumns)
-        expect(csv).toBe('ห้อง,ผู้เช่า,น้ำ (หน่วย),ไฟ (หน่วย)\r\n101,ผู้เช่า 101,3,4')
+        expect(csv).toBe('ห้อง,ผู้เช่า,น้ำ (หน่วย),ค่าน้ำ,ไฟ (หน่วย),ค่าไฟ,รวม\r\n101,ผู้เช่า 101,3,54,4,28,82')
     })
 })
 
@@ -233,11 +236,11 @@ describe('ย้ายออกและเงินประกัน', () => {
 
 describe('คอลัมน์ส่งออก', () => {
     it('ใบแจ้งหนี้: คำนวณหน่วยและค่าน้ำไฟ ค่าปรับแสดงเฉพาะใบที่ชำระแล้ว', () => {
-        const csv = toCsv([inv(), inv({ id: 'p', status: 'paid', late_fee: 100, paid_amount: 4300 })], invoiceColumns)
+        const csv = toCsv([inv(), inv({ id: 'p', status: 'paid', late_fee: 100, paid_amount: 4300, repair_fee: 500 })], invoiceColumns)
         const [header, a, b] = csv.split('\r\n')
         expect(header).toContain('ยอดบิล')
-        expect(a).toBe('2026-10,101,สมชาย,3500,10,180,60,420,100,4200,,0,รอชำระ')
-        expect(b).toBe('2026-10,101,สมชาย,3500,10,180,60,420,100,4200,100,4300,ชำระแล้ว')
+        expect(a).toBe('2026-10,101,สมชาย,3500,10,180,60,420,100,0,4200,,0,รอชำระ')
+        expect(b).toBe('2026-10,101,สมชาย,3500,10,180,60,420,100,500,4200,100,4300,ชำระแล้ว')
     })
 
     it('ชื่อผู้เช่าที่เป็นสูตรถูกกันในไฟล์ส่งออกจริง', () => {
@@ -342,17 +345,18 @@ describe('สัญญาใกล้หมด', () => {
 describe('สถิติแจ้งซ่อม', () => {
     it('นับตามประเภทและห้อง เวลาซ่อมเฉลี่ย และงานค้างเกิน 7 วัน ไม่นับที่ยกเลิก', () => {
         const repairs = [
-            { id: 'a', room: '101', category: 'aircon', status: 'done', created_at: '2026-10-01T10:00:00+07:00', completed_at: '2026-10-03T10:00:00+07:00' },
-            { id: 'b', room: '101', category: 'aircon', status: 'done', created_at: '2026-10-05T10:00:00+07:00', completed_at: '2026-10-06T10:00:00+07:00' },
+            { id: 'a', room: '101', category: 'aircon', status: 'done', cost: 300, cost_payer: 'owner', created_at: '2026-10-01T10:00:00+07:00', completed_at: '2026-10-03T10:00:00+07:00' },
+            { id: 'b', room: '101', category: 'aircon', status: 'done', cost: 500, cost_payer: 'tenant', created_at: '2026-10-05T10:00:00+07:00', completed_at: '2026-10-06T10:00:00+07:00' },
             { id: 'c', room: '102', category: 'plumbing', status: 'pending', problem: 'ก๊อกรั่ว', created_at: '2026-10-25T10:00:00+07:00' },
             { id: 'd', room: '103', category: 'electric', status: 'in_progress', problem: 'ไฟดับ', created_at: '2026-11-08T10:00:00+07:00' },
-            { id: 'e', room: '104', category: 'door', status: 'cancelled', created_at: '2026-10-01T10:00:00+07:00' },
+            { id: 'e', room: '104', category: 'door', status: 'cancelled', cost: 999, created_at: '2026-10-01T10:00:00+07:00' },
         ]
         const s = repairStats(repairs, now)
         expect(s.total).toBe(4)
         expect(s.doneCount).toBe(2)
         expect(s.openCount).toBe(2)
         expect(s.avgDays).toBe(1.5)
+        expect([s.costTotal, s.costOwner, s.costTenant]).toEqual([800, 300, 500])
         expect(s.byCategory[0]).toEqual({ key: 'aircon', count: 2 })
         expect(s.byRoom[0]).toEqual({ key: '101', count: 2 })
         expect(s.overdue).toEqual([{ id: 'c', room: '102', problem: 'ก๊อกรั่ว', status: 'pending', days: 16 }])

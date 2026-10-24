@@ -45,16 +45,13 @@ export function uninvoicedRooms(rooms, invoices, month) {
     return rooms.filter((r) => r.status === 'occupied' && !invoiced.has(r.number))
 }
 
-// รายการ "ต้องจัดการตอนนี้" เรียงตามความเร่งด่วน (เงินของผู้เช่ารอคุณก่อน) ตัดรายการที่เป็นศูนย์ออก
-// input = { reviewInvoices, repairReviews, pendingRepairs, refundInvoices: { count, amount }, depositRefunds: { count, amount }, expiringContracts, uninvoicedRooms, slipQuota: { level, used, quota, remaining } }
+// รายการ "ต้องจัดการตอนนี้" เรียงตามความเร่งด่วน ตัดรายการที่เป็นศูนย์ออก
+// input = { reviewInvoices, repairReviews, pendingRepairs, expiringContracts, uninvoicedRooms, slipQuota: { level, used, quota, remaining } }
 export function attentionItems(input) {
-    const money = (key, label, group) => ({ key, label, count: group?.count ?? 0, amount: group?.amount ?? 0 })
     return [
         { key: 'invoice-slips', label: 'สลิปค่าห้องรอตรวจสอบ', count: input.reviewInvoices ?? 0, to: '/invoices', tone: 'sky' },
         { key: 'repair-slips', label: 'สลิปค่าซ่อมรอตรวจสอบ', count: input.repairReviews ?? 0, to: '/repairs', tone: 'sky' },
         { key: 'repairs', label: 'เรื่องแจ้งซ่อมรอดำเนินการ', count: input.pendingRepairs ?? 0, to: '/repairs', tone: 'amber' },
-        { ...money('refunds', 'ผู้เช่าโอนเกิน รอโอนคืน', input.refundInvoices), to: '/invoices', tone: 'violet' },
-        { ...money('deposits', 'เงินประกันรอคืนผู้เช่า', input.depositRefunds), to: '/tenants', tone: 'violet' },
         { key: 'uninvoiced', label: 'ห้องที่ยังไม่ออกบิลเดือนนี้', count: input.uninvoicedRooms ?? 0, to: '/invoices', tone: 'amber' },
         { key: 'contracts', label: 'สัญญาใกล้หมด (ภายใน 30 วัน)', count: input.expiringContracts ?? 0, to: '/tenants', tone: 'amber' },
         slipQuotaItem(input.slipQuota),

@@ -1,7 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { owesRepairCost, unbilledRepairFees, unpaidRepairCosts } from './repairPayments'
-
-vi.mock('./supabaseClient', () => ({ supabase: {} }))
+import { describe, expect, it } from 'vitest'
+import { owesRepairCost, unpaidRepairCosts } from './repairPayments'
 
 describe('owesRepairCost', () => {
     const base = { status: 'done', cost_payer: 'tenant', cost: 500 }
@@ -44,21 +42,8 @@ describe('unpaidRepairCosts', () => {
         expect(unpaidRepairCosts([owed('a')], [{ repair_id: 'a', status: 'rejected' }])).toHaveLength(1)
     })
 
-    it('เรื่องที่ไม่ต้องชำระ (หอพักรับผิดชอบ ยังไม่เสร็จ ไม่มียอด) ไม่นับ', () => {
-        const repairs = [owed('a', { cost_payer: 'owner' }), owed('b', { status: 'in_progress' }), owed('c', { cost: 0 })]
+    it('เรื่องที่ไม่ต้องชำระ (หอพักรับผิดชอบ ยังไม่เสร็จ ไม่มียอด เคยรวมในใบแจ้งหนี้แล้ว) ไม่นับ', () => {
+        const repairs = [owed('a', { cost_payer: 'owner' }), owed('b', { status: 'in_progress' }), owed('c', { cost: 0 }), owed('d', { invoice_id: 'inv-1' })]
         expect(unpaidRepairCosts(repairs, [])).toEqual([])
-    })
-})
-
-describe('unbilledRepairFees', () => {
-    const owed = (id, room, extra = {}) => ({ id, room, status: 'done', cost_payer: 'tenant', cost: 500, invoice_id: null, ...extra })
-
-    it('รวมยอดค่าซ่อมที่ยังไม่ได้เรียกเก็บตามห้อง', () => {
-        expect(unbilledRepairFees([owed('a', '101'), owed('b', '101', { cost: 250 }), owed('c', '102')], [])).toEqual({ 101: 750, 102: 500 })
-    })
-
-    it('ไม่นับเรื่องที่รวมในใบแจ้งหนี้แล้ว หรือส่งสลิปแยกไปแล้ว', () => {
-        const repairs = [owed('a', '101', { invoice_id: 'inv-1' }), owed('b', '101'), owed('c', '102')]
-        expect(unbilledRepairFees(repairs, [{ repair_id: 'c', status: 'paid' }])).toEqual({ 101: 500 })
     })
 })

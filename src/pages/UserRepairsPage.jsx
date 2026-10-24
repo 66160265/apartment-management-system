@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
-import { TenantRepairPayment } from '../components/RepairPayment'
+import { RepairCostBanner, TenantRepairPayment } from '../components/RepairPayment'
+import { useRepairCosts } from '../lib/useRepairCosts'
 import { AppointmentBox, ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge, SlotList, SlotPicker, UrgencyBadge } from '../components/RepairParts'
 import { repairCategories, repairProgressKeys, repairStatuses, repairStatusKeys } from '../data/repairs'
 import { baht, formatDateTime } from '../lib/billing'
@@ -28,13 +29,17 @@ const needsNewTime = (r) => r.status === 'pending' && (r.available_slots ?? []).
 const needsAction = (r) => (r.status === 'in_progress' && r.appointment_state === 'proposed') || (r.status === 'done' && !r.tenant_confirmed_at)
 
 // ข้อมูลตั้งต้นก่อนโหลดเสร็จ
-const initialData = { repairs: [], loading: true, loadError: '' }
+const initialData = { repairs: [], payments: [], loading: true, loadError: '' }
 
 // ดึงรายการแจ้งซ่อมของผู้ใช้ (RLS ให้อ่านได้เฉพาะรายการของตัวเองอยู่แล้ว)
 async function fetchRepairs(userId) {
-    const { data, error } = await supabase.from('repairs').select('*').eq('user_id', userId).order('created_at', { ascending: false })
+    const [{ data, error }, paymentsRes] = await Promise.all([
+        supabase.from('repairs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+        // สลิปค่าซ่อมที่ส่งแล้ว (รอตรวจ/ชำระแล้ว) ใช้บอกสถานะการชำระในรายการ
+        supabase.from('repair_payments').select('repair_id, status').eq('user_id', userId).in('status', ['review', 'paid']),
+    ])
     if (error) return { ...initialData, loading: false, loadError: `โหลดข้อมูลไม่สำเร็จ: ${error.message}` }
-    return { repairs: data, loading: false, loadError: '' }
+    return { repairs: data, payments: paymentsRes.error ? [] : paymentsRes.data, loading: false, loadError: '' }
 }
 
 // แถบความคืบหน้า 3 ขั้น: รอดำเนินการ -> กำลังดำเนินการ -> เสร็จสิ้น
@@ -76,12 +81,14 @@ function Progress({ status }) {
 function UserRepairsPage() {
     // ผู้ใช้ที่ login และห้องของผู้เช่า
     const me = useCurrentUser()
+    // ค่าซ่อมที่ยังไม่ได้ชำระ (ใช้ทำป้ายค้างชำระในรายการ)
+    const unpaidRepairs = useRepairCosts()
     const userId = me?.id
     const room = me?.tenant?.room
 
     // ข้อมูลที่โหลด, แท็บสถานะ, ข้อความแจ้งผล และคำค้นหา
     const [data, setData] = useState(initialData)
-    const { repairs, loading, loadError } = data
+    const { repairs, payments, loading, loadError } = data
     const [activeTab, setActiveTab] = useState('all')
     const [notice, setNotice] = useState('')
     // กรองตามประเภทงาน และเรียงจากเก่าสุดไปใหม่สุดไหม
@@ -109,7 +116,7 @@ function UserRepairsPage() {
     const load = async () => setData(await fetchRepairs(userId))
 
     // อัปเดตเองเมื่อผู้ดูแลรับเรื่อง เสนอนัด เปลี่ยนสถานะ หรือใส่ค่าซ่อม
-    useRealtimeReload(['repairs'], load, { enabled: Boolean(userId) })
+    useRealtimeReload(['repairs', 'repair_payments'], load, { enabled: Boolean(userId) })
 
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {
@@ -302,6 +309,11 @@ function UserRepairsPage() {
     // จำนวนรายการที่ยังไม่เสร็จ และรายการแท็บ (ทั้งหมด + ทุกสถานะ)
     const active = repairs.filter((r) => r.status !== 'done' && r.status !== 'cancelled').length
     const actionCount = repairs.filter((r) => needsAction(r) || needsNewTime(r)).length
+    // เรื่องที่มีค่าซ่อมค้างชำระ (แสดงป้าย "ค้างชำระ" ในรายการ)
+    const unpaidIds = new Set(unpaidRepairs.map((r) => r.id))
+    // ส่งสลิปค่าซ่อมแล้วรอผู้ดูแลตรวจ / ผู้ดูแลยืนยันรับเงินแล้ว
+    const reviewIds = new Set(payments.filter((p) => p.status === 'review').map((p) => p.repair_id))
+    const paidIds = new Set(payments.filter((p) => p.status === 'paid').map((p) => p.repair_id))
     const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.filter((k) => k !== 'cancelled').map((k) => ({ key: k, label: repairStatuses[k].label }))]
     // นับจำนวนรายการตามแท็บสถานะ ('all' = ทั้งหมด)
     const countOf = (key) => (key === 'all' ? repairs.length : repairs.filter((r) => r.status === key).length)
@@ -333,6 +345,11 @@ function UserRepairsPage() {
                 )}
 
                 {/* ไม่มีห้อง: แจ้งให้ติดต่อผู้ดูแล / กำลังเปิดฟอร์ม: ฟอร์มแจ้งซ่อม / ไม่งั้น: หน้ารายการ */}
+                {/* ค่าซ่อมที่ยังไม่ได้ชำระ (กดรายการเพื่อเปิดเรื่องนั้น) */}
+                {!editing && room && (
+                    <RepairCostBanner onOpen={(id) => { const r = repairs.find((x) => x.id === id); if (r) openEdit(r) }} />
+                )}
+
                 {!room ? (
                     <p className="text-center py-10 text-muted">บัญชีนี้ยังไม่ได้ผูกกับห้องพัก จึงยังไม่สามารถแจ้งซ่อมได้ กรุณาติดต่อผู้ดูแล</p>
                 ) : editing ? (
@@ -530,7 +547,7 @@ function UserRepairsPage() {
                         )}
 
                         {/* ชำระค่าซ่อม (ซ่อมเสร็จและผู้ดูแลระบุให้ผู้เช่าเป็นผู้ชำระ) */}
-                        {!isNew && <TenantRepairPayment repair={editing} />}
+                        {!isNew && <TenantRepairPayment repair={editing} userId={userId} />}
 
                         {/* ผู้เช่ายืนยันผลการซ่อมแล้ว */}
                         {!isNew && editing.tenant_confirmed_at && (
@@ -689,6 +706,9 @@ function UserRepairsPage() {
                                                             <RepairStatusBadge status={r.status} />
                                                             {needsAction(r) && <div className="text-xs font-semibold text-red-600 mt-1">รอคุณยืนยัน</div>}
                                                             {needsNewTime(r) && <div className="text-xs font-semibold text-red-600 mt-1">กรุณาเลือกเวลาใหม่</div>}
+                                                            {unpaidIds.has(r.id) && <div className="text-xs font-semibold text-amber-700 mt-1">ค้างชำระ {baht(r.cost)}</div>}
+                                                            {reviewIds.has(r.id) && <div className="text-xs font-semibold text-sky-700 mt-1">รอตรวจสอบสลิป</div>}
+                                                            {paidIds.has(r.id) && <div className="text-xs font-semibold text-emerald-700 mt-1">ชำระค่าซ่อมแล้ว</div>}
                                                         </td>
                                                         <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                                                             <button onClick={() => openEdit(r)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist whitespace-nowrap">
@@ -724,6 +744,9 @@ function UserRepairsPage() {
                                                     </div>
                                                     {needsAction(r) && <div className="text-xs font-semibold text-red-600">รอคุณยืนยัน</div>}
                                                     {needsNewTime(r) && <div className="text-xs font-semibold text-red-600">กรุณาเลือกเวลาใหม่</div>}
+                                                    {unpaidIds.has(r.id) && <div className="text-xs font-semibold text-amber-700">ค้างชำระ {baht(r.cost)}</div>}
+                                                    {reviewIds.has(r.id) && <div className="text-xs font-semibold text-sky-700">รอตรวจสอบสลิป</div>}
+                                                    {paidIds.has(r.id) && <div className="text-xs font-semibold text-emerald-700">ชำระค่าซ่อมแล้ว</div>}
                                                     <button onClick={() => openEdit(r)} className="py-2 rounded-xl text-sm bg-mist/60 text-primary-dark hover:bg-mist">
                                                         {r.status === 'pending' ? 'แก้ไขเรื่องนี้' : needsAction(r) ? 'ตรวจสอบและยืนยัน' : 'ดูรายละเอียด'}
                                                     </button>
