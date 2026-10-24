@@ -14,6 +14,7 @@ import AdminInvoiceDetail from './AdminInvoiceDetail'
 import InvoiceDeleteModal from './InvoiceDeleteModal'
 import MeterCard from './MeterCard'
 import { SkeletonTable } from './Skeleton.jsx'
+import { selectAll } from '../lib/selectAll'
 
 // อัตราค่าบริการเป็น null = ใช้ค่าเริ่มต้นจากหน้า "ตั้งค่า" (แก้ในฟอร์มเพื่อกำหนดเฉพาะใบนี้)
 const makeEmptyForm = () => ({
@@ -42,7 +43,7 @@ async function fetchData() {
     const [tenantsRes, roomsRes, invoicesRes] = await Promise.all([
         supabase.from('tenants').select('room, name, user_id'),
         supabase.from('rooms').select('number, rent'),
-        supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+        selectAll(() => supabase.from('invoices').select('*').order('created_at', { ascending: false }).order('id')),
     ])
     return { tenantsRes, roomsRes, invoicesRes }
 }

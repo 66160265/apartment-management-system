@@ -11,6 +11,7 @@ import { monthlySummary, occupancy } from '../lib/reports'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 import { SkeletonList } from '../components/Skeleton.jsx'
+import { selectAll } from '../lib/selectAll'
 
 // หน้าภาพรวมของแอดมิน: ตอบ 3 คำถามให้จบในหน้าเดียว
 //   1) มีอะไรต้องจัดการตอนนี้ไหม (สลิปรอตรวจ เรื่องซ่อมรอดำเนินการ)  2) เดือนนี้การเงินเป็นอย่างไร (เรียกเก็บ/ได้รับ/ค้าง)  3) ห้องเต็มไหม
@@ -20,10 +21,10 @@ import { SkeletonList } from '../components/Skeleton.jsx'
 // ใบแจ้งหนี้และห้องจำเป็น พลาดแล้วโยน error ส่วนที่เหลือมาจาก SQL รุ่นหลัง ถ้ายังไม่มีตารางให้ถือว่าไม่มีข้อมูล หน้ายังใช้ได้
 async function fetchDashboardData() {
     const [invoicesRes, roomsRes, paymentsRes, repairPaymentsRes, pendingRepairsRes, tenantsRes, slipUsage] = await Promise.all([
-        supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+        selectAll(() => supabase.from('invoices').select('*').order('created_at', { ascending: false }).order('id')),
         supabase.from('rooms').select('number, status'),
-        supabase.from('invoice_payments').select('amount, confirmed_at'),
-        supabase.from('repair_payments').select('amount, status, reviewed_at'),
+        selectAll(() => supabase.from('invoice_payments').select('amount, confirmed_at').order('id')),
+        selectAll(() => supabase.from('repair_payments').select('amount, status, reviewed_at').order('id')),
         supabase.from('repairs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('tenants').select('room, end_date'),
         fetchSlipUsage(),
