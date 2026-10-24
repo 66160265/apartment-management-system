@@ -44,7 +44,8 @@ Deno.serve(async (req) => {
   const { data: callerProfile } = await admin.from('profiles').select('role').eq('id', caller.user.id).single()
   if (callerProfile?.role !== 'admin') return json({ error: 'ไม่มีสิทธิ์' }, 403)
 
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body !== 'object') return json({ error: 'ข้อมูลไม่ถูกต้อง' }, 400)
 
   // list: รายชื่อบัญชีทั้งหมด พร้อมสิทธิ์และข้อมูลผู้เช่าที่ผูกอยู่
   if (body.action === 'list') {
@@ -110,8 +111,29 @@ Deno.serve(async (req) => {
     if (userId === caller.user.id) return json({ error: 'ไม่สามารถลบบัญชีของตัวเองได้' }, 400)
 
     // ถ้าเป็นผู้เช่า ลบข้อมูลผู้เช่าและคืนสถานะห้องเป็นว่างด้วย
-    const { data: tenant } = await admin.from('tenants').select('room').eq('user_id', userId).maybeSingle()
+    const { data: tenant } = await admin.from('tenants').select('room, deposit, start_date').eq('user_id', userId).maybeSingle()
     if (tenant) {
+      // กันลบข้ามขั้นตอนย้ายออก: ถ้ายังไม่ได้บันทึกการย้ายออกของสัญญานี้ และยังมีใบแจ้งหนี้ค้าง (รอชำระ/รอตรวจสลิป) หรือมีเงินประกัน = ไม่ลบ
+      // (ลบแล้วใบแจ้งหนี้จะไม่ผูกกับใครและเงินประกันไม่มีบันทึก) ให้ใช้ปุ่มย้ายออกในหน้ารายละเอียดผู้เช่าก่อน บันทึกย้ายออกแล้วลบได้เสมอ
+      const { count: moved } = await admin
+        .from('move_outs')
+        .select('id', { count: 'exact', head: true })
+        .eq('room', tenant.room)
+        .eq('start_date', tenant.start_date)
+        .eq('tenant_user_id', userId)
+      if ((moved ?? 0) === 0) {
+        const { count: openInvoices } = await admin
+          .from('invoices')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .in('status', ['pending', 'review'])
+        if ((openInvoices ?? 0) > 0) {
+          return json({ error: `ผู้เช่ายังมีใบแจ้งหนี้ค้าง ${openInvoices} ใบ กรุณาบันทึกการย้ายออกก่อนลบบัญชี` }, 409)
+        }
+        if (Number(tenant.deposit ?? 0) > 0) {
+          return json({ error: 'ผู้เช่ามีเงินประกัน กรุณาบันทึกการย้ายออกและเงินประกันก่อนลบบัญชี' }, 409)
+        }
+      }
       // ลบไฟล์ส่วนตัวจริงออกจากที่เก็บก่อน (สำเนาบัตรประชาชน และสัญญา) ไม่ปล่อยให้ค้างหลังบัญชีถูกลบ
       // ลบไม่สำเร็จ = หยุดและยังไม่ลบบัญชี ให้ลองใหม่ได้ ส่วนสลิปโอนเงินและรูปแจ้งซ่อมเก็บไว้เป็นหลักฐานทางบัญชี
       const cleanup = await removePersonalFiles(admin, tenant.room)

@@ -13,6 +13,7 @@ vi.mock('../lib/supabaseClient', () => {
         const b = {
             select: (_cols, opts) => builder(table, { head: Boolean(opts?.head) }),
             order: () => b,
+            range: () => b,
             eq: () => b,
             maybeSingle: () => Promise.resolve({ data: null, error: null }),
             then: (resolve, reject) => {

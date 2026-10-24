@@ -38,7 +38,9 @@ Deno.serve(async (req) => {
   if (callerProfile?.role !== 'admin') return json({ error: 'ไม่มีสิทธิ์' }, 403)
 
   // อ่านข้อมูลผู้เช่าที่ส่งมา และตรวจว่าครบ/ถูกรูปแบบ
-  const { room, name, phone, startDate, endDate } = await req.json()
+  const input = await req.json().catch(() => null)
+  if (!input || typeof input !== 'object') return json({ error: 'ข้อมูลไม่ถูกต้อง' }, 400)
+  const { room, name, phone, startDate, endDate } = input
   const digits = String(phone ?? '').replace(/\D/g, '')
   if (!/^[A-Za-z0-9]{1,10}$/.test(String(room ?? '')) || digits.length < 4 || !name || !startDate || !endDate) {
     return json({ error: 'ข้อมูลผู้เช่าไม่ครบหรือไม่ถูกต้อง' }, 400)

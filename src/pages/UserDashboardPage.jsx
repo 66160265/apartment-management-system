@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
@@ -11,6 +12,7 @@ import { RepairCostBanner } from '../components/RepairPayment'
 import { useRealtimeReload } from '../lib/realtime'
 import { requestSlipVerify } from '../lib/slipVerify'
 import { supabase } from '../lib/supabaseClient'
+import { contractStatus } from '../lib/tenants'
 import { useCurrentUser } from '../lib/useCurrentUser'
 import { useSettings } from '../lib/useSettings'
 
@@ -187,16 +189,8 @@ function UserDashboardPage() {
     useEffect(() => () => uploadPreview && URL.revokeObjectURL(uploadPreview), [uploadPreview])
 
     // คำนวณวันหมดสัญญา
-    const contractRemainingDays = useMemo(() => {
-        if (!tenantInfo?.end_date) return null
-        const end = new Date(tenantInfo.end_date)
-        const now = new Date()
-        end.setHours(0, 0, 0, 0)
-        now.setHours(0, 0, 0, 0)
-        const diffTime = end - now
-        const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-        return days
-    }, [tenantInfo])
+    // ใช้ฟังก์ชันเดียวกับหน้าอื่น (อ่านวันที่เป็นเวลาท้องถิ่นทั้งสองฝั่ง ไม่เลื่อนวันตามเขตเวลา)
+    const contractRemainingDays = useMemo(() => (tenantInfo?.end_date ? contractStatus(tenantInfo.end_date).days : null), [tenantInfo])
 
     // ฟังก์ชันเลือกไฟล์สลิป
     const pickFile = (file) => {
@@ -698,6 +692,10 @@ function UserDashboardPage() {
                                 ) : (
                                     <p className="text-xs text-muted">ไม่มีรายการที่ต้องดำเนินการ</p>
                                 )}
+
+                                <Link to="/invoices" className="text-center text-xs text-primary-dark hover:underline font-medium">
+                                    ดูประวัติใบแจ้งหนี้ทั้งหมด
+                                </Link>
 
                                 {/* ปุ่มดาวน์โหลดใบแจ้งหนี้ PDF */}
                                 {activeInvoice && (

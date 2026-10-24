@@ -11,6 +11,7 @@ import { formatSlot, formatThaiDate, isBooked, isInSlots, isValidPeriod, normali
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { SkeletonTable } from './Skeleton.jsx'
+import { selectAll } from '../lib/selectAll'
 
 // คลาส Tailwind ของช่องกรอก/ตัวเลือกในฟอร์ม (ใช้ร่วมกันทุกช่อง)
 const inputClass = 'w-full border border-line rounded-xl px-4 py-2 text-ink text-sm outline-none focus:border-secondary focus:ring-2 focus:ring-secondary/30 bg-white disabled:bg-sand/60 disabled:text-muted'
@@ -52,7 +53,7 @@ const initialData = { repairs: [], rooms: [], tenants: [], payments: [], loading
 async function fetchData() {
     // ดึงพร้อมกัน: แจ้งซ่อม (ใหม่สุดก่อน), เลขห้องทั้งหมด, ผู้เช่าของแต่ละห้อง, สถานะการชำระค่าซ่อม
     const [repairsRes, roomsRes, tenantsRes, paymentsRes] = await Promise.all([
-        supabase.from('repairs').select('*').order('created_at', { ascending: false }),
+        selectAll(() => supabase.from('repairs').select('*').order('created_at', { ascending: false }).order('id')),
         supabase.from('rooms').select('number'),
         supabase.from('tenants').select('room, name, user_id'),
         supabase.from('repair_payments').select('repair_id, status').in('status', ['review', 'paid']),

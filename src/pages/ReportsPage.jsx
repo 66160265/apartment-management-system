@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Icon from '../components/Icon'
 import MonthPicker from '../components/MonthPicker'
 import PageHeader from '../components/PageHeader'
-import { baht, currentMonth, formatMonth } from '../lib/billing'
+import { baht, currentMonth, formatMonth, thaiDateOf } from '../lib/billing'
 import { repairCategories } from '../data/repairs'
 import { formatDate } from '../lib/tenants'
 import { downloadCsv } from '../lib/downloadCsv'
@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabaseClient'
 import MonthlyColumns from '../components/MonthlyColumns'
 import { useSettings } from '../lib/useSettings'
 import { SkeletonCardGrid, SkeletonTable } from '../components/Skeleton.jsx'
+import { selectAll } from '../lib/selectAll'
 
 // รายงานสำหรับแอดมิน: อัตราเข้าพัก รายรับ-ยอดค้างรายเดือน และส่งออก CSV (เปิดใน Excel/ส่งให้นักบัญชีได้)
 // รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ไม่ใช่เดือนของใบแจ้งหนี้
@@ -67,14 +68,14 @@ function ReportsPage() {
     const fetchAll = () =>
         Promise.all([
             supabase.from('rooms').select('number, status, rent'),
-            supabase.from('invoices').select('*'),
-            supabase.from('invoice_payments').select('*'),
+            selectAll(() => supabase.from('invoices').select('*').order('id')),
+            selectAll(() => supabase.from('invoice_payments').select('*').order('id')),
             // ตารางนี้มีเมื่อรัน ส่วน repair-payments ของไฟล์ migration แล้ว ถ้ายังไม่มีให้ถือว่าไม่มีรายรับค่าซ่อม
-            supabase.from('repair_payments').select('*').eq('status', 'paid'),
+            selectAll(() => supabase.from('repair_payments').select('*').eq('status', 'paid').order('id')),
             // ตารางนี้มีเมื่อรัน ส่วน move-out ของไฟล์ migration แล้ว
-            supabase.from('move_outs').select('*').order('move_out_date', { ascending: false }),
+            selectAll(() => supabase.from('move_outs').select('*').order('move_out_date', { ascending: false }).order('id')),
             // เรื่องแจ้งซ่อม (ใช้ทำสถิติยอดซ่อม)
-            supabase.from('repairs').select('id, room, problem, category, status, cost, cost_payer, created_at, completed_at'),
+            selectAll(() => supabase.from('repairs').select('id, room, problem, category, status, cost, cost_payer, created_at, completed_at').order('id')),
             // ผู้เช่าปัจจุบัน (ใช้ดูสัญญาที่ใกล้หมด)
             supabase.from('tenants').select('room, name, end_date'),
         ])
@@ -132,7 +133,7 @@ function ReportsPage() {
             csvFileName('การรับเงิน', month),
             toCsv(data.invoicePayments.filter((p) => monthOf(p.confirmed_at) === month).sort((a, b) => a.confirmed_at.localeCompare(b.confirmed_at)), paymentColumns(invoiceById)),
         )
-    const exportOutstanding = () => downloadCsv(csvFileName('ยอดค้างชำระ', now.toISOString().slice(0, 10)), toCsv(outstanding, outstandingColumns))
+    const exportOutstanding = () => downloadCsv(csvFileName('ยอดค้างชำระ', thaiDateOf(now)), toCsv(outstanding, outstandingColumns))
     // การใช้น้ำ-ไฟของเดือนที่เลือก (เดิมอยู่ในหน้าภาพรวม ย้ายมาไว้ที่นี่)
     const monthInvoices = useMemo(() => data.invoices.filter((i) => i.month === month), [data.invoices, month])
     const utility = useMemo(() => utilityStats(monthInvoices), [monthInvoices])
@@ -142,7 +143,7 @@ function ReportsPage() {
     const waterRows = useMemo(() => history.map((h) => ({ key: h.month, label: formatMonth(h.month), value: h.water })), [history])
     const electricRows = useMemo(() => history.map((h) => ({ key: h.month, label: formatMonth(h.month), value: h.electric })), [history])
     const exportUtility = () => downloadCsv(csvFileName('การใช้น้ำไฟ', month), toCsv(usageRows, utilityColumns))
-    const exportMoveOuts = () => downloadCsv(csvFileName('ย้ายออกและเงินประกัน', now.toISOString().slice(0, 10)), toCsv(data.moveOuts, moveOutColumns))
+    const exportMoveOuts = () => downloadCsv(csvFileName('ย้ายออกและเงินประกัน', thaiDateOf(now)), toCsv(data.moveOuts, moveOutColumns))
     const exportMonthly = () => downloadCsv(csvFileName('สรุปรายเดือน', `${months.at(-1)}_${months[0]}`), toCsv([...rows12].reverse(), monthlyColumns))
 
     return (
