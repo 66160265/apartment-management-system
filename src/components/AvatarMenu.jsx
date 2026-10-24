@@ -5,6 +5,7 @@ import NotificationBell from './NotificationBell'
 import UserNotificationBell from './UserNotificationBell'
 import { roleLabels, useCurrentUser } from '../lib/useCurrentUser'
 
+// เมนูรูปโปรไฟล์มุมขวาบน: แสดงชื่อผู้ใช้/สิทธิ์ ลิงก์ไปหน้าบัญชี และปุ่มออกจากระบบ
 function AvatarMenu() {
     const navigate = useNavigate()
     const ref = useRef(null)
@@ -15,9 +16,11 @@ function AvatarMenu() {
     // ปิดเมนูเมื่อคลิกข้างนอกหรือกด Esc
     useEffect(() => {
         if (!open) return
+        // คลิกนอกเมนูให้ปิดเมนู
         const onClick = (e) => {
             if (ref.current && !ref.current.contains(e.target)) setOpen(false)
         }
+        // กด Esc ให้ปิดเมนู
         const onKey = (e) => e.key === 'Escape' && setOpen(false)
         document.addEventListener('mousedown', onClick)
         document.addEventListener('keydown', onKey)
@@ -27,19 +30,23 @@ function AvatarMenu() {
         }
     }, [open])
 
+    // ออกจากระบบแล้วกลับไปหน้า login
     const handleLogout = async () => {
         setLoggingOut(true)
         await supabase.auth.signOut()
         navigate('/')
     }
 
+    // ชื่อที่แสดงในเมนู และตัวอักษรในวงกลม (ผู้เช่าใช้ตัวแรกของชื่อ แอดมินใช้ AD)
     const displayName = info?.tenant?.name || roleLabels[info?.role] || 'บัญชีของฉัน'
     const initials = info?.role === 'user' && info.tenant?.name ? info.tenant.name.trim().charAt(0) : 'AD'
 
     return (
         <div className="flex items-center gap-3">
+            {/* กระดิ่งแจ้งเตือนตามสิทธิ์ */}
             {info && (info.role === 'admin' ? <NotificationBell /> : <UserNotificationBell />)}
             <div ref={ref} className="relative">
+            {/* ปุ่มวงกลมเปิด/ปิดเมนู */}
             <button
                 onClick={() => setOpen(!open)}
                 aria-label="เมนูบัญชีผู้ใช้"
@@ -48,6 +55,7 @@ function AvatarMenu() {
             >
                 {initials}
             </button>
+            {/* กล่องเมนู: ชื่อและสิทธิ์, ข้อมูลบัญชี/ห้อง, ปุ่มจัดการบัญชีและออกจากระบบ */}
             {open && (
                 <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-line p-4 z-40 text-left">
                     <div className="pb-3 border-b border-line">
@@ -58,6 +66,7 @@ function AvatarMenu() {
                             </span>
                         )}
                     </div>
+                    {/* ชื่อผู้ใช้ และห้อง/เบอร์โทร (เฉพาะผู้เช่า) */}
                     <dl className="py-3 text-sm grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
                         <dt className="text-muted">ชื่อผู้ใช้</dt>
                         <dd className="text-ink break-all">{info?.username || '-'}</dd>

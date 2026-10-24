@@ -4,15 +4,18 @@ import Icon from "../components/Icon";
 import { supabase } from "../lib/supabaseClient";
 import { usernameToEmail } from "../lib/tenantAccount";
 
+// จุดเด่นของระบบที่แสดงฝั่งซ้ายของหน้า login
 const features = [
   { icon: "receipt", title: "ใบแจ้งหนี้และชำระเงิน", text: "ดูยอดค่าเช่า ค่าน้ำ ค่าไฟ และแนบสลิปได้ในระบบ" },
   { icon: "wrench", title: "แจ้งซ่อมและติดตามสถานะ", text: "แจ้งปัญหาในห้องพักและดูความคืบหน้าได้ทันที" },
   { icon: "bell", title: "แจ้งเตือนทันที", text: "รู้ทุกความเคลื่อนไหวของใบแจ้งหนี้และงานซ่อม" },
 ];
 
+// หน้าเข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่าน
 function LoginPage() {
   const navigate = useNavigate();
 
+  // ข้อความ error, กำลัง login, แสดง/ซ่อนรหัสผ่าน และค่าที่กรอก (อีเมลหรือชื่อผู้ใช้ + รหัสผ่าน)
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -20,6 +23,7 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  // เข้าสู่ระบบ: แปลงชื่อผู้ใช้เป็นอีเมลภายใน login แล้วพาไปหน้าแรกตามสิทธิ์
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -88,6 +92,7 @@ function LoginPage() {
     }
   };
 
+  // คลาส Tailwind ของช่องกรอก (เว้นซ้ายไว้ให้ไอคอน)
   const fieldClass =
     "w-full h-12 pl-11 pr-4 rounded-xl border border-line bg-sand/50 text-ink outline-none transition-colors focus:border-secondary focus:bg-white focus:ring-4 focus:ring-secondary/15";
 
@@ -98,6 +103,7 @@ function LoginPage() {
         <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-white/5" />
         <div className="absolute -bottom-32 -left-20 w-[28rem] h-[28rem] rounded-full bg-secondary/10" />
 
+        {/* โลโก้และชื่อระบบ */}
         <div className="relative flex items-center gap-3">
           <span className="grid place-items-center w-12 h-12 rounded-2xl bg-white/12 ring-1 ring-white/20">
             <Icon name="building" className="w-7 h-7" />
@@ -105,6 +111,7 @@ function LoginPage() {
           <span className="text-lg font-semibold">ระบบจัดการหอพัก</span>
         </div>
 
+        {/* ข้อความแนะนำและรายการจุดเด่น */}
         <div className="relative max-w-lg">
           <h1 className="text-4xl font-semibold leading-tight">
             จัดการหอพัก
@@ -135,6 +142,7 @@ function LoginPage() {
       {/* ฝั่งขวา: ฟอร์มเข้าสู่ระบบ */}
       <section className="flex items-center justify-center bg-sand px-6 py-12">
         <div className="w-full max-w-md">
+          {/* โลโก้สำหรับจอเล็ก (เพราะฝั่งซ้ายถูกซ่อน) */}
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8 text-primary-dark">
             <span className="grid place-items-center w-11 h-11 rounded-2xl bg-white shadow-card">
               <Icon name="building" className="w-6 h-6 text-primary" />
@@ -146,6 +154,7 @@ function LoginPage() {
             <h2 className="text-2xl font-semibold text-primary-dark">เข้าสู่ระบบ</h2>
             <p className="text-sm text-muted mt-1">ยินดีต้อนรับ กรุณากรอกข้อมูลเพื่อเข้าใช้งาน</p>
 
+            {/* กล่องแสดง error */}
             {error && (
               <div
                 role="alert"
@@ -157,6 +166,7 @@ function LoginPage() {
             )}
 
             <form onSubmit={handleSubmit} className={`${error ? "mt-4" : "mt-8"} flex flex-col gap-5`}>
+              {/* ช่องชื่อผู้ใช้/อีเมล */}
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-primary-dark mb-1.5">
                   อีเมล / ชื่อผู้ใช้
@@ -179,6 +189,7 @@ function LoginPage() {
                 </div>
               </div>
 
+              {/* ช่องรหัสผ่าน + ปุ่มแสดง/ซ่อน */}
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-primary-dark mb-1.5">
                   รหัสผ่าน
@@ -210,6 +221,7 @@ function LoginPage() {
                 </div>
               </div>
 
+              {/* ปุ่มเข้าสู่ระบบ (แสดงวงหมุนระหว่างรอ) */}
               <button
                 type="submit"
                 disabled={loading}

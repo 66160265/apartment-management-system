@@ -1,22 +1,39 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+// อนุญาตให้หน้าเว็บ (คนละโดเมน) เรียกฟังก์ชันนี้ได้
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// สร้าง response แบบ JSON พร้อม header CORS
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 
+// ความยาวรหัสผ่านขั้นต่ำตอนแอดมินตั้งรหัสใหม่ให้
 const MIN_PASSWORD = 6
+
+// ลบไฟล์ส่วนตัวของผู้เช่าออกจากที่เก็บ: เอกสารห้อง (tenant-docs) คืนข้อความ error หรือ null
+// deno-lint-ignore no-explicit-any
+async function removePersonalFiles(admin: any, room: string): Promise<string | null> {
+  const { data: docs, error: docsError } = await admin.from('tenant_documents').select('file_path').eq('room', room)
+  if (docsError) return `อ่านรายการเอกสารไม่สำเร็จ: ${docsError.message}`
+  const docPaths = (docs ?? []).map((d: { file_path: string }) => d.file_path)
+  if (docPaths.length) {
+    const { error } = await admin.storage.from('tenant-docs').remove(docPaths)
+    if (error) return `ลบไฟล์เอกสารผู้เช่าไม่สำเร็จ: ${error.message}`
+  }
+  return null
+}
 
 // จัดการบัญชีผู้ใช้ทั้งหมด (เฉพาะแอดมิน): list / update / delete
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
+  // client สิทธิ์ service role (ข้าม RLS ได้) ใช้เฉพาะในฟังก์ชันนี้
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   // ตรวจว่าผู้เรียกเป็นแอดมินที่ login อยู่
@@ -27,8 +44,10 @@ Deno.serve(async (req) => {
   const { data: callerProfile } = await admin.from('profiles').select('role').eq('id', caller.user.id).single()
   if (callerProfile?.role !== 'admin') return json({ error: 'ไม่มีสิทธิ์' }, 403)
 
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
+  if (!body || typeof body !== 'object') return json({ error: 'ข้อมูลไม่ถูกต้อง' }, 400)
 
+  // list: รายชื่อบัญชีทั้งหมด พร้อมสิทธิ์และข้อมูลผู้เช่าที่ผูกอยู่
   if (body.action === 'list') {
     const { data: users, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 })
     if (error) return json({ error: error.message }, 500)
@@ -52,9 +71,11 @@ Deno.serve(async (req) => {
     return json({ users: rows, currentUserId: caller.user.id })
   }
 
+  // คำสั่งที่เหลือต้องระบุบัญชีเป้าหมาย
   const userId = String(body.userId ?? '')
   if (!userId) return json({ error: 'ไม่พบบัญชีที่ต้องการ' }, 400)
 
+  // update: ตั้งรหัสผ่านใหม่ (ถ้าส่งมา) และแก้ข้อมูลผู้เช่า
   if (body.action === 'update') {
     const { password, name, phone, startDate, endDate } = body
 
@@ -64,6 +85,11 @@ Deno.serve(async (req) => {
       }
       const { error } = await admin.auth.admin.updateUserById(userId, { password })
       if (error) return json({ error: `เปลี่ยนรหัสผ่านไม่สำเร็จ: ${error.message}` }, 400)
+      // รหัสที่แอดมินตั้งให้คนอื่นแอดมินรู้อยู่ ให้เจ้าของบัญชีตั้งรหัสใหม่เองตอนเข้าครั้งถัดไป (ตั้งรหัสของตัวเองไม่ต้อง)
+      if (userId !== caller.user.id) {
+        const { error: flagError } = await admin.from('profiles').update({ must_change_password: true }).eq('id', userId)
+        if (flagError) return json({ error: `ตั้งรหัสแล้วแต่บันทึกการบังคับเปลี่ยนรหัสไม่สำเร็จ: ${flagError.message}` }, 500)
+      }
     }
 
     // ข้อมูลผู้เช่า (มีเฉพาะบัญชีที่ผูกกับผู้เช่า)
@@ -80,16 +106,43 @@ Deno.serve(async (req) => {
     return json({ ok: true })
   }
 
+  // delete: ลบบัญชี (ลบบัญชีตัวเองไม่ได้)
   if (body.action === 'delete') {
     if (userId === caller.user.id) return json({ error: 'ไม่สามารถลบบัญชีของตัวเองได้' }, 400)
 
     // ถ้าเป็นผู้เช่า ลบข้อมูลผู้เช่าและคืนสถานะห้องเป็นว่างด้วย
-    const { data: tenant } = await admin.from('tenants').select('room').eq('user_id', userId).maybeSingle()
+    const { data: tenant } = await admin.from('tenants').select('room, deposit, start_date').eq('user_id', userId).maybeSingle()
     if (tenant) {
+      // กันลบข้ามขั้นตอนย้ายออก: ถ้ายังไม่ได้บันทึกการย้ายออกของสัญญานี้ และยังมีใบแจ้งหนี้ค้าง (รอชำระ/รอตรวจสลิป) หรือมีเงินประกัน = ไม่ลบ
+      // (ลบแล้วใบแจ้งหนี้จะไม่ผูกกับใครและเงินประกันไม่มีบันทึก) ให้ใช้ปุ่มย้ายออกในหน้ารายละเอียดผู้เช่าก่อน บันทึกย้ายออกแล้วลบได้เสมอ
+      const { count: moved } = await admin
+        .from('move_outs')
+        .select('id', { count: 'exact', head: true })
+        .eq('room', tenant.room)
+        .eq('start_date', tenant.start_date)
+        .eq('tenant_user_id', userId)
+      if ((moved ?? 0) === 0) {
+        const { count: openInvoices } = await admin
+          .from('invoices')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .in('status', ['pending', 'review'])
+        if ((openInvoices ?? 0) > 0) {
+          return json({ error: `ผู้เช่ายังมีใบแจ้งหนี้ค้าง ${openInvoices} ใบ กรุณาบันทึกการย้ายออกก่อนลบบัญชี` }, 409)
+        }
+        if (Number(tenant.deposit ?? 0) > 0) {
+          return json({ error: 'ผู้เช่ามีเงินประกัน กรุณาบันทึกการย้ายออกและเงินประกันก่อนลบบัญชี' }, 409)
+        }
+      }
+      // ลบไฟล์ส่วนตัวจริงออกจากที่เก็บก่อน (สำเนาบัตรประชาชน และสัญญา) ไม่ปล่อยให้ค้างหลังบัญชีถูกลบ
+      // ลบไม่สำเร็จ = หยุดและยังไม่ลบบัญชี ให้ลองใหม่ได้ ส่วนสลิปโอนเงินและรูปแจ้งซ่อมเก็บไว้เป็นหลักฐานทางบัญชี
+      const cleanup = await removePersonalFiles(admin, tenant.room)
+      if (cleanup) return json({ error: cleanup }, 500)
       const { error } = await admin.from('tenants').delete().eq('user_id', userId)
       if (error) return json({ error: `ลบข้อมูลผู้เช่าไม่สำเร็จ: ${error.message}` }, 500)
       await admin.from('rooms').update({ status: 'vacant' }).eq('number', tenant.room)
     }
+    // ลบสิทธิ์และบัญชี login
     await admin.from('profiles').delete().eq('id', userId)
     const { error } = await admin.auth.admin.deleteUser(userId)
     if (error) return json({ error: `ลบบัญชีไม่สำเร็จ: ${error.message}` }, 500)

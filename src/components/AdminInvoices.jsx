@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useState } from 'react'
-import DownloadInvoiceButton from './DownloadInvoiceButton'
+import BulkInvoiceForm from './BulkInvoiceForm'
 import Icon from './Icon'
 import PageHeader from './PageHeader'
 import MonthPicker from './MonthPicker'
-import { CopyButton, InvoiceBreakdown, InvoiceStepper, SlipImage, StatusBadge } from './InvoiceParts'
+import { InvoiceBreakdown, StatusBadge } from './InvoiceParts'
 import { invoiceStatuses } from '../data/billing'
-import { baht, calcInvoice, currentMonth, formatDateTime, formatMonth } from '../lib/billing'
+import { baht, calcInvoice, currentMonth, formatMonth, lateFeeSnapshot, paidOf } from '../lib/billing'
+import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
-
-const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
-const smallInputClass = 'w-full border border-line bg-white rounded-lg px-2.5 py-1.5 mt-1 text-sm outline-none focus:border-secondary'
+import { inputClass } from './invoiceFormClasses'
+import AdminInvoiceDetail from './AdminInvoiceDetail'
+import InvoiceDeleteModal from './InvoiceDeleteModal'
+import MeterCard from './MeterCard'
+import { SkeletonTable } from './Skeleton.jsx'
+import { selectAll } from '../lib/selectAll'
 
 // อัตราค่าบริการเป็น null = ใช้ค่าเริ่มต้นจากหน้า "ตั้งค่า" (แก้ในฟอร์มเพื่อกำหนดเฉพาะใบนี้)
 const makeEmptyForm = () => ({
@@ -25,6 +29,7 @@ const makeEmptyForm = () => ({
     commonFee: null,
 })
 
+// การ์ดสรุป/แท็บกรองตามสถานะใบแจ้งหนี้
 const summaryCards = [
     { value: 'all', label: 'ทั้งหมด', icon: 'receipt', tone: 'bg-slate-100 text-slate-600' },
     { value: 'pending', label: 'รอชำระ', icon: 'clock', tone: 'bg-amber-50 text-amber-700' },
@@ -32,226 +37,27 @@ const summaryCards = [
     { value: 'paid', label: 'ชำระแล้ว', icon: 'checkCircle', tone: 'bg-emerald-50 text-emerald-700' },
 ]
 
-function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
-    const settings = useSettings()
-    const [rejecting, setRejecting] = useState(false)
-    const [reason, setReason] = useState('')
-    const [busy, setBusy] = useState(false)
-    const [error, setError] = useState('')
-
-    const review = async (approve) => {
-        if (!approve && !reason.trim()) {
-            setError('กรุณาระบุเหตุผลที่ปฏิเสธ')
-            return
-        }
-        setBusy(true)
-        const { error: err } = await supabase
-            .from('invoices')
-            .update(approve
-                ? { status: 'paid', reviewed_at: new Date().toISOString(), reject_reason: null }
-                : { status: 'pending', slip_path: null, slip_uploaded_at: null, reject_reason: reason.trim() })
-            .eq('id', invoice.id)
-            .eq('status', 'review')
-        setBusy(false)
-        if (err) {
-            setError(`บันทึกไม่สำเร็จ: ${err.message}`)
-            return
-        }
-        await onChanged()
-        onBack()
-    }
-
-    return (
-        <>
-            <PageHeader title="รายละเอียดใบแจ้งหนี้" />
-            <div className="mx-6 mb-6 flex flex-col gap-4">
-                <button onClick={onBack} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm"><Icon name="arrowLeft" className="w-4 h-4" />กลับไปรายการใบแจ้งหนี้</button>
-
-                <div className="bg-white rounded-2xl shadow-card p-5 flex flex-wrap items-center gap-4">
-                    <span className="grid place-items-center w-14 h-14 rounded-2xl bg-mist text-primary-dark text-lg font-semibold">{invoice.room}</span>
-                    <div className="flex-1 min-w-48">
-                        <div className="flex items-center gap-3 flex-wrap">
-                            <h2 className="text-lg font-semibold text-primary-dark">{invoice.tenant_name}</h2>
-                            <StatusBadge status={invoice.status} />
-                        </div>
-                        <p className="text-sm text-muted mt-0.5">ห้อง {invoice.room} · ใบแจ้งหนี้เดือน {formatMonth(invoice.month)}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <DownloadInvoiceButton invoice={invoice} label="ดาวน์โหลด PDF" className="border border-line text-primary-dark hover:bg-mist/50 px-4 py-1.5 rounded-xl text-sm" />
-                        <button onClick={() => onEdit(invoice)} className="border border-line text-primary-dark hover:bg-mist/50 px-4 py-1.5 rounded-xl text-sm">แก้ไข</button>
-                        <button onClick={() => onDelete(invoice)} className="border border-red-200 text-red-600 hover:bg-red-50 px-4 py-1.5 rounded-xl text-sm">ลบ</button>
-                    </div>
-                    <div className="w-full pt-4 border-t border-line">
-                        <InvoiceStepper status={invoice.status} />
-                    </div>
-                </div>
-
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start">
-                    <div className="flex flex-col gap-4">
-                        <InvoiceBreakdown invoice={invoice} />
-                        <div className="bg-white rounded-2xl shadow-card p-4 text-sm flex items-center justify-between gap-3">
-                            <div>
-                                <div className="text-xs text-muted">โอนเข้าบัญชี</div>
-                                <div className="font-medium text-ink mt-0.5">{settings.bankName}</div>
-                                <div className="text-muted tabular-nums">{settings.bankAccount} · {settings.bankHolder}</div>
-                            </div>
-                            <CopyButton text={settings.bankAccount} />
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
-                        <div className="flex justify-between items-baseline gap-3">
-                            <h3 className="font-medium text-primary-dark">หลักฐานการโอนเงิน</h3>
-                            {invoice.slip_uploaded_at && (
-                                <span className="text-xs text-muted">อัปโหลด {formatDateTime(invoice.slip_uploaded_at)}</span>
-                            )}
-                        </div>
-                        <div className="flex items-center justify-center rounded-xl bg-sand/70 border border-dashed border-line p-4 min-h-72">
-                            {invoice.slip_path ? (
-                                <SlipImage path={invoice.slip_path} />
-                            ) : (
-                                <div className="text-center text-sm text-muted">
-                                    <span className="mx-auto mb-3 grid place-items-center w-12 h-12 rounded-full bg-white text-muted shadow-card">
-                                        <Icon name={invoice.reject_reason ? 'ban' : 'image'} className="w-6 h-6" />
-                                    </span>
-                                    {invoice.reject_reason ? `สลิปก่อนหน้าถูกปฏิเสธ: ${invoice.reject_reason}` : 'ผู้เช่ายังไม่ได้แนบสลิป'}
-                                </div>
-                            )}
-                        </div>
-
-                        {invoice.status === 'review' && (
-                            <>
-                                {rejecting && (
-                                    <label className="text-sm text-muted">
-                                        เหตุผลที่ปฏิเสธ (ผู้เช่าจะเห็นข้อความนี้)
-                                        <textarea
-                                            rows="3"
-                                            autoFocus
-                                            className={inputClass}
-                                            value={reason}
-                                            onChange={(e) => { setReason(e.target.value); setError('') }}
-                                            placeholder="เช่น ยอดโอนไม่ตรง หรือรูปสลิปไม่ชัดเจน"
-                                        />
-                                    </label>
-                                )}
-                                {error && <p className="text-sm text-red-600">{error}</p>}
-                                <div className="flex gap-3">
-                                    {rejecting ? (
-                                        <>
-                                            <button onClick={() => { setRejecting(false); setError('') }} className="flex-1 border border-line text-muted hover:bg-sand py-2.5 rounded-xl">ยกเลิก</button>
-                                            <button onClick={() => review(false)} disabled={busy} className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium">ยืนยันปฏิเสธ</button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button onClick={() => setRejecting(true)} disabled={busy} className="flex-1 border border-red-200 text-red-600 hover:bg-red-50 py-2.5 rounded-xl">ปฏิเสธ</button>
-                                            <button onClick={() => review(true)} disabled={busy} className="flex-[2] bg-primary hover:bg-primary-dark disabled:opacity-60 text-white py-2.5 rounded-xl font-medium shadow-card">
-                                                {busy ? 'กำลังบันทึก...' : `อนุมัติ ${baht(invoice.total)}`}
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </>
-    )
-}
-
-function DeleteModal({ invoice, onConfirm, onCancel }) {
-    const [busy, setBusy] = useState(false)
-    const [error, setError] = useState('')
-
-    const handleDelete = async () => {
-        setBusy(true)
-        const err = await onConfirm(invoice)
-        setBusy(false)
-        if (err) setError(err)
-    }
-
-    return (
-        <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 shadow-xl w-[420px] max-w-[92vw] flex flex-col gap-4">
-                <div className="flex items-center gap-3">
-                    <span className="grid place-items-center w-10 h-10 rounded-full bg-red-50 text-red-600"><Icon name="trash" className="w-5 h-5" /></span>
-                    <h2 className="text-lg font-semibold text-primary-dark">ลบใบแจ้งหนี้</h2>
-                </div>
-                <p className="text-sm text-ink">
-                    ลบใบแจ้งหนี้เดือน {formatMonth(invoice.month)} ของห้อง {invoice.room} ({invoice.tenant_name}) ยอด {baht(invoice.total)}
-                    {invoice.slip_path && ' พร้อมรูปสลิปที่แนบมา'} ผู้เช่าจะไม่เห็นใบแจ้งหนี้นี้อีก การลบไม่สามารถกู้คืนได้
-                </p>
-                {invoice.status === 'paid' && (
-                    <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">ใบแจ้งหนี้นี้ชำระเงินแล้ว การลบจะทำให้ประวัติการชำระหายไป</p>
-                )}
-                {error && <p className="text-sm text-red-600">{error}</p>}
-                <div className="flex justify-end gap-2">
-                    <button onClick={onCancel} className="border border-line text-muted hover:bg-sand px-4 py-1.5 rounded-lg">ยกเลิก</button>
-                    <button onClick={handleDelete} disabled={busy} className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-lg">
-                        {busy ? 'กำลังลบ...' : 'ลบใบแจ้งหนี้'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    )
-}
-
-// การ์ดกรอกมิเตอร์ของน้ำ/ไฟ พร้อมสรุปหน่วยที่ใช้
-function MeterCard({ icon, tone, title, prefix, form, set, units, cost }) {
-    const curr = form[`${prefix}Curr`]
-    const prev = form[`${prefix}Prev`]
-    return (
-        <div className="rounded-2xl border border-line bg-sand/40 p-4 flex flex-col gap-3">
-            <div className="flex items-center gap-2 font-medium text-primary-dark">
-                <span className={`grid place-items-center w-8 h-8 rounded-lg ${tone}`}><Icon name={icon} className="w-[18px] h-[18px]" /></span>
-                {title}
-            </div>
-            <label className="text-xs text-muted">
-                หน่วยปัจจุบัน
-                <input
-                    type="number"
-                    min={prev}
-                    className="w-full border border-line bg-white rounded-xl px-3 py-2 mt-1 text-lg font-medium text-ink outline-none focus:border-secondary"
-                    value={curr}
-                    onChange={set(`${prefix}Curr`)}
-                    placeholder="0"
-                />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-                <label className="text-xs text-muted">
-                    หน่วยก่อนหน้า
-                    <input type="number" min="0" className={smallInputClass} value={prev} onChange={set(`${prefix}Prev`)} />
-                </label>
-                <label className="text-xs text-muted">
-                    ราคา/หน่วย (฿)
-                    <input type="number" min="0" step="any" className={smallInputClass} value={form[`${prefix}Rate`]} onChange={set(`${prefix}Rate`)} />
-                </label>
-            </div>
-            <div className="flex justify-between text-xs pt-2 border-t border-line/80">
-                <span className="text-muted">ใช้ไป {units} หน่วย</span>
-                <span className="font-medium text-primary-dark">{baht(cost)}</span>
-            </div>
-        </div>
-    )
-}
-
 // ดึงข้อมูลทั้งหมดที่หน้านี้ใช้ (ไม่แตะ state เพื่อเรียกใช้ได้ทั้งใน effect และหลังบันทึก)
 async function fetchData() {
+    // ดึงผู้เช่า, ค่าเช่าของแต่ละห้อง และใบแจ้งหนี้ทั้งหมดพร้อมกัน
     const [tenantsRes, roomsRes, invoicesRes] = await Promise.all([
         supabase.from('tenants').select('room, name, user_id'),
         supabase.from('rooms').select('number, rent'),
-        supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+        selectAll(() => supabase.from('invoices').select('*').order('created_at', { ascending: false }).order('id')),
     ])
     return { tenantsRes, roomsRes, invoicesRes }
 }
 
+// หน้าจัดการใบแจ้งหนี้ของแอดมิน: บันทึกมิเตอร์ สร้าง/แก้ไข/ลบใบแจ้งหนี้ และดูรายการทั้งหมด
 function AdminInvoices() {
+    // ข้อมูลที่โหลด: ผู้เช่า, ห้อง -> ค่าเช่า, ใบแจ้งหนี้, สถานะโหลด และ error
     const [tenants, setTenants] = useState([])
     const [rents, setRents] = useState({})
     const [invoices, setInvoices] = useState([])
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
     const settings = useSettings()
+    // ฟอร์มสร้าง/แก้ไขใบแจ้งหนี้ และตัวกรองรายการ (สถานะ คำค้นหา เดือน) และใบที่เปิดดูอยู่
     const [form, setForm] = useState(makeEmptyForm)
     const [formError, setFormError] = useState('')
     const [saving, setSaving] = useState(false)
@@ -262,7 +68,11 @@ function AdminInvoices() {
     // id ของใบแจ้งหนี้ที่กำลังแก้ไขในฟอร์มด้านบน (null = สร้างใหม่)
     const [editingId, setEditingId] = useState(null)
     const [deleting, setDeleting] = useState(null)
+    // กรอกมิเตอร์ทั้งเดือน: เปิดตารางกรอกทุกห้อง / ข้อความแจ้งผลหลังสร้างเสร็จ
+    const [bulk, setBulk] = useState(false)
+    const [bulkNotice, setBulkNotice] = useState('')
 
+    // นำผลการโหลดไปตั้งค่า state: เรียงผู้เช่าตามห้อง และสร้างแผนที่ ห้อง -> ค่าเช่า
     const applyResult = useCallback(({ tenantsRes, roomsRes, invoicesRes }) => {
         const err = tenantsRes.error || roomsRes.error || invoicesRes.error
         if (err) {
@@ -279,6 +89,9 @@ function AdminInvoices() {
     // โหลดซ้ำหลังบันทึก/ลบ
     const load = useCallback(async () => applyResult(await fetchData()), [applyResult])
 
+    // อัปเดตเองเมื่อผู้เช่าส่งสลิป มีการยืนยันรับเงิน หรือข้อมูลห้อง/ผู้เช่าเปลี่ยน
+    useRealtimeReload(['invoices', 'invoice_payments', 'tenants', 'rooms'], load)
+
     // โหลดครั้งแรก: setState เกิดใน callback หลังได้ข้อมูล ไม่ได้เรียกตรง ๆ ใน effect
     useEffect(() => {
         let active = true
@@ -290,6 +103,7 @@ function AdminInvoices() {
         }
     }, [applyResult])
 
+    // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key และล้างข้อความ error
     const set = (key) => (e) => {
         setForm({ ...form, [key]: e.target.value })
         setFormError('')
@@ -319,10 +133,12 @@ function AdminInvoices() {
         elecRate: form.elecRate ?? settings.rateElectric,
         commonFee: form.commonFee ?? settings.commonFee,
     }
+    // ผู้เช่าของห้องที่เลือก และใบแจ้งหนี้ที่กำลังแก้ไข (ถ้ามี)
     const tenant = tenants.find((t) => t.room === form.room)
     const editing = invoices.find((i) => i.id === editingId)
     // ตอนแก้ไขใช้ค่าเช่าที่บันทึกไว้ในใบแจ้งหนี้เดิม
     const rent = editing ? Number(editing.rent) : (rents[form.room] ?? 0)
+    // แปลงค่าในฟอร์มเป็นตัวเลข แล้วคำนวณยอด
     const numbers = {
         waterPrev: Number(form.waterPrev),
         waterCurr: Number(form.waterCurr),
@@ -334,6 +150,7 @@ function AdminInvoices() {
     }
     const calc = calcInvoice({ rent, ...numbers })
 
+    // เริ่มแก้ไขใบแจ้งหนี้: เติมข้อมูลเดิมลงในฟอร์ม
     const startEdit = (invoice) => {
         setForm({
             room: invoice.room,
@@ -352,14 +169,17 @@ function AdminInvoices() {
         setSelectedId(null)
     }
 
+    // ยกเลิกการแก้ไข: ล้างฟอร์ม แต่คงอัตราค่าน้ำ/ไฟ/ส่วนกลางที่กรอกไว้
     const cancelEdit = () => {
         setEditingId(null)
         setForm({ ...makeEmptyForm(), waterRate: form.waterRate, elecRate: form.elecRate, commonFee: form.commonFee })
         setFormError('')
     }
 
+    // บันทึกฟอร์ม: ตรวจข้อมูล คำนวณยอด แล้วสร้างใบแจ้งหนี้ใหม่หรืออัปเดตใบเดิม
     const handleSubmit = async (e) => {
         e.preventDefault()
+        // ตรวจ: เลือกห้องและกรอกมิเตอร์ครบ, มิเตอร์ไม่ถอยหลัง, อัตราไม่ติดลบ, ห้องมีบัญชีผู้เช่า (ไม่งั้นผู้เช่าเห็นใบนี้ไม่ได้)
         if (!tenant || form.waterCurr === '' || form.elecCurr === '') {
             setFormError('กรุณาเลือกห้องและกรอกมิเตอร์น้ำ/ไฟให้ครบ')
             return
@@ -376,6 +196,7 @@ function AdminInvoices() {
             setFormError('ห้องนี้ยังไม่มีบัญชีผู้เช่า จึงส่งใบแจ้งหนี้ไม่ได้')
             return
         }
+        // ค่าที่บันทึกลงใบแจ้งหนี้
         const amounts = {
             water_prev: numbers.waterPrev,
             water_curr: numbers.waterCurr,
@@ -384,7 +205,8 @@ function AdminInvoices() {
             elec_curr: numbers.elecCurr,
             elec_rate: numbers.elecRate,
             common_fee: numbers.commonFee,
-            total: calc.total,
+            // ใบเก่าที่เคยรวมค่าซ่อมไว้ (repair_fee) ยอดรวมต้องรวมค่าซ่อมนั้นด้วย
+            total: calc.total + Number(editing?.repair_fee ?? 0),
         }
         setSaving(true)
         // แก้ไขได้ทุกสถานะ (สถานะและสลิปคงเดิม) ค่าเช่าใช้ค่าที่บันทึกไว้เดิม
@@ -400,14 +222,18 @@ function AdminInvoices() {
                 month: form.month,
                 rent,
                 ...amounts,
+                // ค่าปรับล่าช้า: จำค่าตั้งค่า ณ วันออกใบไว้ในใบ (ไม่คิดค่าปรับ = ไม่มีฟิลด์เพิ่ม)
+                ...lateFeeSnapshot(settings, form.month),
             })
         setSaving(false)
+        // บันทึกไม่สำเร็จ: error 23505 = ห้องนี้มีใบแจ้งหนี้เดือนนั้นแล้ว
         if (error) {
             setFormError(error.code === '23505'
                 ? `ห้อง ${tenant.room} มีใบแจ้งหนี้เดือน ${formatMonth(form.month)} แล้ว`
                 : `สร้างใบแจ้งหนี้ไม่สำเร็จ: ${error.message}`)
             return
         }
+        // สำเร็จ: โหลดใหม่ แล้วล้างฟอร์ม (คงเดือนและอัตราที่ใช้ไว้ เพื่อกรอกห้องถัดไปได้เร็ว)
         await load()
         setEditingId(null)
         setForm({ ...makeEmptyForm(), month: form.month, waterRate: form.waterRate, elecRate: form.elecRate, commonFee: form.commonFee })
@@ -415,7 +241,10 @@ function AdminInvoices() {
 
     // ลบใบแจ้งหนี้พร้อมรูปสลิป (ถ้าลบรูปไม่สำเร็จก็ยังลบใบแจ้งหนี้ได้ เหลือแค่ไฟล์ค้าง)
     const handleDelete = async (invoice) => {
-        if (invoice.slip_path) await supabase.storage.from('slips').remove([invoice.slip_path])
+        // สลิปทุกใบของบิลนี้ (ใบที่ยืนยันแล้วอยู่ในประวัติการรับชำระ ใบล่าสุดอาจอยู่ที่ slip_path ด้วย)
+        const { data: payments } = await supabase.from('invoice_payments').select('slip_path').eq('invoice_id', invoice.id)
+        const paths = new Set([invoice.slip_path, ...(payments ?? []).map((p) => p.slip_path)].filter(Boolean))
+        if (paths.size > 0) await supabase.storage.from('slips').remove([...paths])
         const { error } = await supabase.from('invoices').delete().eq('id', invoice.id)
         if (error) return `ลบไม่สำเร็จ: ${error.message}`
         if (editingId === invoice.id) cancelEdit()
@@ -424,16 +253,38 @@ function AdminInvoices() {
         setDeleting(null)
     }
 
-    const selected = invoices.find((i) => i.id === selectedId)
-    if (selected) {
+    // กรอกมิเตอร์ทั้งเดือน: แสดงตารางกรอกทุกห้องแทนหน้ารายการ
+    if (bulk) {
         return (
             <>
-                <InvoiceDetail key={selected.id} invoice={selected} onBack={() => setSelectedId(null)} onChanged={load} onEdit={startEdit} onDelete={setDeleting} />
-                {deleting && <DeleteModal invoice={deleting} onConfirm={handleDelete} onCancel={() => setDeleting(null)} />}
+                <PageHeader title="สร้างใบแจ้งหนี้" subtitle="กรอกเลขมิเตอร์ปัจจุบันของห้องที่ต้องการ (ห้องเดียวหรือทุกห้องก็ได้) แล้วสร้างใบแจ้งหนี้พร้อมกัน" onBack={() => setBulk(false)} backLabel="กลับไปรายการใบแจ้งหนี้" />
+                <BulkInvoiceForm
+                    tenants={tenants}
+                    rents={rents}
+                    invoices={invoices}
+                    settings={settings}
+                    onDone={async (count) => {
+                        await load()
+                        setBulk(false)
+                        setBulkNotice(`สร้างใบแจ้งหนี้ ${count} ใบเรียบร้อยแล้ว ผู้เช่าได้รับแจ้งเตือนแล้ว`)
+                    }}
+                />
             </>
         )
     }
 
+    // เลือกใบแจ้งหนี้แล้ว: แสดงหน้ารายละเอียดแทนหน้ารายการ
+    const selected = invoices.find((i) => i.id === selectedId)
+    if (selected) {
+        return (
+            <>
+                <AdminInvoiceDetail key={selected.id} invoice={selected} onBack={() => setSelectedId(null)} onChanged={load} onEdit={startEdit} onDelete={setDeleting} />
+                {deleting && <InvoiceDeleteModal invoice={deleting} onConfirm={handleDelete} onCancel={() => setDeleting(null)} />}
+            </>
+        )
+    }
+
+    // คำนวณหน่วยและค่าน้ำ/ไฟของใบแจ้งหนี้แต่ละแถวเพื่อแสดงในตาราง
     const rowCalc = (i) =>
         calcInvoice({
             rent: Number(i.rent),
@@ -446,12 +297,16 @@ function AdminInvoices() {
             commonFee: Number(i.common_fee),
         })
 
+    // จำนวนและยอดรวมของแต่ละสถานะ (แสดงบนการ์ดสรุป)
     const stats = Object.fromEntries(
         summaryCards.map((c) => {
             const list = invoices.filter((i) => c.value === 'all' || i.status === c.value)
             return [c.value, { count: list.length, sum: list.reduce((acc, i) => acc + Number(i.total), 0) }]
         })
     )
+    // ใบที่ผู้เช่าโอนเกินและยังรอโอนคืน
+    const pendingRefunds = invoices.filter((i) => i.refund_status === 'pending')
+    // รายการที่แสดง: กรองตามสถานะ เดือน และคำค้นหา (ห้อง/ชื่อ) เรียงเดือนใหม่สุดก่อน แล้วตามเลขห้อง
     const keyword = search.trim().toLowerCase()
     const months = [...new Set(invoices.map((i) => i.month))].sort().reverse()
     const visible = invoices
@@ -460,6 +315,7 @@ function AdminInvoices() {
         .filter((i) => !keyword || i.room.includes(keyword) || i.tenant_name.toLowerCase().includes(keyword))
         .sort((a, b) => b.month.localeCompare(a.month) || a.room.localeCompare(b.room, undefined, { numeric: true }))
 
+    // ยอดรวมของรายการที่แสดง (แถวรวมท้ายตาราง)
     const totals = visible.reduce(
         (acc, i) => {
             const c = rowCalc(i)
@@ -476,9 +332,42 @@ function AdminInvoices() {
 
     return (
         <>
-            <PageHeader title="ใบแจ้งหนี้ & ชำระเงิน" subtitle="บันทึกมิเตอร์ สร้างใบแจ้งหนี้ และตรวจสอบสลิปการโอนเงินของผู้เช่า" />
+            <PageHeader
+                title="ใบแจ้งหนี้ & ชำระเงิน"
+                subtitle="สร้างใบแจ้งหนี้ ตรวจสอบสลิปการโอนเงิน และติดตามการชำระของผู้เช่า"
+                actions={
+                    <button onClick={() => { setBulk(true); setBulkNotice('') }} className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-sm font-medium shadow-card flex items-center gap-1.5">
+                        <Icon name="plus" className="w-4 h-4" />
+                        สร้างใบแจ้งหนี้
+                    </button>
+                }
+            />
 
             <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
+                {bulkNotice && (
+                    <div role="status" className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 text-sm px-4 py-3">{bulkNotice}</div>
+                )}
+
+                {/* ผู้เช่าโอนเกินและยังไม่ได้โอนคืน: แสดงรายการให้แอดมินกดเข้าไปบันทึกเมื่อโอนคืนแล้ว */}
+                {pendingRefunds.length > 0 && (
+                    <div className="rounded-2xl bg-sky-50 ring-1 ring-sky-200 text-sky-900 p-4 flex flex-col gap-2">
+                        <div className="font-medium">
+                            รอโอนคืนผู้เช่า {pendingRefunds.length} รายการ รวม {baht(pendingRefunds.reduce((sum, i) => sum + Number(i.refund_amount), 0))}
+                        </div>
+                        <ul className="flex flex-col gap-1.5">
+                            {pendingRefunds.map((i) => (
+                                <li key={i.id}>
+                                    <button type="button" onClick={() => setSelectedId(i.id)} className="w-full flex items-center justify-between gap-3 text-left text-sm bg-white/70 hover:bg-white rounded-xl px-3 py-2">
+                                        <span>ห้อง {i.room} · {i.tenant_name} · {formatMonth(i.month)}</span>
+                                        <span className="font-semibold tabular-nums">{baht(i.refund_amount)}</span>
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+
+                {/* การ์ดสรุปตามสถานะ (กดเพื่อกรอง) การ์ดรอตรวจสอบมีป้ายเตือนเมื่อมีสลิปรอ */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {summaryCards.map((c) => {
                         const active = filter === c.value
@@ -507,11 +396,15 @@ function AdminInvoices() {
                     })}
                 </div>
 
+                {/* ฟอร์มสร้าง/แก้ไขใบแจ้งหนี้: ซ้าย = กรอกข้อมูล, ขวา = สรุปยอด */}
+                {/* สร้างใบแจ้งหนี้ใช้ปุ่ม "สร้างใบแจ้งหนี้" (ตารางกรอกมิเตอร์ กรอกห้องเดียวหรือหลายห้องก็ได้) ฟอร์มนี้จึงแสดงเฉพาะตอนแก้ไขใบที่สร้างไปแล้ว */}
+                {editingId && (
                 <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
                     <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                        {/* หัวฟอร์ม + เลือกเดือน (เดือนที่ห้องนี้มีใบแล้วมีจุด; ตอนแก้ไขเปลี่ยนเดือนไม่ได้) */}
                         <div className="flex flex-wrap justify-between items-center gap-3">
                             <h2 className="font-medium text-primary-dark">
-                                {editingId ? `แก้ไขใบแจ้งหนี้ ห้อง ${form.room}` : 'บันทึกมิเตอร์'}
+                                แก้ไขใบแจ้งหนี้ ห้อง {form.room}
                             </h2>
                             <MonthPicker
                                 value={form.month}
@@ -520,6 +413,7 @@ function AdminInvoices() {
                                 disabled={!!editingId}
                             />
                         </div>
+                        {/* เลือกห้อง (เลือกแล้วดึงเลขมิเตอร์ครั้งก่อนมาให้อัตโนมัติ) */}
                         <label className="text-sm text-muted">
                             ห้องพัก
                             <select className={inputClass} value={form.room} onChange={handleRoomChange} disabled={!!editingId}>
@@ -529,16 +423,19 @@ function AdminInvoices() {
                                 ))}
                             </select>
                         </label>
+                        {/* การ์ดมิเตอร์น้ำ และมิเตอร์ไฟ */}
                         <div className="grid sm:grid-cols-2 gap-4">
                             <MeterCard icon="droplet" tone="bg-cyan-50 text-cyan-700" title="มิเตอร์น้ำ" prefix="water" form={view} set={set} units={calc.waterUnits} cost={calc.water} />
                             <MeterCard icon="bolt" tone="bg-amber-50 text-amber-700" title="มิเตอร์ไฟ" prefix="elec" form={view} set={set} units={calc.elecUnits} cost={calc.elec} />
                         </div>
+                        {/* ค่าส่วนกลาง */}
                         <label className="text-sm text-muted sm:w-1/2">
                             ค่าส่วนกลาง (฿)
                             <input type="number" min="0" step="any" className={inputClass} value={view.commonFee} onChange={set('commonFee')} />
                         </label>
                     </div>
 
+                    {/* สรุปยอดแบบสด (ติดหน้าจอบนจอใหญ่) */}
                     <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4 xl:sticky xl:top-6">
                         <div className="flex justify-between items-baseline gap-3">
                             <h2 className="font-medium text-primary-dark">สรุปยอด</h2>
@@ -556,14 +453,19 @@ function AdminInvoices() {
                                 elec_curr: form.elecCurr === '' ? numbers.elecPrev : numbers.elecCurr,
                                 elec_rate: numbers.elecRate || 0,
                                 common_fee: numbers.commonFee || 0,
-                                total: calc.total || 0,
+                                repair_fee: Number(editing?.repair_fee ?? 0),
+                                total: (calc.total || 0) + Number(editing?.repair_fee ?? 0),
                             }}
                         />
+                        {/* เตือนเมื่อแก้ใบที่ส่งสลิปหรือจ่ายแล้ว */}
                         {editing && editing.status !== 'pending' && (
                             <p className="text-sm text-amber-800 bg-amber-50 ring-1 ring-amber-200 rounded-xl px-4 py-2">
-                                ใบแจ้งหนี้นี้{editing.status === 'review' ? 'มีสลิปรอตรวจสอบ' : 'ชำระแล้ว'} หากเปลี่ยนยอดรวม ยอดอาจไม่ตรงกับสลิปที่ผู้เช่าโอนมา
+                                {paidOf(editing) > 0
+                                    ? `ใบแจ้งหนี้นี้ได้รับชำระแล้ว ${baht(paidOf(editing))} แก้ไขยอดรวมไม่ได้ (แก้ได้เฉพาะรายการที่ไม่ทำให้ยอดรวมเปลี่ยน)`
+                                    : `ใบแจ้งหนี้นี้${editing.status === 'review' ? 'มีสลิปรอตรวจสอบ' : 'ชำระแล้ว'} หากเปลี่ยนยอดรวม ยอดอาจไม่ตรงกับสลิปที่ผู้เช่าโอนมา`}
                             </p>
                         )}
+                        {/* ข้อความ error และปุ่มยกเลิก/สร้าง/บันทึก */}
                         {formError && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{formError}</p>}
                         <div className="flex gap-3">
                             {editingId && (
@@ -575,8 +477,10 @@ function AdminInvoices() {
                         </div>
                     </div>
                 </form>
+                )}
 
                 <div className="bg-white rounded-2xl shadow-card p-5">
+                    {/* หัวกล่องรายการ: จำนวน + ตัวกรองเดือน + ช่องค้นหา */}
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                         <h2 className="font-medium text-primary-dark">
                             รายการใบแจ้งหนี้
@@ -596,7 +500,7 @@ function AdminInvoices() {
                                 <option key={m} value={m}>{formatMonth(m)}</option>
                             ))}
                         </select>
-                        <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-64 max-w-full focus-within:border-secondary focus-within:bg-white">
+                        <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-64 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                             <Icon name="search" className="w-4 h-4 text-muted" />
                             <input
                                 type="text"
@@ -608,6 +512,7 @@ function AdminInvoices() {
                         </div>
                         </div>
                     </div>
+                    {/* แท็บสถานะพร้อมจำนวน */}
                     <div role="tablist" aria-label="หมวดหมู่ใบแจ้งหนี้" className="flex gap-1 overflow-x-auto overflow-y-hidden mb-4 border-b border-line">
                         {summaryCards.map((c) => {
                             const active = filter === c.value
@@ -630,6 +535,7 @@ function AdminInvoices() {
                         })}
                     </div>
                     <div className="xl:overflow-auto xl:max-h-[32rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
+                        {/* จอใหญ่: ตารางใบแจ้งหนี้ (ใบที่รอตรวจพื้นสีฟ้า) กดแถวเพื่อดูรายละเอียด */}
                         <table className="hidden xl:table w-full min-w-[60rem] border-collapse text-sm">
                             <thead className="sticky top-0 z-10">
                                 <tr className="bg-primary-dark text-white">
@@ -685,6 +591,7 @@ function AdminInvoices() {
                                     )
                                 })}
                             </tbody>
+                            {/* แถวรวมท้ายตาราง */}
                             {visible.length > 0 && (
                                 <tfoot className="sticky bottom-0">
                                     <tr className="bg-mist/60 text-primary-dark font-semibold">
@@ -699,6 +606,7 @@ function AdminInvoices() {
                                 </tfoot>
                             )}
                         </table>
+                        {/* จอเล็ก/กลาง: ยอดรวม + การ์ดใบแจ้งหนี้ */}
                         {visible.length > 0 && (
                             <div className="xl:hidden flex items-center justify-between rounded-xl bg-mist/50 px-4 py-2.5 mb-3 text-sm font-semibold text-primary-dark">
                                 <span>รวม {visible.length} รายการ</span>
@@ -725,7 +633,7 @@ function AdminInvoices() {
                                             </div>
                                         </button>
                                         <div className="text-xs text-muted tabular-nums">
-                                            ค่าเช่า {baht(i.rent)} · น้ำ {baht(c.water)} · ไฟ {baht(c.elec)}{Number(i.common_fee) > 0 ? ` · ส่วนกลาง ${baht(i.common_fee)}` : ''}
+                                            ค่าเช่า {baht(i.rent)} · น้ำ {baht(c.water)} · ไฟ {baht(c.elec)}{Number(i.common_fee) > 0 ? ` · ส่วนกลาง ${baht(i.common_fee)}` : ''}{Number(i.repair_fee) > 0 ? ` · ค่าซ่อม ${baht(i.repair_fee)}` : ''}
                                         </div>
                                         <div className="flex gap-2">
                                             <button
@@ -741,10 +649,11 @@ function AdminInvoices() {
                                 )
                             })}
                         </div>
+                        {/* ข้อความกำลังโหลด / error / ไม่พบรายการ */}
                         {(loading || loadError || visible.length === 0) && (
                             <div className={`py-10 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
                                 {loading ? (
-                                    'กำลังโหลด...'
+                                    <SkeletonTable rows={5} cols={5} className="border-0 rounded-none text-left" />
                                 ) : loadError ? (
                                     loadError
                                 ) : (
@@ -759,7 +668,8 @@ function AdminInvoices() {
                 </div>
             </div>
 
-            {deleting && <DeleteModal invoice={deleting} onConfirm={handleDelete} onCancel={() => setDeleting(null)} />}
+            {/* หน้าต่างยืนยันลบใบแจ้งหนี้ */}
+            {deleting && <InvoiceDeleteModal invoice={deleting} onConfirm={handleDelete} onCancel={() => setDeleting(null)} />}
         </>
     )
 }

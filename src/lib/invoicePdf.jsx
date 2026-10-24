@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { invoiceCode } from './billing'
+import { balanceOf, invoiceCode } from './billing'
 import { supabase } from './supabaseClient'
 import { loadSettings } from './useSettings'
 
@@ -9,6 +9,7 @@ const PAGE_PX = 794 // ความกว้างเอกสารในหน
 // ฟอนต์ไทยถูกแบ่งเป็นชุดตามช่วงอักษร ต้องระบุข้อความไทยตอนสั่งโหลด ไม่งั้นจะโหลดเฉพาะชุดตัวอักษรละติน
 const THAI_SAMPLE = 'กขคงจฉชซญฎฏฐฑฒณดตถทธนบปผฝพฟภมยรลวศษสหฬอฮ ะาิีึืุูเแโใไ่้๊๋็์ 0123456789'
 
+// รอให้เบราว์เซอร์วาดหน้าจอเสร็จ 2 เฟรม ก่อนจับภาพเอกสาร
 const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
 
 /**
@@ -18,6 +19,7 @@ const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => req
  * @returns {Promise<string>} ชื่อไฟล์ที่บันทึก
  */
 export async function downloadInvoicePdf(invoice) {
+    // โหลดไลบรารีที่ใช้ (ครั้งแรกเท่านั้น) พร้อมกับดึงการตั้งค่า ข้อมูลผู้เช่า และชั้นของห้อง
     const [{ toCanvas }, { jsPDF }, { createRoot }, { default: InvoiceDocument }, { generatePromptPayQR }, settings, tenantRes, roomRes] =
         await Promise.all([
             import('html-to-image'),
@@ -32,8 +34,9 @@ export async function downloadInvoicePdf(invoice) {
 
     // QR พร้อมเพย์ระบุยอดตามใบแจ้งหนี้ (ใบที่ชำระแล้วไม่ต้องมี) ถ้ารหัสพร้อมเพย์ยังไม่ถูกต้องก็ออกเอกสารต่อได้โดยไม่มี QR
     const qr =
-        invoice.status === 'paid' ? null : await generatePromptPayQR(settings.promptpayId, invoice.total, { width: 480 }).catch(() => null)
+        invoice.status === 'paid' ? null : await generatePromptPayQR(settings.promptpayId, balanceOf(invoice), { width: 480 }).catch(() => null)
 
+    // วันที่ชำระ (วันที่แอดมินอนุมัติสลิป) สำหรับใบที่จ่ายแล้ว
     const paidAt = invoice.reviewed_at
         ? new Date(invoice.reviewed_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
         : ''
@@ -55,6 +58,7 @@ export async function downloadInvoicePdf(invoice) {
                 paidAt,
             })
         )
+        // รอให้ฟอนต์ไทยและรูปทุกรูปโหลดเสร็จก่อนจับภาพ ไม่งั้นตัวอักษร/QR อาจหาย
         await nextFrame()
         await Promise.all([400, 600, 700].map((w) => document.fonts.load(`${w} 14px "Noto Sans Thai"`, THAI_SAMPLE)))
         await document.fonts.ready
@@ -65,6 +69,7 @@ export async function downloadInvoicePdf(invoice) {
         await toCanvas(host.firstElementChild, options) // รอบแรกให้ฟอนต์/รูปถูกฝังก่อน (เบราว์เซอร์บางตัววาดรอบแรกไม่ครบ)
         const canvas = await toCanvas(host.firstElementChild, options)
 
+        // สร้าง PDF ขนาด A4 แล้ววางรูปเอกสารลงไป (ย่อ/ขยายให้กว้างเต็มหน้า)
         const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true })
         const image = canvas.toDataURL('image/jpeg', 0.93)
         const imageHeight = (canvas.height * A4.width) / canvas.width
@@ -75,12 +80,14 @@ export async function downloadInvoicePdf(invoice) {
             pdf.addImage(image, 'JPEG', 0, -offset, A4.width, imageHeight, undefined, 'FAST')
         }
 
+        // ตั้งชื่อไฟล์และข้อมูลเอกสาร แล้วบันทึกลงเครื่อง
         const code = invoiceCode(invoice)
         pdf.setProperties({ title: `ใบแจ้งหนี้ ${code}`, subject: `ใบแจ้งหนี้ห้อง ${invoice.room}`, author: settings.apartmentName })
         const filename = `${code}.pdf`
         pdf.save(filename)
         return filename
     } finally {
+        // ไม่ว่าจะสำเร็จหรือไม่ ลบเอกสารที่วาดไว้นอกจอทิ้ง
         root.unmount()
         host.remove()
     }

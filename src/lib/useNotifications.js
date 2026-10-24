@@ -9,8 +9,10 @@ const LIMIT = 100
 const POLL_MS = 60_000 // สำรองกรณี realtime ใช้ไม่ได้
 const IDLE_STOP_MS = 2000 // กันสมัคร/ยกเลิก realtime ซ้ำตอนเปลี่ยนหน้า
 
+// state ของ store กลาง: ผู้ใช้เจ้าของข้อมูล รายการแจ้งเตือน สถานะโหลด และ error
 const emptyState = { userId: null, items: [], loading: true, error: '' }
 let state = emptyState
+// ตัวแปรภายใน: ผู้ฟัง, จำนวนคอมโพเนนต์ที่ใช้งาน, ช่อง realtime และตัวจับเวลาต่าง ๆ
 const listeners = new Set()
 let refs = 0
 let channel = null
@@ -18,16 +20,20 @@ let stopTimer = null
 let refreshTimer = null
 let pollTimer = null
 
+// อัปเดต state แล้วแจ้งทุกคอมโพเนนต์ที่ฟังอยู่ให้แสดงผลใหม่
 const emit = (patch) => {
     state = { ...state, ...patch }
     listeners.forEach((l) => l())
 }
+// ลงทะเบียนผู้ฟังการเปลี่ยนแปลง (ใช้กับ useSyncExternalStore) คืนฟังก์ชันยกเลิก
 const subscribe = (l) => {
     listeners.add(l)
     return () => listeners.delete(l)
 }
+// คืน state ปัจจุบันของ store
 const getSnapshot = () => state
 
+// โหลดแจ้งเตือนล่าสุดของผู้ใช้ปัจจุบันจากฐานข้อมูล
 async function load() {
     const userId = state.userId
     if (!userId) return
@@ -47,10 +53,12 @@ const scheduleLoad = () => {
     clearTimeout(refreshTimer)
     refreshTimer = setTimeout(load, 250)
 }
+// กลับมาที่แท็บนี้แล้วให้โหลดแจ้งเตือนใหม่
 const onVisible = () => {
     if (document.visibilityState === 'visible') load()
 }
 
+// หยุดติดตามแจ้งเตือน: ยกเลิก realtime ตัวจับเวลา และ event listener
 function stop() {
     if (channel) {
         supabase.removeChannel(channel)
@@ -62,20 +70,24 @@ function stop() {
     window.removeEventListener('online', load)
 }
 
+// เริ่มติดตามแจ้งเตือนของผู้ใช้: โหลดครั้งแรก สมัคร realtime และตั้งโหลดสำรองเป็นระยะ
 function start(userId) {
     stop()
     state = { userId, items: [], loading: true, error: '' }
     listeners.forEach((l) => l())
     load()
+    // สมัคร realtime: แถวแจ้งเตือนของผู้ใช้นี้เปลี่ยนเมื่อไหร่ให้โหลดใหม่
     channel = supabase
         .channel(`notifications-${userId}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `recipient_id=eq.${userId}` }, scheduleLoad)
         .subscribe()
+    // โหลดสำรองทุก 1 นาที, เมื่อกลับมาที่แท็บ และเมื่อเน็ตกลับมา
     pollTimer = setInterval(load, POLL_MS)
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('online', load)
 }
 
+// นับจำนวนคอมโพเนนต์ที่ใช้งาน store อยู่ เริ่มติดตามเมื่อมีคนใช้ และหยุดเมื่อไม่มีใครใช้แล้ว
 function retain(userId) {
     refs += 1
     clearTimeout(stopTimer)
@@ -106,6 +118,7 @@ export async function markRead(id) {
     if (error) load()
 }
 
+// ทำเครื่องหมายอ่านแล้วทุกรายการของผู้ใช้
 export async function markAllRead() {
     const userId = state.userId
     if (!userId || !state.items.some((n) => !n.read_at)) return
@@ -115,12 +128,14 @@ export async function markAllRead() {
     if (error) load()
 }
 
+// ลบแจ้งเตือนหนึ่งรายการ
 export async function removeNotification(id) {
     emit({ items: state.items.filter((n) => n.id !== id) })
     const { error } = await supabase.from('notifications').delete().eq('id', id)
     if (error) load()
 }
 
+// ลบแจ้งเตือนทั้งหมดที่อ่านแล้ว
 export async function clearRead() {
     const userId = state.userId
     if (!userId) return
@@ -129,15 +144,18 @@ export async function clearRead() {
     if (error) load()
 }
 
+// hook สำหรับคอมโพเนนต์: คืนรายการแจ้งเตือน จำนวนที่ยังไม่อ่าน และสถานะการโหลด
 export function useNotifications() {
     const userId = useCurrentUser()?.id
     const snap = useSyncExternalStore(subscribe, getSnapshot)
 
+    // เริ่ม/หยุดติดตามแจ้งเตือนตามผู้ใช้ที่ login อยู่
     useEffect(() => (userId ? retain(userId) : undefined), [userId])
 
     // ยังไม่ได้เริ่มโหลดของผู้ใช้คนนี้ (หรือเป็นข้อมูลของผู้ใช้คนก่อน) ให้ถือว่ากำลังโหลด
     const ready = Boolean(userId) && snap.userId === userId
     const items = ready ? snap.items : []
+    // ส่งรายการ สถานะโหลด error และนับจำนวนที่ยังไม่อ่าน
     return {
         items,
         loading: !ready || snap.loading,

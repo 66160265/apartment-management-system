@@ -1,5 +1,6 @@
 // ไอคอนเส้นขนาด 24x24 (สไตล์เดียวกันทั้งชุด) ใช้สีตามข้อความรอบข้าง (currentColor)
 const paths = {
+    megaphone: 'M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11',
     home: 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
     droplet: 'M12 3s6 6.2 6 10.5a6 6 0 0 1-12 0C6 9.2 12 3 12 3z',
     bolt: 'M13 2 4 14h7l-1 8 9-12h-7z',
@@ -49,6 +50,7 @@ const paths = {
     key: 'M15 7a5 5 0 1 0-4.6 5L3 19.4V21h3v-2h2v-2h2l2.2-2.2A5 5 0 0 0 15 7zM16.5 7.5h.01',
 }
 
+// แสดงไอคอน SVG ตามชื่อ (name) ที่กำหนดในรายการด้านบน
 function Icon({ name, className = 'w-5 h-5' }) {
     return (
         <svg
@@ -61,6 +63,7 @@ function Icon({ name, className = 'w-5 h-5' }) {
             className={`shrink-0 ${className}`}
             aria-hidden="true"
         >
+            {/* วาดเส้นตามรูปทรงของไอคอนที่เลือก (สีตามสีตัวอักษรของตัวแม่) */}
             <path d={paths[name]} />
         </svg>
     )

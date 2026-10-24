@@ -1,10 +1,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
+// อนุญาตให้หน้าเว็บ (คนละโดเมน) เรียกฟังก์ชันนี้ได้
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// สร้าง response แบบ JSON พร้อม header CORS
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -14,9 +16,12 @@ const json = (body: unknown, status = 200) =>
 // ต้องตรงกับ usernameToEmail ใน src/lib/tenantAccount.js
 const EMAIL_DOMAIN = Deno.env.get('USERNAME_EMAIL_DOMAIN') ?? 'apartment.app'
 
+// เพิ่มผู้เช่าใหม่ (เฉพาะแอดมิน): สร้างบัญชี login, บันทึกสิทธิ์ user, เพิ่มแถว tenants และตั้งห้องเป็น occupied
 Deno.serve(async (req) => {
+  // เบราว์เซอร์ถามสิทธิ์ CORS ก่อนส่งคำขอจริง ตอบ ok กลับไป
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
+  // client สิทธิ์ service role (ข้าม RLS ได้) ใช้เฉพาะในฟังก์ชันนี้ ห้ามอยู่ฝั่งเว็บ
   const url = Deno.env.get('SUPABASE_URL')!
   const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
@@ -32,12 +37,16 @@ Deno.serve(async (req) => {
     .single()
   if (callerProfile?.role !== 'admin') return json({ error: 'ไม่มีสิทธิ์' }, 403)
 
-  const { room, name, phone, startDate, endDate } = await req.json()
+  // อ่านข้อมูลผู้เช่าที่ส่งมา และตรวจว่าครบ/ถูกรูปแบบ
+  const input = await req.json().catch(() => null)
+  if (!input || typeof input !== 'object') return json({ error: 'ข้อมูลไม่ถูกต้อง' }, 400)
+  const { room, name, phone, startDate, endDate } = input
   const digits = String(phone ?? '').replace(/\D/g, '')
   if (!/^[A-Za-z0-9]{1,10}$/.test(String(room ?? '')) || digits.length < 4 || !name || !startDate || !endDate) {
     return json({ error: 'ข้อมูลผู้เช่าไม่ครบหรือไม่ถูกต้อง' }, 400)
   }
 
+  // สร้างบัญชี login: ชื่อผู้ใช้ T+เลขห้อง รหัสผ่าน TP+เลขห้อง+เบอร์ 4 ตัวท้าย (ยืนยันอีเมลให้เลย)
   const username = `T${room}`
   const { data, error } = await admin.auth.admin.createUser({
     email: `${username.toLowerCase()}@${EMAIL_DOMAIN}`,
@@ -55,11 +64,13 @@ Deno.serve(async (req) => {
     return json({ error: message }, status)
   }
 
+  // กำหนดสิทธิ์บัญชีนี้เป็นผู้เช่า (user) และบังคับให้เปลี่ยนรหัสผ่านเมื่อเข้าครั้งแรก (รหัสเริ่มต้นเดาได้จากเลขห้องกับเบอร์โทร)
   const { error: profileError } = await admin
     .from('profiles')
-    .upsert({ id: data.user.id, role: 'user' })
+    .upsert({ id: data.user.id, role: 'user', must_change_password: true })
   if (profileError) return rollback(`บันทึกสิทธิ์ไม่สำเร็จ: ${profileError.message}`)
 
+  // เพิ่มข้อมูลผู้เช่าและผูกกับบัญชี (ห้องซ้ำจะได้ error 23505)
   const { error: tenantError } = await admin.from('tenants').insert({
     room: String(room),
     name,
@@ -74,6 +85,7 @@ Deno.serve(async (req) => {
     return rollback(dup ? 'ห้องนี้มีผู้เช่าอยู่แล้ว' : `บันทึกผู้เช่าไม่สำเร็จ: ${tenantError.message}`, dup ? 409 : 500)
   }
 
+  // สำเร็จแล้วเปลี่ยนสถานะห้องเป็นมีผู้เช่า และส่งชื่อผู้ใช้กลับไปแสดง
   await admin.from('rooms').update({ status: 'occupied' }).eq('number', String(room))
 
   return json({ username })

@@ -2,14 +2,19 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import { supabase } from '../lib/supabaseClient'
 import { REQUIRED_DOCS, formatDate } from '../lib/tenants'
+import { SkeletonList } from './Skeleton.jsx'
 
+// ขนาดไฟล์สูงสุด 10 MB และชนิดไฟล์ที่รับ (MIME -> นามสกุล)
 const MAX_SIZE = 10 * 1024 * 1024
 const EXTENSIONS = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
 
+// แสดงขนาดไฟล์เป็น KB หรือ MB
 const formatSize = (bytes) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(bytes / 1024)} KB`)
 
+// คลาสของปุ่มในกลุ่มปุ่ม ดู/แก้ไข
 const btn = 'px-3 py-1 text-sm hover:bg-mist/50'
 
+// แถวเอกสารหนึ่งประเภท: ถ้ามีไฟล์แล้วแสดงปุ่มดู/แก้ไข/ลบ ถ้ายังไม่มีแสดงปุ่มเพิ่ม
 function DocRow({ title, doc, onAdd, onView, onEdit, onDelete }) {
     return (
         <div
@@ -17,15 +22,18 @@ function DocRow({ title, doc, onAdd, onView, onEdit, onDelete }) {
                 doc ? 'border-line bg-white hover:border-secondary/60' : 'border-dashed border-line bg-sand/40'
             }`}
         >
+            {/* ไอคอน: มีไฟล์แล้ว = เอกสารสีเขียว, ยังไม่มี = ไอคอนอัปโหลด */}
             <span className={`grid place-items-center w-10 h-10 rounded-xl shrink-0 ${doc ? 'bg-emerald-50 text-emerald-600' : 'bg-white text-muted ring-1 ring-line'}`}>
                 <Icon name={doc ? 'fileText' : 'upload'} className="w-5 h-5" />
             </span>
+            {/* ชื่อเอกสาร + ชื่อไฟล์และวันที่อัปโหลด */}
             <div className="flex-1 min-w-40">
                 <div className="text-sm font-medium text-ink">{title}</div>
                 <div className="text-xs text-muted truncate">
                     {doc ? `${doc.file_name} · อัปโหลด ${formatDate(doc.uploaded_at)}` : 'ยังไม่ได้อัปโหลด'}
                 </div>
             </div>
+            {/* มีไฟล์: ปุ่มดู/แก้ไข/ลบ, ยังไม่มี: ปุ่มเพิ่มเอกสาร */}
             {doc ? (
                 <div className="inline-flex rounded-lg border border-line bg-white overflow-hidden divide-x divide-line">
                     <button type="button" onClick={() => onView(doc)} className={`${btn} text-primary-dark`}>ดู</button>
@@ -41,6 +49,7 @@ function DocRow({ title, doc, onAdd, onView, onEdit, onDelete }) {
 
 // กล่องเพิ่ม/แก้ไขเอกสาร: เลือกไฟล์ (และตั้งชื่อสำหรับเอกสารเพิ่มเติม)
 function DocumentModal({ doc, room, onSaved, onCancel }) {
+    // isEdit = แก้ไขเอกสารเดิม, isOther = เอกสารประเภทอื่น ๆ (ต้องตั้งชื่อเอง)
     const inputRef = useRef(null)
     const isEdit = !!doc.id
     const isOther = doc.type === 'other'
@@ -49,6 +58,7 @@ function DocumentModal({ doc, room, onSaved, onCancel }) {
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
 
+    // ตรวจไฟล์ที่เลือก (ชนิด PDF/รูป และขนาดไม่เกิน 10 MB) ก่อนเก็บไว้รออัปโหลด
     const pick = (f) => {
         setError('')
         if (!f) return
@@ -57,8 +67,10 @@ function DocumentModal({ doc, room, onSaved, onCancel }) {
         else setFile(f)
     }
 
+    // บันทึกเอกสาร: อัปโหลดไฟล์ไป storage แล้วเพิ่มหรืออัปเดตแถวใน tenant_documents
     const handleSubmit = async (e) => {
         e.preventDefault()
+        // ตรวจข้อมูล: เอกสารอื่นต้องมีชื่อ, เพิ่มใหม่ต้องเลือกไฟล์, แก้ไขแต่ไม่เปลี่ยนอะไรให้ปิดเลย
         if (isOther && !title.trim()) {
             setError('กรุณาตั้งชื่อเอกสาร')
             return
@@ -73,6 +85,7 @@ function DocumentModal({ doc, room, onSaved, onCancel }) {
         }
         setSaving(true)
 
+        // มีไฟล์ใหม่: อัปโหลดไปโฟลเดอร์ของห้องก่อน
         let upload = null
         if (file) {
             const path = `${room}/${doc.type}-${Date.now()}.${EXTENSIONS[file.type]}`
@@ -85,11 +98,13 @@ function DocumentModal({ doc, room, onSaved, onCancel }) {
             upload = { file_path: path, file_name: file.name }
         }
 
+        // บันทึกแถวเอกสาร: แก้ไข = update (อัปเดตเวลาอัปโหลด), เพิ่มใหม่ = insert
         const fields = { title: isOther ? title.trim() : doc.title, ...upload }
         const { error: dbError } = isEdit
             ? await supabase.from('tenant_documents').update({ ...fields, uploaded_at: new Date().toISOString() }).eq('id', doc.id)
             : await supabase.from('tenant_documents').insert({ room, type: doc.type, ...fields })
 
+        // บันทึกไม่สำเร็จ: ลบไฟล์ที่เพิ่งอัปโหลดทิ้ง
         if (dbError) {
             if (upload) await supabase.storage.from('tenant-docs').remove([upload.file_path])
             setSaving(false)
@@ -104,9 +119,11 @@ function DocumentModal({ doc, room, onSaved, onCancel }) {
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
             <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-xl w-[440px] max-w-[92vw] max-h-[92vh] overflow-y-auto flex flex-col gap-4">
+                {/* หัวข้อ: เพิ่ม/แก้ไข + ชื่อประเภทเอกสาร */}
                 <h2 className="text-lg font-semibold text-primary-dark">
                     {isEdit ? 'แก้ไขเอกสาร' : 'เพิ่มเอกสาร'}{!isOther && ` · ${doc.title}`}
                 </h2>
+                {/* ช่องตั้งชื่อ (เฉพาะเอกสารอื่น ๆ) */}
                 {isOther && (
                     <label className="text-sm text-muted">
                         ชื่อเอกสาร
@@ -119,6 +136,7 @@ function DocumentModal({ doc, room, onSaved, onCancel }) {
                         />
                     </label>
                 )}
+                {/* เลือกไฟล์: ซ่อน input จริงไว้ กดผ่านปุ่มกรอบเส้นประ */}
                 <div className="text-sm text-muted">
                     {isEdit ? 'เลือกไฟล์ใหม่เพื่อแทนที่ไฟล์เดิม (ถ้าไม่เลือกจะเก็บไฟล์เดิมไว้)' : 'ไฟล์เอกสาร'}
                     <input ref={inputRef} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(e) => pick(e.target.files[0])} className="hidden" />
@@ -135,6 +153,7 @@ function DocumentModal({ doc, room, onSaved, onCancel }) {
                     </button>
                     {isEdit && !file && <span className="block mt-1 text-xs">ไฟล์ปัจจุบัน: {doc.file_name}</span>}
                 </div>
+                {/* ข้อความ error และปุ่มยกเลิก/บันทึก */}
                 {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
                 <div className="flex justify-end gap-2">
                     <button type="button" onClick={onCancel} className="border border-line text-muted hover:bg-sand px-4 py-1.5 rounded-lg">ยกเลิก</button>
@@ -147,10 +166,12 @@ function DocumentModal({ doc, room, onSaved, onCancel }) {
     )
 }
 
+// หน้าต่างยืนยันการลบเอกสาร
 function DeleteDocumentModal({ doc, onConfirm, onCancel }) {
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
 
+    // กดยืนยันลบ: เรียก onConfirm แล้วแสดงข้อความ error ถ้าลบไม่สำเร็จ
     const handleDelete = async () => {
         setBusy(true)
         const err = await onConfirm(doc)
@@ -175,11 +196,13 @@ function DeleteDocumentModal({ doc, onConfirm, onCancel }) {
     )
 }
 
+// ดึงเอกสารทั้งหมดของห้อง เรียงตามเวลาที่อัปโหลด
 const fetchDocs = (room) =>
     supabase.from('tenant_documents').select('*').eq('room', room).order('uploaded_at', { ascending: true })
 
 // การ์ด "เอกสาร" ในหน้ารายละเอียดผู้เช่า: เพิ่ม ดู แก้ไข ลบ
 function TenantDocuments({ room }) {
+    // รายการเอกสาร, สถานะโหลด, error ตอนโหลด และ error ตอนกดดู
     const [docs, setDocs] = useState([])
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
@@ -188,6 +211,7 @@ function TenantDocuments({ room }) {
     const [editing, setEditing] = useState(null)
     const [deleting, setDeleting] = useState(null)
 
+    // นำผลการโหลดไปตั้งค่า state (แสดง error ถ้าโหลดไม่สำเร็จ)
     const applyResult = useCallback(({ data, error }) => {
         if (error) setLoadError(`โหลดเอกสารไม่สำเร็จ: ${error.message}`)
         else {
@@ -197,8 +221,10 @@ function TenantDocuments({ room }) {
         setLoading(false)
     }, [])
 
+    // โหลดรายการเอกสารใหม่ (ใช้หลังเพิ่ม/แก้ไข/ลบ)
     const load = async () => applyResult(await fetchDocs(room))
 
+    // โหลดเอกสารเมื่อเปิดการ์ดหรือเปลี่ยนห้อง
     useEffect(() => {
         let active = true
         fetchDocs(room).then((result) => {
@@ -209,6 +235,7 @@ function TenantDocuments({ room }) {
         }
     }, [room, applyResult])
 
+    // เปิดดูไฟล์เอกสารในแท็บใหม่ด้วยลิงก์ชั่วคราว (bucket เป็น private)
     const handleView = async (doc) => {
         setActionError('')
         // เปิดแท็บก่อนรอลิงก์ เพื่อไม่ให้เบราว์เซอร์บล็อกป็อปอัป
@@ -223,6 +250,7 @@ function TenantDocuments({ room }) {
         else window.location.href = data.signedUrl
     }
 
+    // ลบแถวเอกสารและไฟล์ใน storage แล้วโหลดรายการใหม่
     const handleDelete = async (doc) => {
         const { error } = await supabase.from('tenant_documents').delete().eq('id', doc.id)
         if (error) return `ลบไม่สำเร็จ: ${error.message}`
@@ -231,11 +259,13 @@ function TenantDocuments({ room }) {
         setDeleting(null)
     }
 
+    // หลังบันทึกเอกสารสำเร็จ: โหลดรายการใหม่และปิดฟอร์ม
     const handleSaved = async () => {
         await load()
         setEditing(null)
     }
 
+    // เอกสารหลักแต่ละประเภทจับคู่กับไฟล์ที่มี, เอกสารอื่น ๆ, และนับว่าครบหรือยัง
     const requiredRows = REQUIRED_DOCS.map((r) => ({ ...r, doc: docs.find((d) => d.type === r.type) }))
     const extras = docs.filter((d) => d.type === 'other')
     const done = requiredRows.filter((r) => r.doc).length
@@ -243,6 +273,7 @@ function TenantDocuments({ room }) {
 
     return (
         <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+            {/* หัวการ์ด + แถบความคืบหน้าเอกสารหลัก (ครบ = เขียว, ไม่ครบ = ส้ม) */}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h2 className="text-lg font-semibold text-primary-dark">เอกสาร</h2>
@@ -260,10 +291,12 @@ function TenantDocuments({ room }) {
                 )}
             </div>
 
-            {loading && <p className="text-sm text-muted">กำลังโหลด...</p>}
+            {/* ข้อความกำลังโหลด / error */}
+            {loading && <SkeletonList rows={2} avatar={false} className="-mx-4" />}
             {loadError && <p className="text-sm text-red-600">{loadError}</p>}
             {actionError && <p className="text-sm text-red-600">{actionError}</p>}
 
+            {/* รายการเอกสารหลัก + เอกสารอื่น ๆ และปุ่มเพิ่มเอกสารอื่น */}
             {!loading && !loadError && (
                 <>
                     <div className="flex flex-col gap-2">
@@ -285,6 +318,7 @@ function TenantDocuments({ room }) {
                 </>
             )}
 
+            {/* กล่องเพิ่ม/แก้ไขเอกสาร และหน้าต่างยืนยันลบ */}
             {editing && <DocumentModal key={editing.id ?? editing.type + editing.title} doc={editing} room={room} onSaved={handleSaved} onCancel={() => setEditing(null)} />}
             {deleting && <DeleteDocumentModal doc={deleting} onConfirm={handleDelete} onCancel={() => setDeleting(null)} />}
         </div>

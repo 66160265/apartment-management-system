@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react'
+import DownloadReceiptButton from './DownloadReceiptButton'
 import Icon from './Icon'
 import { invoiceStatuses } from '../data/billing'
-import { baht, calcInvoice, getSlipUrl } from '../lib/billing'
+import { balanceOf, baht, calcInvoice, daysLate, formatDateTime, getSlipUrl, lateFeeOf, paidOf } from '../lib/billing'
 import { formatPromptPayId, generatePromptPayQR } from '../lib/promptpay'
+import { useRealtimeReload } from '../lib/realtime'
+import { buildInvoiceReceipt } from '../lib/receipts'
+import { supabase } from '../lib/supabaseClient'
+import { MAX_VERIFY_ATTEMPTS, verifyStatuses } from '../lib/slipVerify'
 import { useSettings } from '../lib/useSettings'
 
+// ป้ายสถานะใบแจ้งหนี้ (รอชำระ / รอตรวจสอบ / ชำระแล้ว)
 export function StatusBadge({ status }) {
     const s = invoiceStatuses[status]
     return (
@@ -15,6 +21,7 @@ export function StatusBadge({ status }) {
     )
 }
 
+// ขั้นตอนของใบแจ้งหนี้ และสถานะ -> ขั้นที่กำลังอยู่ (ชำระแล้ว = ผ่านครบทุกขั้น)
 const STEPS = ['ออกใบแจ้งหนี้', 'ส่งสลิป', 'ตรวจสอบ', 'ชำระแล้ว']
 const STEP_OF = { pending: 1, review: 2, paid: 4 }
 
@@ -24,6 +31,7 @@ export function InvoiceStepper({ status }) {
     return (
         <ol className="flex items-center">
             {STEPS.map((label, i) => {
+                // ขั้นที่ผ่านแล้วแสดงเครื่องหมายถูก ขั้นปัจจุบันมีกรอบ ขั้นที่ยังไม่ถึงเป็นสีเทา
                 const done = i < current
                 const active = i === current
                 return (
@@ -44,6 +52,7 @@ export function InvoiceStepper({ status }) {
                                 {label}
                             </span>
                         </div>
+                        {/* เส้นเชื่อมไปขั้นถัดไป (เป็นสีเมื่อผ่านขั้นนี้แล้ว) */}
                         {i < STEPS.length - 1 && (
                             <span className={`flex-1 h-0.5 mx-2 mb-5 rounded ${done ? 'bg-primary' : 'bg-line'}`} />
                         )}
@@ -56,6 +65,7 @@ export function InvoiceStepper({ status }) {
 
 // รายละเอียดการคำนวณยอดของใบแจ้งหนี้ (ใช้ร่วมกันทั้งฝั่งแอดมินและผู้เช่า)
 export function InvoiceBreakdown({ invoice }) {
+    // คำนวณหน่วยและค่าน้ำ/ไฟจากเลขมิเตอร์ในใบแจ้งหนี้
     const c = calcInvoice({
         rent: Number(invoice.rent),
         waterPrev: invoice.water_prev,
@@ -66,11 +76,14 @@ export function InvoiceBreakdown({ invoice }) {
         elecRate: Number(invoice.elec_rate),
         commonFee: Number(invoice.common_fee),
     })
+    // รายการค่าใช้จ่ายที่แสดงทีละแถว
     const rows = [
         { icon: 'home', tone: 'bg-sky-50 text-sky-700', label: 'ค่าเช่าห้อง', detail: '', value: Number(invoice.rent) },
         { icon: 'droplet', tone: 'bg-cyan-50 text-cyan-700', label: 'ค่าน้ำ', detail: `${c.waterUnits} หน่วย × ${baht(invoice.water_rate)}`, value: c.water },
         { icon: 'bolt', tone: 'bg-amber-50 text-amber-700', label: 'ค่าไฟ', detail: `${c.elecUnits} หน่วย × ${baht(invoice.elec_rate)}`, value: c.elec },
         { icon: 'building', tone: 'bg-violet-50 text-violet-700', label: 'ค่าส่วนกลาง', detail: '', value: Number(invoice.common_fee) },
+        // ค่าซ่อมที่ผู้เช่าต้องชำระ รวมมาในใบนี้ (แสดงเฉพาะเมื่อมี)
+        ...(Number(invoice.repair_fee) > 0 ? [{ icon: 'wrench', tone: 'bg-rose-50 text-rose-700', label: 'ค่าซ่อม', detail: '', value: Number(invoice.repair_fee) }] : []),
     ]
     return (
         <div className="rounded-2xl border border-line overflow-hidden bg-white">
@@ -86,10 +99,152 @@ export function InvoiceBreakdown({ invoice }) {
                     </li>
                 ))}
             </ul>
+            {/* แถบยอดรวมสุทธิด้านล่าง */}
             <div className="flex items-center justify-between px-4 py-3.5 bg-linear-to-r from-primary-dark to-primary text-white">
                 <span className="text-sm font-medium">ยอดรวมสุทธิ</span>
                 <span className="text-xl font-semibold tabular-nums">{baht(invoice.total)}</span>
             </div>
+            {/* ได้รับเงินแล้ว: ผู้เช่าโอนไม่ครบ แล้วโอนเพิ่มได้ จึงแสดงยอดที่ได้รับและยอดคงเหลือ (หรือยอดที่ต้องโอนคืนถ้าโอนเกิน) */}
+            {(paidOf(invoice) > 0 || lateFeeOf(invoice) > 0) && (
+                <dl className="px-4 py-3 text-sm flex flex-col gap-1.5 border-t border-line">
+                    {lateFeeOf(invoice) > 0 && (
+                        <>
+                            <div className="flex justify-between">
+                                <dt className="text-muted">ค่าปรับชำระล่าช้า{daysLate(invoice) > 0 && ` (เกินกำหนด ${daysLate(invoice)} วัน)`}</dt>
+                                <dd className="tabular-nums font-medium text-red-700">{baht(lateFeeOf(invoice))}</dd>
+                            </div>
+                            <div className="flex justify-between"><dt className="text-muted">ยอดรวมค่าปรับ</dt><dd className="tabular-nums font-medium">{baht(Number(invoice.total) + lateFeeOf(invoice))}</dd></div>
+                        </>
+                    )}
+                    {paidOf(invoice) > 0 && (
+                        <div className="flex justify-between"><dt className="text-muted">ได้รับชำระแล้ว</dt><dd className="tabular-nums font-medium text-emerald-700">{baht(paidOf(invoice))}</dd></div>
+                    )}
+                    {invoice.status !== 'paid' && (
+                        <div className="flex justify-between"><dt className="text-muted">คงเหลือที่ต้องชำระ</dt><dd className="tabular-nums font-semibold text-amber-700">{baht(balanceOf(invoice))}</dd></div>
+                    )}
+                    {Number(invoice.refund_amount) > 0 && (
+                        <div className="flex justify-between"><dt className="text-muted">ชำระเกิน {invoice.refund_status === 'done' ? '(โอนคืนแล้ว)' : '(รอโอนคืน)'}</dt><dd className="tabular-nums font-medium text-sky-700">{baht(invoice.refund_amount)}</dd></div>
+                    )}
+                </dl>
+            )}
+        </div>
+    )
+}
+
+// ผลตรวจสลิปอัตโนมัติ (EasySlip) สำหรับแอดมิน: แสดงยอด/วันที่/ผู้โอน/ผู้รับที่อ่านได้ และข้อสังเกต พร้อมปุ่มสั่งตรวจ
+// mode = โหมดในหน้าตั้งค่า (off/suggest) onVerify(invoiceId) สั่งตรวจ onRefresh() โหลดใบแจ้งหนี้ใหม่
+// ระบบนี้ไม่ตัดสินแทนแอดมิน มีไว้ช่วยอ่านและเตือนเท่านั้น
+export function VerifyBox({ invoice, mode, onVerify, onRefresh }) {
+    const [busy, setBusy] = useState(false)
+    const status = invoice.verify_status
+    const attempts = invoice.verify_attempts ?? 0
+
+    // กำลังตรวจอยู่: โหลดใหม่ทุก 4 วินาทีจนกว่าจะได้ผล
+    useEffect(() => {
+        if (status !== 'checking') return
+        const timer = setInterval(onRefresh, 4000)
+        return () => clearInterval(timer)
+    }, [status, onRefresh])
+
+    // โหมดปิดและไม่เคยตรวจ: ไม่แสดงอะไร
+    if (mode !== 'suggest' && !status) return null
+
+    const canRun = mode === 'suggest' && (!status || status === 'error') && attempts < MAX_VERIFY_ATTEMPTS
+    const run = async () => {
+        setBusy(true)
+        await onVerify(invoice.id)
+        await onRefresh()
+        setBusy(false)
+    }
+    const meta = status ? verifyStatuses[status] : null
+    const d = invoice.verify_detail ?? {}
+    const rows = [
+        ['ยอดในสลิป', d.amount != null ? baht(d.amount) : null],
+        ['วันเวลาที่โอน', d.date ? formatDateTime(d.date) : null],
+        ['ผู้โอน', d.sender],
+        ['ผู้รับ', d.receiver],
+    ].filter(([, v]) => v)
+
+    return (
+        <div className="flex flex-col gap-2">
+            {meta && (
+                <div className={`rounded-xl px-4 py-3 text-sm ring-1 flex flex-col gap-1.5 ${meta.color}`}>
+                    <div className="font-medium">{meta.label}</div>
+                    {rows.length > 0 && (
+                        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                            {rows.map(([k, v]) => (
+                                <div key={k} className="contents"><dt className="opacity-70">{k}</dt><dd className="tabular-nums">{v}</dd></div>
+                            ))}
+                        </dl>
+                    )}
+                    {Array.isArray(d.notes) && d.notes.length > 0 && (
+                        <ul className="list-disc pl-4 text-xs flex flex-col gap-0.5">
+                            {d.notes.map((n) => <li key={n}>{n}</li>)}
+                        </ul>
+                    )}
+                </div>
+            )}
+            {canRun && (
+                <button type="button" onClick={run} disabled={busy} className="self-start border border-line bg-white text-primary-dark hover:bg-mist/50 disabled:opacity-60 px-4 py-1.5 rounded-xl text-sm">
+                    {busy ? 'กำลังตรวจ...' : `ตรวจสลิปด้วยระบบ (ครั้งที่ ${attempts + 1}/${MAX_VERIFY_ATTEMPTS})`}
+                </button>
+            )}
+        </div>
+    )
+}
+
+// ประวัติการรับเงินของใบแจ้งหนี้ (สลิปที่แอดมินยืนยันแล้วทุกใบ) ไม่แสดงอะไรถ้ายังไม่มี
+// refreshKey เปลี่ยนเมื่อต้องโหลดใหม่ (เช่น หลังยืนยันสลิป)
+// invoice = ใบแจ้งหนี้ (ส่งมาเพื่อให้ดาวน์โหลดใบเสร็จของแต่ละครั้งได้ ไม่ส่ง = ไม่มีปุ่มใบเสร็จ)
+export function PaymentHistory({ invoiceId, refreshKey, invoice }) {
+    const [rows, setRows] = useState([])
+
+    useEffect(() => {
+        let active = true
+        supabase
+            .from('invoice_payments')
+            .select('*')
+            .eq('invoice_id', invoiceId)
+            .order('confirmed_at')
+            .then(({ data }) => active && setRows(data ?? []))
+        return () => {
+            active = false
+        }
+    }, [invoiceId, refreshKey])
+
+    // อัปเดตเองเมื่อมีการยืนยันรับเงินเพิ่ม
+    useRealtimeReload(['invoice_payments'], () =>
+        supabase.from('invoice_payments').select('*').eq('invoice_id', invoiceId).order('confirmed_at').then(({ data }) => setRows(data ?? [])))
+
+    if (rows.length === 0) return null
+    return (
+        <div className="flex flex-col gap-2">
+            <h3 className="font-medium text-primary-dark">ประวัติการรับชำระ</h3>
+            <ul className="flex flex-col gap-2">
+                {rows.map((p) => (
+                    <li key={p.id} className="rounded-xl border border-line bg-sand/40 px-4 py-2.5">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="text-muted">{formatDateTime(p.confirmed_at)}{p.auto_approved && ' · ระบบอนุมัติอัตโนมัติ'}{p.source === 'deposit' && ' · หักจากเงินประกัน'}</span>
+                            <span className="font-semibold text-emerald-700 tabular-nums">{baht(p.amount)}</span>
+                        </div>
+                        {invoice && p.receipt_no !== null && p.receipt_no !== undefined && (
+                            <div className="flex justify-end mt-1">
+                                <DownloadReceiptButton
+                                    receipt={buildInvoiceReceipt({ payment: p, invoice, payments: rows })}
+                                    className="text-xs text-primary hover:underline"
+                                    label="ดาวน์โหลดใบเสร็จ"
+                                />
+                            </div>
+                        )}
+                        {p.slip_path && (
+                            <details className="mt-1.5">
+                                <summary className="text-xs text-primary cursor-pointer">ดูสลิป</summary>
+                                <div className="flex justify-center pt-2"><SlipImage path={p.slip_path} /></div>
+                            </details>
+                        )}
+                    </li>
+                ))}
+            </ul>
         </div>
     )
 }
@@ -98,6 +253,7 @@ export function InvoiceBreakdown({ invoice }) {
 export function CopyButton({ text, label = 'คัดลอก' }) {
     const [copied, setCopied] = useState(false)
 
+    // คัดลอกข้อความลงคลิปบอร์ด แล้วแสดง "คัดลอกแล้ว" ชั่วคราว
     const copy = async () => {
         try {
             await navigator.clipboard.writeText(text)
@@ -123,42 +279,51 @@ export function CopyButton({ text, label = 'คัดลอก' }) {
 export function PromptPayCard({ invoice }) {
     const settings = useSettings()
     const [qr, setQr] = useState({ url: null, error: '' })
+    // ยอดใน QR คือยอดคงเหลือ (ชำระบางส่วนมาแล้วจะเหลือเฉพาะส่วนที่ยังขาด)
+    const due = balanceOf(invoice)
 
+    // สร้างรูป QR พร้อมเพย์ใหม่เมื่อรหัสพร้อมเพย์หรือยอดเปลี่ยน
     useEffect(() => {
         let active = true
-        generatePromptPayQR(settings.promptpayId, invoice.total, { width: 360 })
+        generatePromptPayQR(settings.promptpayId, due, { width: 360 })
             .then((url) => active && setQr({ url, error: '' }))
             .catch((e) => active && setQr({ url: null, error: e.message }))
         return () => {
             active = false
         }
-    }, [settings.promptpayId, invoice.total])
+    }, [settings.promptpayId, due])
 
     return (
         <div className="bg-white rounded-2xl shadow-card p-4 flex flex-col items-center gap-3 text-center">
             <div className="font-medium text-primary-dark">สแกนจ่ายด้วยพร้อมเพย์</div>
+            {/* แสดง QR / ข้อความเมื่อรหัสพร้อมเพย์ผิด / กล่องกำลังโหลด */}
             {qr.url ? (
                 <img src={qr.url} alt="QR พร้อมเพย์" className="w-48 h-48 rounded-xl border border-line" />
             ) : qr.error ? (
                 <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">
-                    ยังสร้าง QR ไม่ได้ เพราะรหัสพร้อมเพย์ของหอพักไม่ถูกต้อง กรุณาติดต่อผู้ดูแลหอพัก หรือโอนเข้าบัญชีธนาคารแทน
+                    {settings.promptpayId
+                        ? 'ยังสร้าง QR ไม่ได้ เพราะรหัสพร้อมเพย์ของหอพักไม่ถูกต้อง กรุณาติดต่อผู้ดูแลหอพัก หรือโอนเข้าบัญชีธนาคารแทน'
+                        : 'ผู้ดูแลหอพักยังไม่ได้ตั้งค่าช่องทางรับชำระเงิน กรุณาติดต่อผู้ดูแลหอพักก่อนโอนเงิน'}
                 </p>
             ) : (
                 <div className="w-48 h-48 rounded-xl bg-line/60 animate-pulse" aria-label="กำลังสร้าง QR" />
             )}
+            {/* ยอดที่ต้องจ่ายและเลขพร้อมเพย์ + ปุ่มคัดลอกเลข */}
             <div className="text-sm text-muted">
-                ยอด <span className="font-semibold text-ink">{baht(invoice.total)}</span> · พร้อมเพย์{' '}
-                <span className="tabular-nums">{formatPromptPayId(settings.promptpayId)}</span>
+                ยอด <span className="font-semibold text-ink">{baht(due)}</span>
+                {settings.promptpayId && <> · พร้อมเพย์{' '}<span className="tabular-nums">{formatPromptPayId(settings.promptpayId)}</span></>}
             </div>
-            <CopyButton text={String(settings.promptpayId).replace(/\D/g, '')} label="คัดลอกเลขพร้อมเพย์" />
+            {settings.promptpayId && <CopyButton text={String(settings.promptpayId).replace(/\D/g, '')} label="คัดลอกเลขพร้อมเพย์" />}
         </div>
     )
 }
 
+// แสดงรูปสลิปจาก storage (bucket private จึงต้องขอลิงก์ชั่วคราว)
 export function SlipImage({ path }) {
     const [url, setUrl] = useState(null)
     const [failed, setFailed] = useState(false)
 
+    // ขอลิงก์รูปสลิปใหม่ทุกครั้งที่ path เปลี่ยน
     useEffect(() => {
         let active = true
         getSlipUrl(path).then((u) => {
@@ -171,6 +336,7 @@ export function SlipImage({ path }) {
         }
     }, [path])
 
+    // โหลดไม่สำเร็จแสดงข้อความ, ระหว่างโหลดแสดงกล่องว่าง, โหลดแล้วแสดงรูป (คลิกเปิดรูปเต็ม)
     if (failed) return <p className="text-sm text-red-600">โหลดรูปสลิปไม่สำเร็จ</p>
     if (!url) {
         return <div className="w-48 h-64 rounded-xl bg-line/60 animate-pulse" aria-label="กำลังโหลดรูปสลิป" />

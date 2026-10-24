@@ -6,6 +6,7 @@ import PageHeader from '../components/PageHeader'
 import { ConfirmDialog } from '../components/RepairParts'
 import { formatNotificationTime, typeLabels } from '../data/notifications'
 import { clearRead, markAllRead, markRead, removeNotification, useNotifications } from '../lib/useNotifications'
+import { SkeletonList } from '../components/Skeleton.jsx'
 
 // ไอคอนและสีของแจ้งเตือนแต่ละประเภท
 const typeStyle = {
@@ -14,19 +15,23 @@ const typeStyle = {
     system: { icon: 'bell', tone: 'bg-violet-50 text-violet-700' },
 }
 
+// แท็บกรองรายการ: ทั้งหมด / ยังไม่อ่าน
 const tabs = [
     { key: 'all', label: 'ทั้งหมด' },
     { key: 'unread', label: 'ยังไม่อ่าน' },
 ]
 
+// หน้ารายการแจ้งเตือน: ดูรายละเอียด ทำเครื่องหมายอ่านแล้ว และลบแจ้งเตือน
 function NotificationsPage() {
     const navigate = useNavigate()
     const [searchParams, setSearchParams] = useSearchParams()
     const { items, loading, error, unreadCount } = useNotifications()
 
+    // แท็บที่เลือก และเปิดหน้าต่างยืนยันล้างรายการที่อ่านแล้ว
     const [activeTab, setActiveTab] = useState('all')
     const [confirmClear, setConfirmClear] = useState(false)
 
+    // แจ้งเตือนที่เปิดดูอยู่มาจาก ?id= ใน URL (เปิดจากกระดิ่งหรือลิงก์ได้), จำนวนที่อ่านแล้ว และรายการตามแท็บ
     const rawId = searchParams.get('id')
     const selected = rawId ? items.find((n) => n.id === rawId) : null
     const readCount = items.length - unreadCount
@@ -37,6 +42,7 @@ function NotificationsPage() {
         if (selected && !selected.read_at) markRead(selected.id)
     }, [selected])
 
+    // ปิดหน้าต่างรายละเอียด (ลบ ?id ออกจาก URL)
     const closeModal = () => {
         if (searchParams.get('id')) setSearchParams({}, { replace: true })
     }
@@ -44,16 +50,19 @@ function NotificationsPage() {
     // ปิดรายละเอียดด้วยปุ่ม Esc
     useEffect(() => {
         if (!rawId) return
+        // กด Esc ให้ปิดหน้าต่างรายละเอียด
         const onKey = (e) => e.key === 'Escape' && setSearchParams({}, { replace: true })
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
     }, [rawId, setSearchParams])
 
+    // เปิดรายละเอียดแจ้งเตือน และทำเครื่องหมายว่าอ่านแล้ว
     const openDetail = (item) => {
         markRead(item.id)
         setSearchParams({ id: item.id })
     }
 
+    // ลบแจ้งเตือนที่เปิดอยู่แล้วปิดหน้าต่าง
     const handleDelete = () => {
         removeNotification(selected.id)
         closeModal()
@@ -64,6 +73,7 @@ function NotificationsPage() {
             <PageHeader flush title="แจ้งเตือน" subtitle="ติดตามความเคลื่อนไหวของใบแจ้งหนี้และงานแจ้งซ่อม" />
 
             <div className="bg-white rounded-2xl shadow-card p-5">
+                {/* แถบด้านบน: แท็บ (พร้อมจำนวน) + ปุ่มอ่านทั้งหมด / ล้างที่อ่านแล้ว */}
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line mb-2">
                     <div role="tablist" aria-label="กรองการแจ้งเตือน" className="flex gap-1">
                         {tabs.map((t) => {
@@ -105,8 +115,9 @@ function NotificationsPage() {
                     </div>
                 </div>
 
+                {/* กำลังโหลด / error / ไม่มีรายการ / รายการแจ้งเตือน (ยังไม่อ่านตัวหนา มีจุดแดง) */}
                 {loading || error ? (
-                    <p className={`py-14 text-center text-sm ${error ? 'text-red-600' : 'text-muted'}`}>{loading ? 'กำลังโหลด...' : error}</p>
+                    loading ? <SkeletonList rows={6} /> : <p className="py-14 text-center text-sm text-red-600">{error}</p>
                 ) : visible.length === 0 ? (
                     <div className="py-14 text-center text-muted text-sm">
                         <span className="mx-auto mb-3 grid place-items-center w-12 h-12 rounded-full bg-sand text-muted"><Icon name="bell" className="w-6 h-6" /></span>
@@ -145,6 +156,7 @@ function NotificationsPage() {
                 )}
             </div>
 
+            {/* หน้าต่างรายละเอียดแจ้งเตือน (กดพื้นหลังเพื่อปิด) */}
             {selected && (
                 <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-xs flex items-center justify-center z-50 p-4" onClick={closeModal}>
                     <div
@@ -153,6 +165,7 @@ function NotificationsPage() {
                         className="bg-white rounded-2xl shadow-xl w-[560px] max-w-full overflow-hidden border border-line flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
+                        {/* หัว: ไอคอนประเภท ชื่อเรื่อง และปุ่มปิด */}
                         <div className="px-6 py-4 border-b border-line flex items-center justify-between bg-sand/30">
                             <div className="flex items-center gap-3 min-w-0">
                                 <span className={`grid place-items-center w-9 h-9 rounded-xl shrink-0 ${(typeStyle[selected.type] ?? typeStyle.system).tone}`}><Icon name={(typeStyle[selected.type] ?? typeStyle.system).icon} className="w-[18px] h-[18px]" /></span>
@@ -163,6 +176,7 @@ function NotificationsPage() {
                             </button>
                         </div>
 
+                        {/* เนื้อหา: ประเภท เวลาที่ส่ง หัวข้อย่อย และรายละเอียด */}
                         <div className="p-6 flex flex-col gap-4">
                             <div className="flex items-center justify-between gap-2 text-xs text-muted">
                                 <span className="px-3 py-1 rounded-full font-semibold bg-mist text-primary-dark">{typeLabels[selected.type] || 'ระบบ'}</span>
@@ -181,6 +195,7 @@ function NotificationsPage() {
                             )}
                         </div>
 
+                        {/* ปุ่มลบ, ปิด และปุ่มไปยังหน้าที่เกี่ยวข้อง (ถ้ามี action_link) */}
                         <div className="px-6 py-4 bg-sand/20 border-t border-line flex justify-between items-center gap-3">
                             <button type="button" onClick={handleDelete} className="text-red-600 hover:text-red-700 text-sm font-medium">
                                 ลบการแจ้งเตือนนี้
@@ -208,6 +223,7 @@ function NotificationsPage() {
                 </div>
             )}
 
+            {/* ยืนยันก่อนล้างแจ้งเตือนที่อ่านแล้วทั้งหมด */}
             {confirmClear && (
                 <ConfirmDialog
                     title="ล้างการแจ้งเตือนที่อ่านแล้ว"

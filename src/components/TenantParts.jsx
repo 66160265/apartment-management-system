@@ -2,6 +2,7 @@ import { contractStatus, contractStyles } from '../lib/tenants'
 
 // ป้ายสถานะสัญญา (ปกติ / ใกล้หมด / หมดสัญญา)
 export function ContractBadge({ endDate, showHint = false }) {
+    // คำนวณสถานะสัญญาจากวันสิ้นสุด แล้วเลือกสีตามสถานะ
     const s = contractStatus(endDate)
     const style = contractStyles[s.key]
     return (
@@ -10,6 +11,7 @@ export function ContractBadge({ endDate, showHint = false }) {
                 <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
                 {s.label}
             </span>
+            {/* ข้อความเสริมใต้ป้าย เช่น "อีก 12 วัน" */}
             {showHint && <span className="text-xs text-muted mt-1">{s.hint}</span>}
         </span>
     )

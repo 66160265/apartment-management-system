@@ -1,3 +1,4 @@
+// ชื่อเดือนภาษาไทยแบบย่อ
 const thaiMonths = [
     'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
     'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
@@ -14,9 +15,11 @@ export function formatNotificationTime(input, includeTime = false) {
         return String(input)
     }
 
+    // ระยะเวลาตั้งแต่แจ้งเตือนถึงตอนนี้ (มิลลิวินาที)
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
 
+    // ข้อความเวลา ชม:นาที ของแจ้งเตือน
     const hours = String(date.getHours()).padStart(2, '0')
     const minutes = String(date.getMinutes()).padStart(2, '0')
     const timeStr = `เวลา ${hours}:${minutes} น.`
@@ -31,6 +34,7 @@ export function formatNotificationTime(input, includeTime = false) {
         return includeTime ? `${day} ${month}${yearStr} ${timeStr}` : `${day} ${month}${yearStr}`
     }
 
+    // แปลงระยะเวลาเป็นนาที ชั่วโมง และวัน
     const diffMinutes = Math.floor(diffMs / (1000 * 60))
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
@@ -47,6 +51,7 @@ export function formatNotificationTime(input, includeTime = false) {
         return `${diffHours} ชั่วโมงที่แล้ว`
     }
 
+    // วันที่และเดือนของแจ้งเตือน ใช้กับกรณีเกิน 1 วัน
     const day = date.getDate()
     const month = thaiMonths[date.getMonth()]
     const yearNow = now.getFullYear()
