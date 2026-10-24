@@ -83,23 +83,19 @@ describe('หน้าภาพรวมแอดมิน (เรนเดอ�
         db.invoices = [
             inv({ status: 'review' }),
             inv({ status: 'review', room: '102' }),
-            inv({ status: 'paid', paid_amount: 1300, refund_amount: 300, refund_status: 'pending', room: '103' }),
         ]
         db.rooms = [{ number: '101', status: 'occupied' }]
         db.repair_payments = [{ amount: 350, status: 'review', reviewed_at: null }]
         db.repairs = 3
-        db.move_outs = [{ refund_amount: 5000 }]
         await mount()
         const t = text()
         expect(t).toContain('สลิปค่าห้องรอตรวจสอบ')
         expect(t).toContain('สลิปค่าซ่อมรอตรวจสอบ')
         expect(t).toContain('เรื่องแจ้งซ่อมรอดำเนินการ')
-        expect(t).toContain('ผู้เช่าโอนเกิน รอโอนคืน')
-        expect(t).toContain('เงินประกันรอคืนผู้เช่า')
-        expect(t).toContain('฿300')
-        expect(t).toContain('฿5,000')
+        expect(t).not.toContain('รอโอนคืน')
+        expect(t).not.toContain('เงินประกันรอคืน')
         expect(t).not.toContain('ไม่มีงานค้าง')
-        for (const to of ['/invoices', '/repairs', '/tenants']) expect(links()).toContain(to)
+        for (const to of ['/invoices', '/repairs']) expect(links()).toContain(to)
     })
 
     it('ไม่มีงานค้างเลย: แสดงข้อความว่าไม่มีงานค้าง', async () => {

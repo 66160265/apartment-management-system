@@ -13,19 +13,18 @@ import { useSettings } from '../lib/useSettings'
 import { SkeletonList } from '../components/Skeleton.jsx'
 
 // หน้าภาพรวมของแอดมิน: ตอบ 3 คำถามให้จบในหน้าเดียว
-//   1) มีอะไรต้องจัดการตอนนี้ไหม (สลิปรอตรวจ ซ่อมรอนัด เงินรอคืน)  2) เดือนนี้การเงินเป็นอย่างไร (เรียกเก็บ/ได้รับ/ค้าง)  3) ห้องเต็มไหม
+//   1) มีอะไรต้องจัดการตอนนี้ไหม (สลิปรอตรวจ เรื่องซ่อมรอดำเนินการ)  2) เดือนนี้การเงินเป็นอย่างไร (เรียกเก็บ/ได้รับ/ค้าง)  3) ห้องเต็มไหม
 // รายละเอียดอื่น (ย้อนหลังหลายเดือน การใช้น้ำ-ไฟ ส่งออก CSV) อยู่ที่หน้ารายงาน ไม่ซ้ำกันที่นี่
 
 // ดึงข้อมูลจากฐานข้อมูล (ไม่มีการ setState เพื่อให้เรียกซ้ำได้อย่างปลอดภัย)
 // ใบแจ้งหนี้และห้องจำเป็น พลาดแล้วโยน error ส่วนที่เหลือมาจาก SQL รุ่นหลัง ถ้ายังไม่มีตารางให้ถือว่าไม่มีข้อมูล หน้ายังใช้ได้
 async function fetchDashboardData() {
-    const [invoicesRes, roomsRes, paymentsRes, repairPaymentsRes, pendingRepairsRes, depositsRes, tenantsRes, slipUsage] = await Promise.all([
+    const [invoicesRes, roomsRes, paymentsRes, repairPaymentsRes, pendingRepairsRes, tenantsRes, slipUsage] = await Promise.all([
         supabase.from('invoices').select('*').order('created_at', { ascending: false }),
         supabase.from('rooms').select('number, status'),
         supabase.from('invoice_payments').select('amount, confirmed_at'),
         supabase.from('repair_payments').select('amount, status, reviewed_at'),
         supabase.from('repairs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('move_outs').select('refund_amount').eq('refund_status', 'pending'),
         supabase.from('tenants').select('room, end_date'),
         fetchSlipUsage(),
     ])
@@ -39,19 +38,17 @@ async function fetchDashboardData() {
         invoicePayments: paymentsRes.error ? [] : paymentsRes.data || [],
         repairPayments: repairPaymentsRes.error ? [] : repairPaymentsRes.data || [],
         pendingRepairs: pendingRepairsRes.error ? 0 : pendingRepairsRes.count || 0,
-        pendingDeposits: depositsRes.error ? [] : depositsRes.data || [],
         tenants: tenantsRes.error ? [] : tenantsRes.data || [],
         slipUsage,
     }
 }
 
-const emptyData = { invoices: [], rooms: [], invoicePayments: [], repairPayments: [], pendingRepairs: 0, pendingDeposits: [], tenants: [], slipUsage: null }
+const emptyData = { invoices: [], rooms: [], invoicePayments: [], repairPayments: [], pendingRepairs: 0, tenants: [], slipUsage: null }
 
 // สีของการ์ด "ต้องจัดการ" ตามประเภท
 const attentionTone = {
     sky: 'bg-sky-50 ring-sky-200 text-sky-900',
     amber: 'bg-amber-50 ring-amber-200 text-amber-900',
-    violet: 'bg-violet-50 ring-violet-200 text-violet-900',
 }
 
 function Card({ title, children, hint, action }) {
@@ -148,13 +145,10 @@ function AdminDashboardPage() {
 
     // สิ่งที่ต้องจัดการตอนนี้
     const attention = useMemo(() => {
-        const refunds = data.invoices.filter((i) => i.refund_status === 'pending')
         return attentionItems({
             reviewInvoices: data.invoices.filter((i) => i.status === 'review').length,
             repairReviews: data.repairPayments.filter((p) => p.status === 'review').length,
             pendingRepairs: data.pendingRepairs,
-            refundInvoices: { count: refunds.length, amount: refunds.reduce((sum, i) => sum + Number(i.refund_amount), 0) },
-            depositRefunds: { count: data.pendingDeposits.length, amount: data.pendingDeposits.reduce((sum, m) => sum + Number(m.refund_amount), 0) },
             uninvoicedRooms: uninvoicedRooms(data.rooms, data.invoices, currentMonth()).length,
             expiringContracts: expiringContracts(data.tenants, now).length,
             slipQuota: slipQuota(data.slipUsage, settings.slipQuota),
@@ -183,7 +177,7 @@ function AdminDashboardPage() {
                 ) : attention.length === 0 ? (
                     <div className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 p-4 flex items-center gap-3 text-sm">
                         <Icon name="checkCircle" className="w-5 h-5 text-emerald-600 shrink-0" />
-                        ไม่มีงานค้าง ไม่มีสลิปรอตรวจ ไม่มีเรื่องซ่อมรอนัด และไม่มีเงินรอคืนผู้เช่า
+                        ไม่มีงานค้าง ไม่มีสลิปรอตรวจ และไม่มีเรื่องซ่อมรอดำเนินการ
                     </div>
                 ) : (
                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">

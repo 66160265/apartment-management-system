@@ -53,7 +53,7 @@ export const formatThaiDay = (isoDate) =>
         ? new Date(`${isoDate}T00:00:00`).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' })
         : '-'
 
-// เวลาเริ่มที่เลือกได้ 09:00, 10:00, ..., 17:00
+// เวลาเริ่มที่เลือกได้ 09:00, 10:00, ..., 18:00
 const toMinutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
 const toHhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 export const repairTimeOptions = Array.from(
@@ -73,7 +73,7 @@ export const parsePeriod = (period) => {
     return { start, end }
 }
 
-// เวลาถูกต้อง: เป็นช่วงนัด 1 ครั้งที่เริ่มตามเวลาที่เลือกได้ (09:00-10:00 ... 17:00-18:00)
+// เวลาถูกต้อง: เป็นช่วงนัด 1 ครั้งที่เริ่มตามเวลาที่เลือกได้ (09:00-10:00 ... 18:00-19:00)
 export const isValidPeriod = (period) => {
     const { start } = parsePeriod(period)
     return repairTimeOptions.includes(start) && normalizePeriod(period) === periodAt(start)
@@ -124,6 +124,16 @@ export const upcomingSlots = (slots) =>
         .sort((a, b) => (a.date + a.period).localeCompare(b.date + b.period))
         .slice(0, MAX_SLOTS)
 
+// เวลานัดนี้ผ่านไปแล้วไหม: วันก่อนหน้า หรือวันนี้แต่เวลาเริ่มเลยมาแล้ว (เวลาท้องถิ่นของเครื่อง)
+export const isPastTime = (date, period) => {
+    const today = todayIso()
+    if (date < today) return true
+    if (date > today) return false
+    const now = new Date()
+    const nowHhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    return parsePeriod(period).start <= nowHhmm
+}
+
 // ---- เวลาที่มีนัดซ่อมของห้องอื่นแล้ว (เลือกซ้ำไม่ได้) ----
 
 // วัน + เวลานี้ชนกับนัดที่มีอยู่แล้วไหม (booked = [{ date, period }])
@@ -140,6 +150,7 @@ export function validateAvailability({ slots, allowEntry, urgency, booked = [] }
     if (slots.some((s) => !s.date || !s.period)) return 'กรุณาเลือกวันและเวลาให้ครบทุกช่อง'
     if (slots.some((s) => !isValidPeriod(s.period))) return `กรุณาเลือกเวลาระหว่าง ${REPAIR_HOURS.start}-${REPAIR_HOURS.end} น.`
     if (slots.some((s) => s.date < todayIso())) return 'ไม่สามารถเลือกวันที่ผ่านมาแล้ว'
+    if (slots.some((s) => isPastTime(s.date, s.period))) return 'เวลานี้ผ่านไปแล้ว กรุณาเลือกเวลาอื่น'
     const keys = slots.map((s) => `${s.date}|${s.period}`)
     if (new Set(keys).size !== keys.length) return 'มีวันและเวลาซ้ำกัน'
     const taken = slots.find((s) => isBooked(booked, s.date, s.period))

@@ -171,9 +171,9 @@ function ReportsPage() {
                             </div>
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
                                 <Stat label="ใบแจ้งหนี้ที่ออก" value={summary.issuedCount} hint={`เรียกเก็บ ${baht(summary.billed)}`} />
-                                <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.received + summary.repairReceived)} hint={`ค่าห้อง ${baht(summary.received)} · ค่าซ่อม ${baht(summary.repairReceived)}`} tone="text-emerald-700" />
+                                <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.receivedTotal)} hint="ค่าห้อง ค่าน้ำไฟ และค่าซ่อมที่รวมในใบแจ้งหนี้" tone="text-emerald-700" />
                                 <Stat label="ค้างชำระของใบเดือนนี้" value={baht(summary.outstanding)} hint={`${summary.unpaidCount} ใบ ณ วันนี้`} tone={summary.outstanding > 0 ? 'text-amber-700' : 'text-primary-dark'} />
-                                <Stat label="ค่าซ่อมของเดือนนี้ (หอพักจ่าย)" value={baht(summary.repairCost)} hint={`งานซ่อมที่เสร็จ ${summary.repairCount} งาน`} />
+                                <Stat label="ค่าซ่อมของเดือนนี้ (หอพักจ่าย)" value={baht(summary.repairCost)} hint={`งานซ่อมที่เสร็จ ${summary.repairCount + summary.repairTenantCount} งาน · ผู้เช่าจ่าย ${baht(summary.repairTenantCost)}`} />
                                 <Stat label="คงเหลือเดือนนี้" value={baht(summary.net)} hint="รับเงินจริง − ค่าซ่อมที่หอพักจ่าย" tone={summary.net < 0 ? 'text-red-700' : 'text-emerald-700'} />
                             </div>
                             <div className="flex flex-wrap gap-2">
@@ -289,11 +289,12 @@ function ReportsPage() {
                         {/* สถิติแจ้งซ่อม (ทั้งหมดในระบบ ไม่นับเรื่องที่ยกเลิก) */}
                         <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
                             <h2 className="font-medium text-primary-dark">สถิติแจ้งซ่อม</h2>
-                            <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+                            <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
                                 <Stat label="เรื่องแจ้งซ่อมทั้งหมด" value={rstats.total} hint="ไม่นับเรื่องที่ยกเลิก" />
                                 <Stat label="ซ่อมเสร็จแล้ว" value={rstats.doneCount} tone="text-emerald-700" />
                                 <Stat label="ยังไม่เสร็จ" value={rstats.openCount} hint={rstats.overdue.length > 0 ? `ค้างเกิน 7 วัน ${rstats.overdue.length} เรื่อง` : undefined} tone={rstats.overdue.length > 0 ? 'text-amber-700' : 'text-primary-dark'} />
                                 <Stat label="ใช้เวลาซ่อมเฉลี่ย" value={rstats.avgDays === null ? '-' : `${rstats.avgDays} วัน`} hint="จากวันที่แจ้งถึงวันที่เสร็จ" />
+                                <Stat label="ค่าซ่อมทั้งหมด" value={baht(rstats.costTotal)} hint={`หอพักจ่าย ${baht(rstats.costOwner)} · ผู้เช่าจ่าย ${baht(rstats.costTenant)}`} />
                             </div>
                             {rstats.total > 0 && (
                                 <div className="grid gap-6 lg:grid-cols-2">
@@ -337,14 +338,20 @@ function ReportsPage() {
                                 <ExportButton onClick={exportMonthly}>สรุปรายเดือน (CSV)</ExportButton>
                             </div>
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm min-w-[880px]">
+                                <table className="w-full text-sm min-w-[880px] table-fixed">
+                                    {/* ความกว้างคอลัมน์คงที่: เดือนและจำนวนใบแคบ ช่องเงิน 6 ช่องกว้างเท่ากัน */}
+                                    <colgroup>
+                                        <col className="w-[10%]" />
+                                        <col className="w-[8%]" />
+                                        {Array.from({ length: 6 }, (_, i) => <col key={i} className="w-[13.66%]" />)}
+                                    </colgroup>
                                     <thead>
                                         <tr className="text-left text-muted border-b border-line">
                                             <th className="py-2 pr-3">เดือน</th>
                                             <th className="py-2 px-3 text-right">ใบที่ออก</th>
                                             <th className="py-2 px-3 text-right">เรียกเก็บ</th>
-                                            <th className="py-2 px-3 text-right">รับเงินค่าห้อง</th>
-                                            <th className="py-2 px-3 text-right">รับเงินค่าซ่อม</th>
+                                            <th className="py-2 px-3 text-right">รับเงิน</th>
+                                            <th className="py-2 px-3 text-right">ค่าซ่อม (ผู้เช่าจ่าย)</th>
                                             <th className="py-2 px-3 text-right">ค่าซ่อม (หอพักจ่าย)</th>
                                             <th className="py-2 px-3 text-right">คงเหลือ</th>
                                             <th className="py-2 pl-3 text-right">ยังค้าง</th>
@@ -356,8 +363,8 @@ function ReportsPage() {
                                                 <td className="py-2 pr-3 font-medium text-ink">{formatMonth(r.month)}</td>
                                                 <td className="py-2 px-3 text-right tabular-nums">{r.issuedCount}</td>
                                                 <td className="py-2 px-3 text-right tabular-nums">{baht(r.billed)}</td>
-                                                <td className="py-2 px-3 text-right tabular-nums text-emerald-700">{baht(r.received)}</td>
-                                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.repairReceived)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums text-emerald-700">{baht(r.receivedTotal)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.repairTenantCost)}</td>
                                                 <td className="py-2 px-3 text-right tabular-nums">{baht(r.repairCost)}</td>
                                                 <td className={`py-2 px-3 text-right tabular-nums font-medium ${r.net < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{baht(r.net)}</td>
                                                 <td className={`py-2 pl-3 text-right tabular-nums ${r.outstanding > 0 ? 'text-amber-700 font-medium' : ''}`}>{baht(r.outstanding)}</td>
@@ -384,7 +391,7 @@ function ReportsPage() {
                                 <h2 className="font-medium text-primary-dark">การใช้น้ำ-ไฟ เดือน {formatMonth(month)}</h2>
                                 <ExportButton onClick={exportUtility}>การใช้น้ำ-ไฟรายห้อง (CSV)</ExportButton>
                             </div>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="grid gap-3 sm:grid-cols-3">
                                 <Stat label="น้ำรวม" value={`${utility.waterUnits.toLocaleString()} หน่วย`} hint={utility.waterAvgRate !== null ? `ค่าน้ำ ${baht(utility.waterCost)} · เฉลี่ย ${utility.waterAvgRate} บาท/หน่วย` : 'ยังไม่มีข้อมูล'} />
                                 <Stat label="ไฟรวม" value={`${utility.elecUnits.toLocaleString()} หน่วย`} hint={utility.elecAvgRate !== null ? `ค่าไฟ ${baht(utility.elecCost)} · เฉลี่ย ${utility.elecAvgRate} บาท/หน่วย` : 'ยังไม่มีข้อมูล'} />
                                 <Stat label="ค่าน้ำ + ค่าไฟรวม" value={baht(utility.totalCost)} hint={`จาก ${monthInvoices.length} ใบแจ้งหนี้`} />
@@ -393,24 +400,49 @@ function ReportsPage() {
                                 <p className="text-sm text-muted text-center py-4">ยังไม่มีใบแจ้งหนี้ของเดือนนี้</p>
                             ) : (
                                 <div className="border border-line rounded-xl overflow-hidden">
-                                    <div className="max-h-72 overflow-y-auto">
-                                        <table className="w-full text-sm">
+                                    <div className="max-h-80 overflow-auto">
+                                        <table className="w-full text-sm min-w-[560px] table-fixed">
+                                            {/* ห้อง/ผู้เช่ากว้างกว่า ช่องตัวเลข 3 ช่องเท่ากัน */}
+                                            <colgroup>
+                                                <col className="w-[34%]" />
+                                                <col className="w-[22%]" />
+                                                <col className="w-[22%]" />
+                                                <col className="w-[22%]" />
+                                            </colgroup>
                                             <thead className="bg-sand/40 sticky top-0 border-b border-line text-xs text-muted">
                                                 <tr>
                                                     <th className="py-2.5 px-4 text-left font-normal">ห้อง / ผู้เช่า</th>
-                                                    <th className="py-2.5 px-4 text-right font-normal">น้ำ (หน่วย)</th>
-                                                    <th className="py-2.5 px-4 text-right font-normal">ไฟ (หน่วย)</th>
+                                                    <th className="py-2.5 px-4 text-right font-normal">น้ำ</th>
+                                                    <th className="py-2.5 px-4 text-right font-normal">ไฟ</th>
+                                                    <th className="py-2.5 px-4 text-right font-normal">ค่าน้ำ + ค่าไฟ</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-line/60">
                                                 {usageRows.map((r) => (
                                                     <tr key={r.room}>
-                                                        <td className="py-2 px-4 text-ink">{r.room} <span className="text-muted">· {r.tenant}</span></td>
-                                                        <td className="py-2 px-4 text-right tabular-nums">{r.water}</td>
-                                                        <td className="py-2 px-4 text-right tabular-nums">{r.electric}</td>
+                                                        <td className="py-2.5 px-4 text-ink truncate">
+                                                            <span className="font-medium">{r.room}</span> <span className="text-muted">· {r.tenant}</span>
+                                                        </td>
+                                                        <td className="py-2.5 px-4 text-right tabular-nums">
+                                                            {r.water.toLocaleString()} หน่วย
+                                                            <div className="text-xs text-muted">{baht(r.waterCost)}</div>
+                                                        </td>
+                                                        <td className="py-2.5 px-4 text-right tabular-nums">
+                                                            {r.electric.toLocaleString()} หน่วย
+                                                            <div className="text-xs text-muted">{baht(r.elecCost)}</div>
+                                                        </td>
+                                                        <td className="py-2.5 px-4 text-right tabular-nums font-medium text-primary-dark">{baht(r.totalCost)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
+                                            <tfoot className="bg-sand/40 border-t border-line font-medium text-ink">
+                                                <tr>
+                                                    <td className="py-2.5 px-4">รวม {usageRows.length} ห้อง</td>
+                                                    <td className="py-2.5 px-4 text-right tabular-nums">{utility.waterUnits.toLocaleString()} หน่วย</td>
+                                                    <td className="py-2.5 px-4 text-right tabular-nums">{utility.elecUnits.toLocaleString()} หน่วย</td>
+                                                    <td className="py-2.5 px-4 text-right tabular-nums text-primary-dark">{baht(utility.totalCost)}</td>
+                                                </tr>
+                                            </tfoot>
                                         </table>
                                     </div>
                                 </div>
@@ -430,28 +462,42 @@ function ReportsPage() {
                                     </p>
                                 )}
                                 <div className="overflow-x-auto">
-                                    <table className="w-full text-sm min-w-[640px]">
+                                    <table className="w-full text-sm min-w-[760px] table-fixed">
+                                        {/* ความกว้างคอลัมน์คงที่: ห้อง/ผู้เช่ากว้างกว่า ช่องเงิน 4 ช่องเท่ากัน */}
+                                        <colgroup>
+                                            <col className="w-[12%]" />
+                                            <col className="w-[22%]" />
+                                            <col className="w-[13%]" />
+                                            <col className="w-[13%]" />
+                                            <col className="w-[13%]" />
+                                            <col className="w-[13%]" />
+                                            <col className="w-[14%]" />
+                                        </colgroup>
                                         <thead>
                                             <tr className="text-left text-muted border-b border-line">
                                                 <th className="py-2 pr-3">ย้ายออก</th>
                                                 <th className="py-2 px-3">ห้อง / ผู้เช่า</th>
                                                 <th className="py-2 px-3 text-right">เงินประกัน</th>
                                                 <th className="py-2 px-3 text-right">หัก</th>
-                                                <th className="py-2 px-3 text-right">คืน / ต้องจ่ายเพิ่ม</th>
-                                                <th className="py-2 pl-3">สถานะ</th>
+                                                <th className="py-2 px-3 text-right">คืนผู้เช่า</th>
+                                                <th className="py-2 px-3 text-right">ต้องจ่ายเพิ่ม</th>
+                                                <th className="py-2 pl-6">สถานะ</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {data.moveOuts.slice(0, 20).map((m) => (
                                                 <tr key={m.id} className="border-b border-line/60">
-                                                    <td className="py-2 pr-3">{formatDate(m.move_out_date)}</td>
-                                                    <td className="py-2 px-3 text-ink">{m.room} <span className="text-muted">· {m.tenant_name}</span></td>
-                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(m.deposit)}</td>
-                                                    <td className="py-2 px-3 text-right tabular-nums">{baht(m.deductions_total)}</td>
-                                                    <td className={`py-2 px-3 text-right tabular-nums font-medium ${Number(m.owed_amount) > 0 ? 'text-red-700' : ''}`}>
-                                                        {Number(m.owed_amount) > 0 ? `เพิ่ม ${baht(m.owed_amount)}` : baht(m.refund_amount)}
+                                                    <td className="py-2.5 pr-3">{formatDate(m.move_out_date)}</td>
+                                                    <td className="py-2.5 px-3 text-ink truncate"><span className="font-medium">{m.room}</span> <span className="text-muted">· {m.tenant_name}</span></td>
+                                                    <td className="py-2.5 px-3 text-right tabular-nums">{baht(m.deposit)}</td>
+                                                    <td className="py-2.5 px-3 text-right tabular-nums">{baht(m.deductions_total)}</td>
+                                                    <td className={`py-2.5 px-3 text-right tabular-nums ${Number(m.refund_amount) > 0 ? 'font-medium text-emerald-700' : 'text-muted'}`}>
+                                                        {Number(m.refund_amount) > 0 ? baht(m.refund_amount) : '-'}
                                                     </td>
-                                                    <td className="py-2 pl-3">
+                                                    <td className={`py-2.5 px-3 text-right tabular-nums ${Number(m.owed_amount) > 0 ? 'font-medium text-red-700' : 'text-muted'}`}>
+                                                        {Number(m.owed_amount) > 0 ? baht(m.owed_amount) : '-'}
+                                                    </td>
+                                                    <td className="py-2.5 pl-6">
                                                         {m.refund_status === 'pending' ? <span className="text-sky-700 font-medium">รอคืนเงิน</span> : m.refund_status === 'done' ? <span className="text-emerald-700">คืนแล้ว</span> : <span className="text-muted">ไม่มียอดคืน</span>}
                                                     </td>
                                                 </tr>

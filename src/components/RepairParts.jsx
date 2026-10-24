@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import DatePicker from './DatePicker'
 import { MAX_SLOTS, repairStatuses, repairUrgencies } from '../data/repairs'
-import { formatSize, formatSlot, getRepairImageUrl, isBooked, parsePeriod, periodAt, repairTimeOptions, todayIso, validateImage } from '../lib/repairs'
+import { formatSize, formatSlot, getRepairImageUrl, isBooked, isPastTime, parsePeriod, periodAt, repairTimeOptions, todayIso, validateImage } from '../lib/repairs'
 
 // ป้ายสถานะงานซ่อม (รอดำเนินการ / กำลังดำเนินการ / เสร็จสิ้น) สีตามสถานะ ถ้าไม่รู้จักสถานะจะแสดงเป็นสีเทา
 export function RepairStatusBadge({ status }) {
@@ -219,7 +219,7 @@ function TimeSelect({ value, options, isBlocked, onChange, disabled, label, alig
     )
 }
 
-// เลือกเวลาเข้าซ่อม 09:00, 10:00, ..., 17:00 ค่าเป็นช่วงนัด 1 ครั้ง "09:00-10:00"
+// เลือกเวลาเข้าซ่อม 09:00, 10:00, ..., 18:00 ค่าเป็นช่วงนัด 1 ครั้ง "09:00-10:00"
 // isBlocked(period) = เวลานี้เลือกไม่ได้ (มีนัดของห้องอื่นแล้ว)
 function TimePicker({ value, onChange, isBlocked, disabled = false, selectClassName = 'w-full border border-line rounded-xl px-3 py-2 text-sm bg-white outline-none focus:border-secondary' }) {
     const { start } = parsePeriod(value)
@@ -270,7 +270,7 @@ export function SlotPicker({ slots, onChange, booked = [], disabled = false }) {
                         value={s.period}
                         onChange={(v) => update(i, 'period', v)}
                         // ปิดเวลาที่มีนัดของห้องอื่นแล้ว และเวลาที่ตัวเลือกอื่นในวันเดียวกันเลือกไปแล้ว
-                        isBlocked={(p) => Boolean(s.date) && (isBooked(booked, s.date, p) || rows.some((o, j) => j !== i && o.date === s.date && o.period === p))}
+                        isBlocked={(p) => Boolean(s.date) && (isPastTime(s.date, p) || isBooked(booked, s.date, p) || rows.some((o, j) => j !== i && o.date === s.date && o.period === p))}
                         disabled={disabled}
                     />
                     {/* ช่องแรกลบไม่ได้ ลบได้เฉพาะช่องที่เพิ่มเอง (ช่องแรกเว้นที่ว่างเท่าปุ่ม ให้ช่องวันที่กว้างเท่ากันทุกแถว) */}

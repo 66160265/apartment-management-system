@@ -72,30 +72,22 @@ describe('notYetDueCount / uniqueRooms', () => {
 describe('attentionItems', () => {
     it('ไม่มีอะไรต้องจัดการ = รายการว่าง', () => {
         expect(attentionItems({})).toEqual([])
-        expect(attentionItems({ reviewInvoices: 0, refundInvoices: { count: 0, amount: 0 } })).toEqual([])
+        expect(attentionItems({ reviewInvoices: 0 })).toEqual([])
     })
 
-    it('แสดงเฉพาะรายการที่มี เรียงตามความเร่งด่วน (สลิปก่อน ซ่อม แล้วเงินที่ต้องคืน)', () => {
-        const items = attentionItems({
-            reviewInvoices: 3,
-            repairReviews: 1,
-            pendingRepairs: 2,
-            refundInvoices: { count: 1, amount: 300 },
-            depositRefunds: { count: 2, amount: 6000 },
-        })
-        expect(items.map((i) => i.key)).toEqual(['invoice-slips', 'repair-slips', 'repairs', 'refunds', 'deposits'])
+    it('แสดงเฉพาะรายการที่มี เรียงตามความเร่งด่วน (สลิปก่อน แล้วซ่อม)', () => {
+        const items = attentionItems({ reviewInvoices: 3, repairReviews: 1, pendingRepairs: 2 })
+        expect(items.map((i) => i.key)).toEqual(['invoice-slips', 'repair-slips', 'repairs'])
         expect(items[0]).toMatchObject({ count: 3, to: '/invoices' })
-        expect(items[3]).toMatchObject({ count: 1, amount: 300 })
-        expect(items[4]).toMatchObject({ count: 2, amount: 6000, to: '/tenants' })
     })
 
     it('ข้ามรายการที่เป็นศูนย์ ไม่ทำให้รายการอื่นหาย', () => {
-        const items = attentionItems({ reviewInvoices: 0, repairReviews: 4, pendingRepairs: 0, depositRefunds: { count: 1, amount: 100 } })
-        expect(items.map((i) => i.key)).toEqual(['repair-slips', 'deposits'])
+        const items = attentionItems({ reviewInvoices: 0, repairReviews: 4, pendingRepairs: 0, uninvoicedRooms: 2 })
+        expect(items.map((i) => i.key)).toEqual(['repair-slips', 'uninvoiced'])
     })
 
     it('ทุกรายการลิงก์ไปหน้าที่มีอยู่จริงในระบบ', () => {
-        const items = attentionItems({ reviewInvoices: 1, repairReviews: 1, pendingRepairs: 1, refundInvoices: { count: 1, amount: 1 }, depositRefunds: { count: 1, amount: 1 } })
+        const items = attentionItems({ reviewInvoices: 1, repairReviews: 1, pendingRepairs: 1, uninvoicedRooms: 1, expiringContracts: 1 })
         for (const i of items) expect(['/invoices', '/repairs', '/tenants']).toContain(i.to)
     })
 })
