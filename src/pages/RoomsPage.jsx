@@ -6,9 +6,6 @@ import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { SkeletonCardGrid } from '../components/Skeleton.jsx'
 
-// ค่าเริ่มต้นของฟอร์มเพิ่มห้องใหม่
-const emptyForm = { number: '', floor: '', status: 'vacant', rent: '', note: '' }
-
 // คลาส Tailwind ของช่องกรอกในฟอร์ม
 const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
 
@@ -27,14 +24,12 @@ const summaryCards = [
     { value: 'maintenance', label: 'ปรับปรุง', icon: 'wrench', tone: 'bg-amber-50 text-amber-700' },
 ]
 
-// onDelete มีเฉพาะตอนแก้ไขห้องเดิม tenantName = ชื่อผู้เช่าของห้องนี้ (ถ้ามี ลบไม่ได้)
-function RoomModal({ title, initial, tenantName, onSave, onDelete, onCancel }) {
-    // ค่าในฟอร์ม, error, กำลังบันทึก, กำลังยืนยันลบ, กำลังลบ
+// หน้าต่างแก้ไขห้องเดิม (ไม่มีเพิ่ม/ลบห้องในหน้าเว็บ)
+function RoomModal({ title, initial, onSave, onCancel }) {
+    // ค่าในฟอร์ม, error, กำลังบันทึก
     const [form, setForm] = useState(initial)
     const [error, setError] = useState('')
     const [saving, setSaving] = useState(false)
-    const [confirming, setConfirming] = useState(false)
-    const [deleting, setDeleting] = useState(false)
 
     // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key และล้างข้อความ error
     const set = (key) => (e) => {
@@ -58,17 +53,6 @@ function RoomModal({ title, initial, tenantName, onSave, onDelete, onCancel }) {
         })
         setSaving(false)
         if (err) setError(err)
-    }
-
-    // ลบห้องที่กำลังแก้ไข แสดงข้อความ error ถ้าลบไม่สำเร็จ
-    const handleDelete = async () => {
-        setDeleting(true)
-        const err = await onDelete(initial)
-        setDeleting(false)
-        if (err) {
-            setConfirming(false)
-            setError(err)
-        }
     }
 
     return (
@@ -104,46 +88,12 @@ function RoomModal({ title, initial, tenantName, onSave, onDelete, onCancel }) {
                     <textarea rows="3" className={inputClass} value={form.note} onChange={set('note')} />
                 </label>
                 {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
-                {/* กำลังยืนยันลบ: กล่องยืนยันสีแดง / ปกติ: ปุ่มลบห้อง (ซ้าย) + ยกเลิก/บันทึก (ขวา) */}
-                {confirming ? (
-                    <div className="rounded-xl bg-red-50 ring-1 ring-red-200 p-4 flex flex-col gap-3">
-                        <p className="text-sm text-red-900">
-                            ลบห้อง <b>{initial.number}</b> ออกจากระบบถาวร การลบไม่สามารถกู้คืนได้
-                        </p>
-                        <div className="flex justify-end gap-2">
-                            <button type="button" onClick={() => setConfirming(false)} disabled={deleting} className="border border-line bg-white text-muted hover:bg-sand px-4 py-1.5 rounded-xl">ยกเลิก</button>
-                            <button type="button" onClick={handleDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-xl">
-                                {deleting ? 'กำลังลบ...' : 'ยืนยันลบห้อง'}
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex items-center justify-between gap-2">
-                        {onDelete ? (
-                            <button
-                                type="button"
-                                onClick={() => setConfirming(true)}
-                                disabled={!!tenantName}
-                                title={tenantName ? `ห้องนี้มีผู้เช่า (${tenantName}) ต้องลบผู้เช่าออกก่อน` : undefined}
-                                className="border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent px-4 py-2 rounded-xl"
-                            >
-                                ลบห้อง
-                            </button>
-                        ) : (
-                            <span />
-                        )}
-                        <div className="flex gap-2">
-                            <button type="button" onClick={onCancel} className="border border-line text-muted hover:bg-sand px-5 py-2 rounded-xl">ยกเลิก</button>
-                            <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark disabled:opacity-60 text-white px-6 py-2 rounded-xl shadow-card">
-                                {saving ? 'กำลังบันทึก...' : 'บันทึก'}
-                            </button>
-                        </div>
-                    </div>
-                )}
-                {/* บอกเหตุผลที่ลบห้องไม่ได้ */}
-                {onDelete && tenantName && !confirming && (
-                    <p className="text-xs text-muted -mt-2">ห้องนี้มีผู้เช่า ({tenantName}) จึงลบห้องไม่ได้ ต้องลบผู้เช่าออกก่อน</p>
-                )}
+                <div className="flex justify-end gap-2">
+                    <button type="button" onClick={onCancel} className="border border-line text-muted hover:bg-sand px-5 py-2 rounded-xl">ยกเลิก</button>
+                    <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark disabled:opacity-60 text-white px-6 py-2 rounded-xl shadow-card">
+                        {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+                    </button>
+                </div>
             </form>
         </div>
     )
@@ -153,7 +103,7 @@ function RoomModal({ title, initial, tenantName, onSave, onDelete, onCancel }) {
 const fetchRooms = () =>
     Promise.all([supabase.from('rooms').select('*'), supabase.from('tenants').select('room, name')])
 
-// หน้าจัดการห้องพักของแอดมิน: ดูห้องแยกตามชั้น กรองตามสถานะ เพิ่ม แก้ไข และลบห้อง
+// หน้าจัดการห้องพักของแอดมิน: ดูห้องแยกตามชั้น กรองตามสถานะ และแก้ไขข้อมูลห้อง
 function RoomsPage() {
     const [rooms, setRooms] = useState([])
     // ห้อง -> ชื่อผู้เช่า (แสดงบนการ์ดห้อง)
@@ -161,7 +111,7 @@ function RoomsPage() {
     const [loading, setLoading] = useState(true)
     const [loadError, setLoadError] = useState('')
     const [filter, setFilter] = useState('all')
-    // null = ปิด, 'new' = เพิ่มห้อง, ออบเจ็กต์ห้อง = แก้ไขห้องนั้น
+    // null = ปิด, ออบเจ็กต์ห้อง = แก้ไขห้องนั้น
     const [modal, setModal] = useState(null)
 
     // เรียงห้องตามเลขห้อง และสร้างแผนที่ ห้อง -> ชื่อผู้เช่า
@@ -176,7 +126,7 @@ function RoomsPage() {
         setLoading(false)
     }, [])
 
-    // โหลดรายการห้องใหม่ (ใช้หลังบันทึก/ลบ)
+    // โหลดรายการห้องใหม่ (ใช้หลังบันทึก)
     const load = async () => applyResult(await fetchRooms())
 
     // อัปเดตเองเมื่อห้องหรือผู้เช่าเปลี่ยน (เช่น เพิ่ม/ลบผู้เช่า เปลี่ยนสถานะห้อง)
@@ -199,36 +149,18 @@ function RoomsPage() {
     const visible = rooms.filter((r) => filter === 'all' || r.status === filter)
     const floors = [...new Set(visible.map((r) => r.floor))].sort((a, b) => a - b)
 
-    // ลบห้อง: ห้องที่มีผู้เช่า หรือมีประวัติใบแจ้งหนี้/แจ้งซ่อม ลบไม่ได้ (ข้อมูลอ้างอิงห้องนี้อยู่)
-    const handleDelete = async (room) => {
-        if (tenantNames[room.number]) return 'ห้องนี้มีผู้เช่าอยู่ ต้องลบผู้เช่าออกก่อน'
-        const { data, error } = await supabase.from('rooms').delete().eq('number', room.number).select('number')
-        if (error) {
-            return error.code === '23503'
-                ? 'ลบไม่ได้ เพราะห้องนี้มีประวัติใบแจ้งหนี้หรือแจ้งซ่อมอยู่ หากไม่ต้องการใช้ห้องนี้แล้ว ให้เปลี่ยนสถานะเป็น "ปรับปรุง" แทน'
-                : `ลบไม่สำเร็จ: ${error.message}`
-        }
-        if (!data?.length) return 'ลบไม่สำเร็จ ไม่พบห้องนี้หรือไม่มีสิทธิ์ลบ'
-        await load()
-        setModal(null)
-        return null
-    }
-
-    // บันทึกห้อง: กันเลขห้องซ้ำ แล้วเพิ่มห้องใหม่หรืออัปเดตห้องเดิม
+    // บันทึกการแก้ไขห้อง: กันเลขห้องซ้ำ
     const handleSave = async (data) => {
-        const editing = modal !== 'new' ? modal.number : null
+        const editing = modal.number
         if (rooms.some((r) => r.number === data.number && r.number !== editing)) {
             return 'เลขห้องนี้มีอยู่แล้ว'
         }
         // ห้องที่มีผู้เช่า: เปลี่ยนเลขห้องไม่ได้ (ชื่อผู้ใช้ผูกกับเลขห้อง) และสถานะต้องเป็น "มีผู้เช่า"
-        if (editing && tenantNames[editing]) {
+        if (tenantNames[editing]) {
             if (data.number !== editing) return 'ห้องนี้มีผู้เช่าอยู่ ไม่สามารถเปลี่ยนเลขห้องได้'
             if (data.status !== 'occupied') return 'ห้องนี้มีผู้เช่าอยู่ สถานะต้องเป็น "มีผู้เช่า" (หากผู้เช่าย้ายออก ให้ลบผู้เช่าก่อน)'
         }
-        // แก้ไข = update ตามเลขห้องเดิม, เพิ่มใหม่ = insert
-        const { error } = editing
-            ? await supabase.from('rooms').update(data).eq('number', editing)
-            : await supabase.from('rooms').insert(data)
+        const { error } = await supabase.from('rooms').update(data).eq('number', editing)
         if (error) return `บันทึกไม่สำเร็จ: ${error.message}`
         await load()
         setModal(null)
@@ -239,15 +171,6 @@ function RoomsPage() {
             <PageHeader
                 title="จัดการห้องพัก"
                 subtitle="ดูสถานะของทุกห้อง ค่าเช่า และผู้เช่าที่พักอยู่"
-                actions={
-                    <button
-                        onClick={() => setModal('new')}
-                        className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl shadow-card"
-                    >
-                        <Icon name="plus" className="w-4 h-4" />
-                        เพิ่มห้องพัก
-                    </button>
-                }
             />
 
             <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6">
@@ -320,15 +243,13 @@ function RoomsPage() {
                 ))}
             </div>
 
-            {/* หน้าต่างเพิ่ม/แก้ไขห้อง */}
+            {/* หน้าต่างแก้ไขห้อง */}
             {modal && (
                 <RoomModal
-                    key={modal === 'new' ? 'new' : modal.number}
-                    title={modal === 'new' ? 'เพิ่มห้องใหม่' : `แก้ไขห้อง ${modal.number}`}
-                    initial={modal === 'new' ? emptyForm : modal}
-                    tenantName={modal === 'new' ? undefined : tenantNames[modal.number]}
+                    key={modal.number}
+                    title={`แก้ไขห้อง ${modal.number}`}
+                    initial={modal}
                     onSave={handleSave}
-                    onDelete={modal === 'new' ? undefined : handleDelete}
                     onCancel={() => setModal(null)}
                 />
             )}
