@@ -148,6 +148,10 @@ language plpgsql
 security definer set search_path = public
 as $$
 begin
+  -- ไฟล์สลิปต้องอยู่ในที่เก็บจริง (กันส่งชื่อไฟล์ที่ไม่มีอยู่ ทำให้แอดมินเปิดดูไม่ได้)
+  if not exists (select 1 from storage.objects where bucket_id = 'slips' and name = p_path) then
+    raise exception 'ไม่พบไฟล์สลิป กรุณาอัปโหลดใหม่';
+  end if;
   update public.invoices
      set slip_path = p_path,
          slip_uploaded_at = now(),
@@ -1232,6 +1236,9 @@ begin
   if p_path is null or p_path not like auth.uid()::text || '/%' then
     raise exception 'ที่อยู่ไฟล์สลิปไม่ถูกต้อง';
   end if;
+  if not exists (select 1 from storage.objects where bucket_id = 'slips' and name = p_path) then
+    raise exception 'ไม่พบไฟล์สลิป กรุณาอัปโหลดใหม่';
+  end if;
 
   begin
     insert into public.repair_payments (repair_id, user_id, amount, slip_path)
@@ -1517,8 +1524,12 @@ create table if not exists public.move_outs (
 );
 
 create index if not exists move_outs_room_idx on public.move_outs (room, created_at desc);
--- ผู้เช่า 1 สัญญา (ห้อง + วันเริ่มสัญญา) บันทึกย้ายออกได้ครั้งเดียว
-create unique index if not exists move_outs_tenancy_key on public.move_outs (room, start_date) where start_date is not null;
+-- ผู้เช่า 1 สัญญา (ห้อง + วันเริ่มสัญญา + ตัวผู้เช่า) บันทึกย้ายออกได้ครั้งเดียว
+-- ต้องรวมตัวผู้เช่าด้วย ไม่งั้นผู้เช่าคนใหม่ที่เริ่มสัญญาวันเดียวกับคนเก่าที่เพิ่งย้ายออกจากห้องเดียวกัน จะถูกนับว่าย้ายออกไปแล้ว
+drop index if exists public.move_outs_tenancy_key;
+create unique index if not exists move_outs_tenancy_key
+  on public.move_outs (room, start_date, (coalesce(tenant_user_id, '00000000-0000-0000-0000-000000000000'::uuid)))
+  where start_date is not null;
 
 alter table public.move_outs enable row level security;
 drop policy if exists "move outs admin read" on public.move_outs;
@@ -1562,7 +1573,10 @@ begin
   if not found then
     raise exception 'ไม่พบผู้เช่าห้องนี้';
   end if;
-  if exists (select 1 from public.move_outs where room = t.room and start_date is not distinct from t.start_date) then
+  if exists (
+    select 1 from public.move_outs
+     where room = t.room and start_date is not distinct from t.start_date and tenant_user_id is not distinct from t.user_id
+  ) then
     raise exception 'ห้องนี้บันทึกการย้ายออกของสัญญานี้แล้ว';
   end if;
 
@@ -2971,6 +2985,14 @@ create trigger repairs_admin_lock before update on public.repairs
 -- hardening
 -- ============================================================
 -- ปิดฟังก์ชันที่คนนอกเรียกได้ ตั้ง search_path ให้ฟังก์ชันช่วย และระบบบังคับเปลี่ยนรหัสผ่านครั้งแรก
+
+-- ============================================================
+-- 0) บทบาท anon (คนที่ยังไม่ได้ login) ไม่ต้องแตะตารางใดเลย ทุก policy ให้เฉพาะ authenticated อยู่แล้ว (RLS กันไว้)
+--    ปิดสิทธิ์ระดับตารางด้วย เป็นชั้นป้องกันที่สอง และไม่ให้ตารางที่สร้างใหม่ภายหลังเปิดให้ anon โดยอัตโนมัติ
+-- ============================================================
+
+revoke all on all tables in schema public from anon;
+alter default privileges in schema public revoke all on tables from anon;
 
 -- ============================================================
 -- 1) ฟังก์ชัน trigger ไม่ให้ใครเรียกผ่าน API (/rest/v1/rpc/...)

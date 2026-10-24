@@ -34,7 +34,11 @@ function MoveOutSection({ tenant }) {
 
     const load = async () => {
         const [rec, inv] = await Promise.all([
-            supabase.from('move_outs').select('*').eq('room', tenant.room).eq('start_date', tenant.startDate).maybeSingle(),
+            // สัญญาของผู้เช่าคนนี้เท่านั้น (ผู้เช่าคนใหม่ที่เริ่มสัญญาวันเดียวกับคนเก่าที่ย้ายออกจากห้องเดียวกัน ไม่นับเป็นรายการเดียวกัน)
+            (tenant.userId
+                ? supabase.from('move_outs').select('*').eq('room', tenant.room).eq('start_date', tenant.startDate).eq('tenant_user_id', tenant.userId)
+                : supabase.from('move_outs').select('*').eq('room', tenant.room).eq('start_date', tenant.startDate).is('tenant_user_id', null)
+            ).maybeSingle(),
             supabase.from('invoices').select('*').eq('room', tenant.room),
         ])
         // ตารางยังไม่มี = ยังไม่ได้รัน ส่วน move-out ของไฟล์ migration ซ่อนส่วนนี้ (ไม่ให้แอดมินกดแล้วพัง)
