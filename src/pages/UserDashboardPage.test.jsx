@@ -91,7 +91,7 @@ describe('หน้าภาพรวมผู้เช่า (เรนเด�
         expect(t).toContain('มี 2 ใบที่ยังต้องชำระ · รวม ฿3,500')
         expect(container.querySelectorAll('section button').length).toBe(2)
         // การ์ดยอดแสดงใบเก่าสุด
-        expect(container.querySelector('.text-3xl').textContent).toBe('฿2,500')
+        expect(container.querySelector('.tabular-nums.font-bold').textContent.trim()).toBe('฿2,500')
     })
 
     it('ค้างใบเดียว: ไม่แสดงแถบรวม (การ์ดการดำเนินการครอบคลุมแล้ว)', async () => {

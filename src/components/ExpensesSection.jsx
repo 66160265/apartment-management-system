@@ -134,7 +134,7 @@ function ExpensesSection({ month, expenses, invoices, onChanged }) {
             {list.length === 0 ? (
                 <p className="text-sm text-muted text-center py-3">ยังไม่มีค่าใช้จ่ายของเดือนนี้</p>
             ) : (
-                <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 text-sm">
+                <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 text-sm">
                     {list.map((e) => {
                         const style = categoryStyle[e.category] ?? categoryStyle.other
                         // "อื่น ๆ" แสดงชื่อที่พิมพ์ไว้แทนชื่อประเภท
@@ -159,7 +159,7 @@ function ExpensesSection({ month, expenses, invoices, onChanged }) {
                                             {e.note && <span className="block truncate text-xs text-muted">{e.note}</span>}
                                         </span>
                                         <span className="tabular-nums font-semibold text-ink whitespace-nowrap">{baht(e.amount)}</span>
-                                        <button type="button" onClick={() => setConfirmId(e.id)} disabled={busy} aria-label={`ลบ ${name}`} title="ลบรายการ" className="p-1.5 -mr-1 rounded-lg text-muted hover:text-red-600 hover:bg-red-50">
+                                        <button type="button" onClick={() => setConfirmId(e.id)} disabled={busy} aria-label={`ลบ ${name}`} title="ลบรายการ" className="p-2.5 lg:p-1.5 -mr-1 rounded-lg text-muted hover:text-red-600 hover:bg-red-50">
                                             <Icon name="trash" className="w-4 h-4" />
                                         </button>
                                     </>

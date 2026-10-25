@@ -95,7 +95,7 @@ function NotificationsPage() {
                                     role="tab"
                                     aria-selected={active}
                                     onClick={() => setActiveTab(t.key)}
-                                    className={`flex items-center gap-2 px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                                    className={`flex items-center gap-2 px-4 py-3 sm:py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
                                         active ? 'border-primary text-primary-dark font-medium' : 'border-transparent text-muted hover:text-primary-dark hover:bg-sand/60'
                                     }`}
                                 >
@@ -109,7 +109,7 @@ function NotificationsPage() {
                         <button
                             onClick={markAllRead}
                             disabled={unreadCount === 0}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-primary-dark hover:bg-mist/50 disabled:opacity-40 disabled:hover:bg-transparent"
+                            className="flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-primary-dark hover:bg-mist/50 disabled:opacity-40 disabled:hover:bg-transparent"
                         >
                             <Icon name="checkCircle" className="w-4 h-4" />
                             อ่านทั้งหมด
@@ -117,7 +117,7 @@ function NotificationsPage() {
                         <button
                             onClick={() => setConfirmClear(true)}
                             disabled={readCount === 0}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                            className="flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent"
                         >
                             <Icon name="trash" className="w-4 h-4" />
                             ล้างที่อ่านแล้ว
@@ -137,7 +137,7 @@ function NotificationsPage() {
                                 type="button"
                                 aria-pressed={active}
                                 onClick={() => setTypeFilter(t.key)}
-                                className={`min-w-0 whitespace-nowrap flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1.5 rounded-full text-xs sm:text-sm ring-1 transition-colors ${active ? 'bg-primary text-white ring-primary' : 'bg-white text-ink ring-line hover:bg-sand/60'}`}
+                                className={`min-w-0 whitespace-nowrap flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-2.5 lg:py-1.5 rounded-full text-xs sm:text-sm ring-1 transition-colors ${active ? 'bg-primary text-white ring-primary' : 'bg-white text-ink ring-line hover:bg-sand/60'}`}
                             >
                                 {t.key !== 'all' && <Icon name={typeStyle[t.key].icon} className="hidden sm:block w-4 h-4" />}
                                 <span className="sm:hidden">{t.short}</span>

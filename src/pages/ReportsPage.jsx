@@ -353,7 +353,7 @@ function ReportsPage() {
                         {/* สถิติแจ้งซ่อม (ทั้งหมดในระบบ ไม่นับเรื่องที่ยกเลิก) */}
                         <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
                             <h2 className="font-medium text-primary-dark">สถิติแจ้งซ่อม</h2>
-                            <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
+                            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
                                 <Stat label="เรื่องแจ้งซ่อมทั้งหมด" value={rstats.total} hint="ไม่นับเรื่องที่ยกเลิก" />
                                 <Stat label="ซ่อมเสร็จแล้ว" value={rstats.doneCount} tone="text-emerald-700" />
                                 <Stat label="ยังไม่เสร็จ" value={rstats.openCount} hint={rstats.overdue.length > 0 ? `ค้างเกิน 7 วัน ${rstats.overdue.length} เรื่อง` : undefined} tone={rstats.overdue.length > 0 ? 'text-amber-700' : 'text-primary-dark'} />
