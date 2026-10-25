@@ -7,7 +7,7 @@ import { baht, currentMonth, formatMonth } from '../lib/billing'
 import { fetchSlipUsage, quotaStatus } from '../lib/slipUsage'
 import { attentionItems, expiringContracts, notYetDueCount, overdueInvoices, uniqueRooms, uninvoicedRooms } from '../lib/dashboard'
 import { useRealtimeReload } from '../lib/realtime'
-import { issueMonthOf, monthlySummary, occupancy } from '../lib/reports'
+import { billMonthOf, issueMonthOf, monthlySummary, occupancy } from '../lib/reports'
 import { formatPeriod, normalizePeriod, todayIso } from '../lib/repairs'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
@@ -27,7 +27,7 @@ async function fetchDashboardData() {
         selectAll(() => supabase.from('invoice_payments').select('amount, confirmed_at').order('id')),
         selectAll(() => supabase.from('repair_payments').select('amount, status, reviewed_at').order('id')),
         supabase.from('repairs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('tenants').select('room, end_date'),
+        supabase.from('tenants').select('room, start_date, end_date'),
         fetchSlipUsage(),
         // นัดซ่อมของวันนี้ (เวลาไทย)
         supabase.from('repairs').select('*').eq('status', 'in_progress').eq('appointment_date', todayIso()),
@@ -94,12 +94,12 @@ function AdminDashboardPage() {
         setNow(new Date())
         setLoadError('')
 
-        // หากเดือนปัจจุบันยังไม่มีใบแจ้งหนี้ แต่มีในเดือนอื่น ให้เลือกเดือนล่าสุดที่มีข้อมูล
+        // เดือนนี้ยังไม่ได้ออกบิล (บิลของเดือนที่แล้ว) แต่มีบิลเดือนอื่น ให้เลือกเดือนที่ออกบิลล่าสุด
         if (!hasAutoSelectedMonth.current) {
             hasAutoSelectedMonth.current = true
             const months = [...new Set(next.invoices.map((i) => i.month))].sort()
-            if (!next.invoices.some((i) => i.month === currentMonth()) && months.length > 0) {
-                setSelectedMonth(months[months.length - 1])
+            if (!next.invoices.some((i) => i.month === billMonthOf(currentMonth())) && months.length > 0) {
+                setSelectedMonth(issueMonthOf(months[months.length - 1]))
             }
         }
     }, [])
@@ -156,7 +156,9 @@ function AdminDashboardPage() {
             reviewInvoices: data.invoices.filter((i) => i.status === 'review').length,
             repairReviews: data.repairPayments.filter((p) => p.status === 'review').length,
             pendingRepairs: data.pendingRepairs,
-            uninvoicedRooms: uninvoicedRooms(data.rooms, data.invoices, currentMonth()).length,
+            // บิลของเดือนที่แล้ว (ออกในเดือนนี้)
+            uninvoicedRooms: uninvoicedRooms(data.rooms, data.invoices, billMonthOf(currentMonth()), data.tenants).length,
+            uninvoicedMonth: billMonthOf(currentMonth()),
             expiringContracts: expiringContracts(data.tenants, now).length,
             slipQuota: slipQuota(data.slipUsage, settings.slipQuota),
         })
@@ -250,7 +252,7 @@ function AdminDashboardPage() {
                     hintClassName="hidden sm:block"
                     title={`การเงินเดือน ${formatMonth(selectedMonth)}`}
                     action={<MonthPicker value={selectedMonth} onChange={setSelectedMonth} marked={monthsWithInvoices} />}
-                    hint={`เรียกเก็บและยังค้าง = บิลเดือน ${formatMonth(summary.billMonth)} ที่ออกในเดือนนี้ · ได้รับ = เงินที่รับจริงในเดือนนี้ (ค่าห้อง+ค่าซ่อม รวมค่าปรับ)`}
+                    hint={`เรียกเก็บและยังค้าง = บิลเดือน ${formatMonth(summary.billMonth)} (ออกเดือน ${formatMonth(selectedMonth)}) · ได้รับ = เงินที่รับจริงในเดือนนี้ (ค่าห้อง+ค่าซ่อม รวมค่าปรับ)`}
                 >
                     <dl className="flex flex-col gap-1.5 sm:gap-2">
                         <div className="flex items-baseline justify-between gap-3">

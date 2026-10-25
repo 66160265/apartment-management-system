@@ -100,19 +100,19 @@ describe('หน้าภาพรวมแอดมิน (เรนเดอ�
     })
 
     it('ไม่มีงานค้างเลย: แสดงข้อความว่าไม่มีงานค้าง', async () => {
-        db.invoices = [inv({ status: 'paid', paid_amount: 1000, month: monthNow() })]
+        db.invoices = [inv({ status: 'paid', paid_amount: 1000, month: monthAgo() })]
         db.rooms = [{ number: '101', status: 'occupied' }]
         db.tenants = [{ room: '101', end_date: iso(+200) }]
         await mount()
         expect(text()).toContain('ไม่มีงานค้าง')
     })
 
-    it('เตือนห้องที่ยังไม่ออกบิลเดือนนี้ และสัญญาที่หมดหรือใกล้หมด', async () => {
-        db.invoices = [inv({ status: 'paid', paid_amount: 1000, month: monthNow(), room: '101' })]
+    it('เตือนห้องที่ยังไม่ออกบิลของเดือนที่แล้ว และสัญญาที่หมดหรือใกล้หมด', async () => {
+        db.invoices = [inv({ status: 'paid', paid_amount: 1000, month: monthAgo(), room: '101' })]
         db.rooms = [{ number: '101', status: 'occupied' }, { number: '102', status: 'occupied' }, { number: '103', status: 'vacant' }]
         db.tenants = [{ room: '101', end_date: iso(+10) }, { room: '102', end_date: iso(-3) }, { room: '104', end_date: iso(+90) }]
         await mount()
-        expect(text()).toContain('ห้องที่ยังไม่ออกบิลเดือนนี้')
+        expect(text()).toContain('ห้องที่ยังไม่ออกบิลเดือน')
         expect(text()).toContain('สัญญาใกล้หมด (ภายใน 30 วัน)')
         expect(text()).not.toContain('ไม่มีงานค้าง')
     })
@@ -153,8 +153,6 @@ describe('หน้าภาพรวมแอดมิน (เรนเดอ�
         db.invoices = [
             inv({ month: m, total: 1000, status: 'paid', paid_amount: 1000 }),
             inv({ month: m, room: '102', total: 2000, status: 'pending', paid_amount: 500, due_date: iso(+5) }),
-            // ใบของเดือนนี้ ทำให้หน้าเลือกเดือนปัจจุบันเป็นเดือนที่แสดง (เดือนก่อนหน้าจึงเป็นบิลที่เรียกเก็บ)
-            inv({ month: monthNow(), room: '103', total: 0, status: 'paid', paid_amount: 0 }),
         ]
         db.rooms = [{ number: '101', status: 'occupied' }]
         db.invoice_payments = [

@@ -14,8 +14,10 @@ describe('BulkInvoiceForm (แสดงผลครั้งแรก)', () => {
         { room: '103', name: 'ไม่มีบัญชี', user_id: null },
     ]
     const rents = { 101: 3500, 102: 4000, 103: 3000 }
+    // หน้านี้เริ่มที่บิลของเดือนที่แล้ว
     const now = new Date()
-    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const last = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const thisMonth = `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}`
     const invoices = [
         { room: '101', month: '2020-01', water_curr: 110, elec_curr: 560 },
         { room: '102', month: thisMonth, water_curr: 1, elec_curr: 1 },

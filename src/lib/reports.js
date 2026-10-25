@@ -289,7 +289,7 @@ export const monthlyColumns = [
     { header: 'ค่าซ่อมที่หอพักจ่าย', value: (r) => r.repairCost },
     { header: 'ค่าใช้จ่ายของหอพัก', value: (r) => r.expenseTotal },
     { header: 'คงเหลือ (รับเงินจริง − ค่าซ่อมที่หอพักจ่าย − ค่าใช้จ่ายของหอพัก)', value: (r) => r.net },
-    { header: 'ค่าปรับของใบที่ออกเดือนนี้ที่ชำระแล้ว', value: (r) => r.lateFees },
+    { header: 'ค่าปรับที่ชำระแล้ว (ของบิลเดือนนั้น)', value: (r) => r.lateFees },
     { header: 'ใบที่ยังค้าง', value: (r) => r.unpaidCount },
     { header: 'ยอดค้าง ณ วันนี้', value: (r) => r.outstanding },
 ]
