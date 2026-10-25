@@ -98,15 +98,25 @@ textarea {
   cursor: text;
 }
 
-/* จอโทรศัพท์: ช่องกรอกต้องมีตัวอักษรอย่างน้อย 16px ไม่งั้น iOS จะซูมหน้าเองตอนแตะ */
+/* จอโทรศัพท์: ช่องกรอกต้องมีตัวอักษรอย่างน้อย 16px ไม่งั้น iOS จะซูมหน้าเองตอนแตะ
+   (ช่องที่ปิดไว้ แตะไม่ได้ จึงไม่ซูม ใช้ขนาดตัวอักษรปกติ ช่องแคบจะได้แสดงข้อความครบ) */
 @media (max-width: 639px) {
-  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
-  select,
-  textarea {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(:disabled),
+  select:not(:disabled),
+  textarea:not(:disabled) {
     font-size: 16px;
   }
 }
 
 html {
   -webkit-text-size-adjust: 100%;
+}
+
+/* จอโทรศัพท์: ลดขนาดพื้นฐาน (rem) จาก 16px เป็น 14px ตัวอักษร ระยะห่าง และกล่องทั้งระบบเล็กลงพร้อมกัน ไม่เทอะทะ
+   text-xs ไม่ให้เล็กกว่า ~11px (ภาษาไทยเล็กกว่านี้อ่านยาก) ช่องกรอกยังคง 16px ตามกฎด้านบน */
+@media (max-width: 639px) {
+  :root {
+    font-size: 14px;
+    --text-xs: 0.8rem;
+  }
 }

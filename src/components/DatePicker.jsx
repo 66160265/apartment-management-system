@@ -34,6 +34,8 @@ function DatePicker({ value, onChange, min, align = 'left', placeholder = 'เ�
     // ขณะเปิดปฏิทิน: คลิกด้านนอกหรือกด Esc ให้ปิด
     useEffect(() => {
         if (!open) return
+        // ปฏิทินลอยอยู่ล่างจอ: เลื่อนหน้าให้เห็นทั้งก้อน (ไม่ต้องให้ผู้ใช้เลื่อนหาเอง)
+        const frame = requestAnimationFrame(() => ref.current?.querySelector('[data-popover]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
         // คลิกนอกปฏิทินให้ปิด
         const onClick = (e) => {
             if (ref.current && !ref.current.contains(e.target)) setOpen(false)
@@ -43,6 +45,7 @@ function DatePicker({ value, onChange, min, align = 'left', placeholder = 'เ�
         document.addEventListener('mousedown', onClick)
         document.addEventListener('keydown', onKey)
         return () => {
+            cancelAnimationFrame(frame)
             document.removeEventListener('mousedown', onClick)
             document.removeEventListener('keydown', onKey)
         }
@@ -97,11 +100,14 @@ function DatePicker({ value, onChange, min, align = 'left', placeholder = 'เ�
             </button>
 
             {/* ป็อปอัปปฏิทิน */}
+            {/* จอมือถือ: เด้งขึ้นเป็นแผ่นด้านล่างจอพร้อมฉากมืด (ไม่ให้ปฏิทินหลุดขอบจอ/อยู่ใต้นิ้ว) จอกว้างขึ้น: ลอยใต้ช่องเหมือนเดิม */}
             {open && (
-                <div className={`absolute z-40 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-line p-3 ${align === 'right' ? 'right-0' : 'left-0'}`}>
+                <>
+                <div className="fixed inset-0 z-40 bg-black/30 sm:hidden" onClick={() => setOpen(false)} aria-hidden="true" />
+                <div data-popover className={`fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm sm:absolute sm:inset-x-auto sm:bottom-auto sm:z-40 sm:mx-0 sm:mt-2 sm:w-72 sm:max-w-none bg-white rounded-2xl shadow-xl border border-line p-3 ${align === 'right' ? 'sm:right-0' : 'sm:left-0'}`}>
                     {/* แถบเลือกเดือน/ปี: ‹ เดือน ปี › */}
                     <div className="flex items-center gap-1 mb-2">
-                        <button type="button" onClick={() => shiftMonth(-1)} aria-label="เดือนก่อนหน้า" className="p-1.5 rounded-lg hover:bg-mist/50">
+                        <button type="button" onClick={() => shiftMonth(-1)} aria-label="เดือนก่อนหน้า" className="p-2.5 sm:p-1.5 rounded-lg hover:bg-mist/50">
                             <Icon name="chevronLeft" className="w-4 h-4" />
                         </button>
                         <select
@@ -124,7 +130,7 @@ function DatePicker({ value, onChange, min, align = 'left', placeholder = 'เ�
                                 <option key={y} value={y}>{y + 543}</option>
                             ))}
                         </select>
-                        <button type="button" onClick={() => shiftMonth(1)} aria-label="เดือนถัดไป" className="p-1.5 rounded-lg hover:bg-mist/50">
+                        <button type="button" onClick={() => shiftMonth(1)} aria-label="เดือนถัดไป" className="p-2.5 sm:p-1.5 rounded-lg hover:bg-mist/50">
                             <Icon name="chevronRight" className="w-4 h-4" />
                         </button>
                     </div>
@@ -148,7 +154,7 @@ function DatePicker({ value, onChange, min, align = 'left', placeholder = 'เ�
                                     type="button"
                                     disabled={blocked}
                                     onClick={() => pick(iso)}
-                                    className={`mx-auto w-9 h-9 rounded-full text-sm transition-colors ${
+                                    className={`mx-auto w-10 h-10 sm:w-9 sm:h-9 rounded-full text-sm transition-colors ${
                                         selected
                                             ? 'bg-primary text-white font-medium'
                                             : blocked
@@ -166,10 +172,11 @@ function DatePicker({ value, onChange, min, align = 'left', placeholder = 'เ�
 
                     {/* ปุ่มเลือกวันนี้ และปิดปฏิทิน */}
                     <div className="flex justify-between mt-2 pt-2 border-t border-line text-xs">
-                        <button type="button" onClick={() => pick(today)} disabled={min && today < min} className="text-primary hover:underline disabled:opacity-40 disabled:no-underline">วันนี้</button>
-                        <button type="button" onClick={() => setOpen(false)} className="text-muted hover:underline">ปิด</button>
+                        <button type="button" onClick={() => pick(today)} disabled={min && today < min} className="text-primary hover:underline disabled:opacity-40 disabled:no-underline py-2 px-1 sm:py-0 sm:px-0 text-sm sm:text-xs">วันนี้</button>
+                        <button type="button" onClick={() => setOpen(false)} className="text-muted hover:underline py-2 px-1 sm:py-0 sm:px-0 text-sm sm:text-xs">ปิด</button>
                     </div>
                 </div>
+                </>
             )}
         </div>
     )

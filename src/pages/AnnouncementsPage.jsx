@@ -93,7 +93,7 @@ function Composer({ onPosted }) {
     }
 
     return (
-        <section aria-label="ลงประกาศใหม่" className="bg-white rounded-2xl shadow-card border border-line p-5 flex flex-col gap-4">
+        <section aria-label="ลงประกาศใหม่" className="bg-white rounded-2xl shadow-card border border-line p-4 sm:p-5 flex flex-col gap-4">
             <div className="flex items-center gap-3">
                 <span className="grid place-items-center w-10 h-10 rounded-xl bg-mist/60 text-primary-dark"><Icon name="megaphone" className="w-5 h-5" /></span>
                 <div>
@@ -155,7 +155,7 @@ function AnnouncementCard({ item, isAdmin, onChanged }) {
     const tone = item.important ? 'border-l-amber-500 bg-amber-50/40' : 'border-l-primary bg-white'
 
     return (
-        <article className={`rounded-2xl shadow-card border border-line border-l-4 p-5 flex flex-col gap-3 ${tone}`}>
+        <article className={`rounded-2xl shadow-card border border-line border-l-4 p-4 sm:p-5 flex flex-col gap-3 ${tone}`}>
             {editing ? (
                 <>
                     <AnnouncementForm value={form} onChange={(v) => { setForm(v); setError('') }} disabled={saving} />
@@ -181,8 +181,8 @@ function AnnouncementCard({ item, isAdmin, onChanged }) {
                         </div>
                         {isAdmin && (
                             <div className="flex gap-2">
-                                <button type="button" onClick={() => setEditing(true)} className="border border-line bg-white text-primary-dark hover:bg-mist/40 px-3 py-1 rounded-lg text-sm">แก้ไข</button>
-                                <button type="button" onClick={() => setConfirmDelete(true)} className="border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1 rounded-lg text-sm">ลบ</button>
+                                <button type="button" onClick={() => setEditing(true)} className="border border-line bg-white text-primary-dark hover:bg-mist/40 px-4 py-2 sm:px-3 sm:py-1 rounded-lg text-sm">แก้ไข</button>
+                                <button type="button" onClick={() => setConfirmDelete(true)} className="border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 px-4 py-2 sm:px-3 sm:py-1 rounded-lg text-sm">ลบ</button>
                             </div>
                         )}
                     </div>
@@ -228,7 +228,7 @@ function AnnouncementsPage() {
                 {items === null ? (
                     <SkeletonCards count={3} lines={3} />
                 ) : items === 'unavailable' ? (
-                    <p className="text-sm text-muted bg-white rounded-2xl shadow-card p-5">ยังใช้ระบบประกาศไม่ได้ (ฐานข้อมูลยังไม่ได้เพิ่มส่วนประกาศ) กรุณาติดต่อผู้ดูแลระบบ</p>
+                    <p className="text-sm text-muted bg-white rounded-2xl shadow-card p-4 sm:p-5">ยังใช้ระบบประกาศไม่ได้ (ฐานข้อมูลยังไม่ได้เพิ่มส่วนประกาศ) กรุณาติดต่อผู้ดูแลระบบ</p>
                 ) : items.length === 0 ? (
                     <div className="bg-white rounded-2xl shadow-card border border-line p-10 text-center text-muted flex flex-col items-center gap-2">
                         <Icon name="megaphone" className="w-8 h-8" />

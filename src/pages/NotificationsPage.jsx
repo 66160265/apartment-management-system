@@ -21,6 +21,14 @@ const tabs = [
     { key: 'unread', label: 'ยังไม่อ่าน' },
 ]
 
+// กรองตามประเภท (system = ประกาศ สัญญาเช่า และเรื่องอื่นของระบบ)
+const typeFilters = [
+    { key: 'all', label: 'ทุกประเภท', short: 'ทั้งหมด' },
+    { key: 'repair', label: 'แจ้งซ่อม', short: 'แจ้งซ่อม' },
+    { key: 'invoice', label: 'ใบแจ้งหนี้', short: 'ใบแจ้งหนี้' },
+    { key: 'system', label: 'ประกาศและอื่น ๆ', short: 'ประกาศ' },
+]
+
 // หน้ารายการแจ้งเตือน: ดูรายละเอียด ทำเครื่องหมายอ่านแล้ว และลบแจ้งเตือน
 function NotificationsPage() {
     const navigate = useNavigate()
@@ -29,13 +37,15 @@ function NotificationsPage() {
 
     // แท็บที่เลือก และเปิดหน้าต่างยืนยันล้างรายการที่อ่านแล้ว
     const [activeTab, setActiveTab] = useState('all')
+    const [typeFilter, setTypeFilter] = useState('all')
     const [confirmClear, setConfirmClear] = useState(false)
 
     // แจ้งเตือนที่เปิดดูอยู่มาจาก ?id= ใน URL (เปิดจากกระดิ่งหรือลิงก์ได้), จำนวนที่อ่านแล้ว และรายการตามแท็บ
     const rawId = searchParams.get('id')
     const selected = rawId ? items.find((n) => n.id === rawId) : null
     const readCount = items.length - unreadCount
-    const visible = activeTab === 'unread' ? items.filter((n) => !n.read_at) : items
+    const ofType = typeFilter === 'all' ? items : items.filter((n) => (typeLabels[n.type] ? n.type : 'system') === typeFilter)
+    const visible = activeTab === 'unread' ? ofType.filter((n) => !n.read_at) : ofType
 
     // เปิดรายละเอียดจากลิงก์ (เช่น กดจากกระดิ่ง) ให้ทำเครื่องหมายว่าอ่านแล้ว
     useEffect(() => {
@@ -72,20 +82,20 @@ function NotificationsPage() {
         <div className="p-4 sm:p-6 flex flex-col gap-5">
             <PageHeader flush title="แจ้งเตือน" subtitle="ติดตามความเคลื่อนไหวของใบแจ้งหนี้และงานแจ้งซ่อม" />
 
-            <div className="bg-white rounded-2xl shadow-card p-5">
+            <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
                 {/* แถบด้านบน: แท็บ (พร้อมจำนวน) + ปุ่มอ่านทั้งหมด / ล้างที่อ่านแล้ว */}
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line mb-2">
                     <div role="tablist" aria-label="กรองการแจ้งเตือน" className="flex gap-1">
                         {tabs.map((t) => {
                             const active = activeTab === t.key
-                            const n = t.key === 'all' ? items.length : unreadCount
+                            const n = t.key === 'all' ? ofType.length : ofType.filter((x) => !x.read_at).length
                             return (
                                 <button
                                     key={t.key}
                                     role="tab"
                                     aria-selected={active}
                                     onClick={() => setActiveTab(t.key)}
-                                    className={`flex items-center gap-2 px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                                    className={`flex items-center gap-2 px-4 py-3 sm:py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
                                         active ? 'border-primary text-primary-dark font-medium' : 'border-transparent text-muted hover:text-primary-dark hover:bg-sand/60'
                                     }`}
                                 >
@@ -99,7 +109,7 @@ function NotificationsPage() {
                         <button
                             onClick={markAllRead}
                             disabled={unreadCount === 0}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-primary-dark hover:bg-mist/50 disabled:opacity-40 disabled:hover:bg-transparent"
+                            className="flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-primary-dark hover:bg-mist/50 disabled:opacity-40 disabled:hover:bg-transparent"
                         >
                             <Icon name="checkCircle" className="w-4 h-4" />
                             อ่านทั้งหมด
@@ -107,12 +117,35 @@ function NotificationsPage() {
                         <button
                             onClick={() => setConfirmClear(true)}
                             disabled={readCount === 0}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent"
+                            className="flex items-center gap-1.5 px-3 py-2.5 sm:py-1.5 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-40 disabled:hover:bg-transparent"
                         >
                             <Icon name="trash" className="w-4 h-4" />
                             ล้างที่อ่านแล้ว
                         </button>
                     </div>
+                </div>
+
+                {/* กรองตามประเภท */}
+                {/* จอเล็ก: 4 ปุ่มเท่ากันในแถวเดียว ไม่ต้องเลื่อน (ชื่อสั้น ไม่มีไอคอน) */}
+                <div role="group" aria-label="กรองตามประเภท" className="grid grid-cols-4 gap-1.5 py-2 sm:flex sm:flex-wrap sm:gap-2">
+                    {typeFilters.map((t) => {
+                        const active = typeFilter === t.key
+                        const count = t.key === 'all' ? items.length : items.filter((n) => (typeLabels[n.type] ? n.type : 'system') === t.key).length
+                        return (
+                            <button
+                                key={t.key}
+                                type="button"
+                                aria-pressed={active}
+                                onClick={() => setTypeFilter(t.key)}
+                                className={`min-w-0 whitespace-nowrap flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-2.5 lg:py-1.5 rounded-full text-xs sm:text-sm ring-1 transition-colors ${active ? 'bg-primary text-white ring-primary' : 'bg-white text-ink ring-line hover:bg-sand/60'}`}
+                            >
+                                {t.key !== 'all' && <Icon name={typeStyle[t.key].icon} className="hidden sm:block w-4 h-4" />}
+                                <span className="sm:hidden">{t.short}</span>
+                                <span className="hidden sm:inline">{t.label}</span>
+                                <span className={`text-xs tabular-nums ${active ? 'text-white/80' : 'text-muted'}`}>{count}</span>
+                            </button>
+                        )
+                    })}
                 </div>
 
                 {/* กำลังโหลด / error / ไม่มีรายการ / รายการแจ้งเตือน (ยังไม่อ่านตัวหนา มีจุดแดง) */}
@@ -121,7 +154,7 @@ function NotificationsPage() {
                 ) : visible.length === 0 ? (
                     <div className="py-14 text-center text-muted text-sm">
                         <span className="mx-auto mb-3 grid place-items-center w-12 h-12 rounded-full bg-sand text-muted"><Icon name="bell" className="w-6 h-6" /></span>
-                        {items.length === 0 ? 'ยังไม่มีรายการแจ้งเตือน' : 'ไม่มีการแจ้งเตือนที่ยังไม่อ่าน'}
+                        {items.length === 0 ? 'ยังไม่มีรายการแจ้งเตือน' : activeTab === 'unread' ? 'ไม่มีการแจ้งเตือนที่ยังไม่อ่าน' : 'ไม่มีการแจ้งเตือนประเภทนี้'}
                     </div>
                 ) : (
                     <ul className="flex flex-col">
@@ -162,11 +195,11 @@ function NotificationsPage() {
                     <div
                         role="dialog"
                         aria-modal="true"
-                        className="bg-white rounded-2xl shadow-xl w-[560px] max-w-full overflow-hidden border border-line flex flex-col"
+                        className="bg-white rounded-2xl shadow-xl w-[560px] max-w-full max-h-[90vh] overflow-hidden border border-line flex flex-col"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* หัว: ไอคอนประเภท ชื่อเรื่อง และปุ่มปิด */}
-                        <div className="px-6 py-4 border-b border-line flex items-center justify-between bg-sand/30">
+                        <div className="px-4 sm:px-6 py-4 border-b border-line flex items-center justify-between gap-2 bg-sand/30">
                             <div className="flex items-center gap-3 min-w-0">
                                 <span className={`grid place-items-center w-9 h-9 rounded-xl shrink-0 ${(typeStyle[selected.type] ?? typeStyle.system).tone}`}><Icon name={(typeStyle[selected.type] ?? typeStyle.system).icon} className="w-[18px] h-[18px]" /></span>
                                 <h2 className="text-lg font-bold text-ink wrap-break-word">{selected.title}</h2>
@@ -177,8 +210,8 @@ function NotificationsPage() {
                         </div>
 
                         {/* เนื้อหา: ประเภท เวลาที่ส่ง หัวข้อย่อย และรายละเอียด */}
-                        <div className="p-6 flex flex-col gap-4">
-                            <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                        <div className="p-4 sm:p-6 flex flex-col gap-4 overflow-y-auto">
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
                                 <span className="px-3 py-1 rounded-full font-semibold bg-mist text-primary-dark">{typeLabels[selected.type] || 'ระบบ'}</span>
                                 <span>เวลาที่ส่ง: {formatNotificationTime(selected.created_at, true)}</span>
                             </div>
@@ -196,7 +229,7 @@ function NotificationsPage() {
                         </div>
 
                         {/* ปุ่มลบ, ปิด และปุ่มไปยังหน้าที่เกี่ยวข้อง (ถ้ามี action_link) */}
-                        <div className="px-6 py-4 bg-sand/20 border-t border-line flex justify-between items-center gap-3">
+                        <div className="px-4 sm:px-6 py-4 bg-sand/20 border-t border-line flex flex-wrap justify-between items-center gap-3">
                             <button type="button" onClick={handleDelete} className="text-red-600 hover:text-red-700 text-sm font-medium">
                                 ลบการแจ้งเตือนนี้
                             </button>

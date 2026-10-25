@@ -12,7 +12,7 @@ import { supabase } from '../lib/supabaseClient'
 
 const cellInput = 'w-20 border border-line bg-white rounded-lg px-2 py-1 text-right text-sm tabular-nums outline-none focus:border-secondary'
 const prevInput = 'w-16 border border-transparent bg-transparent rounded px-1 py-1 text-right text-xs text-muted tabular-nums outline-none hover:border-line focus:border-secondary focus:bg-white'
-const rateInput = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
+const rateInput = 'w-full min-w-0 h-9 sm:h-10 border border-line bg-sand/50 rounded-xl px-3 mt-1 text-ink outline-none focus:border-secondary focus:bg-white'
 
 function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
     const [month, setMonth] = useState(currentMonth())
@@ -55,7 +55,8 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
     const onEnter = (e, col) => {
         if (e.key !== 'Enter') return
         e.preventDefault()
-        const all = [...document.querySelectorAll(`[data-bulk-col="${col}"]`)]
+        // นับเฉพาะช่องที่มองเห็น (จอเล็กใช้การ์ด จอใหญ่ใช้ตาราง อีกแบบถูกซ่อนไว้)
+        const all = [...document.querySelectorAll(`[data-bulk-col="${col}"]`)].filter((el) => el.offsetParent !== null)
         const next = all[all.indexOf(e.currentTarget) + 1]
         if (next) {
             next.focus()
@@ -86,19 +87,20 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
     return (
         <div className="px-4 sm:px-6 pb-8 flex flex-col gap-4">
             {/* เดือนและอัตราค่าบริการของรอบนี้ */}
-            <div className="bg-white rounded-2xl shadow-card p-5 grid gap-4 md:grid-cols-[auto_1fr] items-start">
+            <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5 grid gap-3 sm:gap-4 md:grid-cols-[auto_1fr] items-start">
                 <div>
                     <div className="text-sm text-muted mb-1">เดือนของใบแจ้งหนี้</div>
                     <MonthPicker value={month} onChange={changeMonth} />
                 </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                    <label className="text-sm text-muted">ค่าน้ำ (บาท/หน่วย)
+                {/* อัตรา 3 ช่องอยู่แถวเดียวกันทุกขนาดจอ (หน่วยอยู่ใต้ชื่อ ไม่ให้ป้ายยาวดันช่อง) */}
+                <div className="grid gap-2 sm:gap-3 grid-cols-3">
+                    <label className="text-sm text-muted">ค่าน้ำ <span className="block sm:inline text-xs">(บาท/หน่วย)</span>
                         <input type="number" min="0" step="any" className={rateInput} value={rates.waterRate} onChange={(e) => setRates({ ...rates, waterRate: e.target.value })} />
                     </label>
-                    <label className="text-sm text-muted">ค่าไฟ (บาท/หน่วย)
+                    <label className="text-sm text-muted">ค่าไฟ <span className="block sm:inline text-xs">(บาท/หน่วย)</span>
                         <input type="number" min="0" step="any" className={rateInput} value={rates.elecRate} onChange={(e) => setRates({ ...rates, elecRate: e.target.value })} />
                     </label>
-                    <label className="text-sm text-muted">ค่าส่วนกลาง (บาท)
+                    <label className="text-sm text-muted">ส่วนกลาง <span className="block sm:inline text-xs">(บาท)</span>
                         <input type="number" min="0" step="any" className={rateInput} value={rates.commonFee} onChange={(e) => setRates({ ...rates, commonFee: e.target.value })} />
                     </label>
                 </div>
@@ -109,15 +111,18 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
                 <p className="text-sm text-muted max-w-3xl">
                     กรอกเลขมิเตอร์ปัจจุบันของห้องที่ต้องการออกใบ (มิเตอร์ก่อนหน้าดึงจากใบเดือนล่าสุดให้ แก้ได้ถ้าเปลี่ยนมิเตอร์) กด Enter เพื่อไปห้องถัดไป ห้องที่ไม่กรอกจะถูกข้าม
                 </p>
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 border border-line bg-white rounded-xl px-3 py-1.5 w-56 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15">
-                        <Icon name="search" className="w-4 h-4 text-muted" />
-                        <input type="text" placeholder="ค้นหาห้อง/ชื่อ" aria-label="ค้นหาห้องหรือชื่อผู้เช่า" className="outline-none w-full bg-transparent text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
+                {/* ช่องค้นหา (ยืดเต็มที่เหลือบนจอเล็ก) และสวิตช์แสดงห้องที่มีใบแล้ว อยู่แถวเดียวกัน */}
+                <div className="w-full sm:w-auto flex items-center gap-2 sm:gap-3">
+                    <div className="flex-1 min-w-0 sm:flex-none sm:w-56 flex items-center gap-2 border border-line bg-white rounded-xl px-3 py-1.5 focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15">
+                        <Icon name="search" className="w-4 h-4 text-muted shrink-0" />
+                        <input type="text" placeholder="ค้นหาห้อง/ชื่อ" aria-label="ค้นหาห้องหรือชื่อผู้เช่า" className="outline-none w-full min-w-0 bg-transparent text-sm" value={search} onChange={(e) => setSearch(e.target.value)} />
                     </div>
                     {createdAlready > 0 && (
-                        <Switch checked={showCreated} onChange={setShowCreated} badge={createdAlready}>
-                            แสดงห้องที่มีใบเดือน {formatMonth(month)} แล้ว
-                        </Switch>
+                        <span className="shrink-0">
+                            <Switch checked={showCreated} onChange={setShowCreated} badge={createdAlready}>
+                                แสดงห้องที่มีใบแล้ว
+                            </Switch>
+                        </span>
                     )}
                 </div>
             </div>
@@ -129,7 +134,53 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
                     {keyword ? 'ไม่พบห้องที่ตรงกับคำค้นหา' : `ทุกห้องมีใบแจ้งหนี้เดือน ${formatMonth(month)} แล้ว (เลือกเดือนอื่น หรือกดแสดงห้องที่มีใบแล้ว)`}
                 </p>
             ) : (
-                <div className="bg-white rounded-2xl shadow-card overflow-x-auto">
+                <>
+                {/* จอเล็ก: การ์ดห้องละใบ (ไม่ต้องเลื่อนซ้าย-ขวา) แถวน้ำ/ไฟ = มิเตอร์ก่อนหน้า ปัจจุบัน และหน่วย */}
+                <ul className="md:hidden flex flex-col gap-2">
+                    {shownRows.map((r) => {
+                        const input = inputs[r.room] ?? {}
+                        const ev = evaluateRow(r, input, rates)
+                        const disabled = ev.state === 'skip'
+                        const rowError = summary.errors[r.room]
+                        const meters = [
+                            { col: 'water', label: 'น้ำ', prevKey: 'waterPrev', currKey: 'waterCurr', prev: r.waterPrev, units: ev.state === 'ready' ? ev.calc.waterUnits : unitsOf(input.waterCurr, input.waterPrev ?? r.waterPrev) },
+                            { col: 'elec', label: 'ไฟ', prevKey: 'elecPrev', currKey: 'elecCurr', prev: r.elecPrev, units: ev.state === 'ready' ? ev.calc.elecUnits : unitsOf(input.elecCurr, input.elecPrev ?? r.elecPrev) },
+                        ]
+                        return (
+                            <li key={r.room} className={`rounded-2xl border p-3 shadow-card ${disabled ? 'bg-slate-50 border-line text-muted' : rowError ? 'bg-red-50/60 border-red-200' : ev.state === 'ready' ? 'bg-emerald-50/40 border-emerald-200' : 'bg-white border-line'}`}>
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="font-medium text-ink truncate">{r.room} <span className="font-normal text-muted">· {r.name}</span></div>
+                                        <div className="text-xs text-muted">ค่าเช่า {baht(r.rent)}</div>
+                                    </div>
+                                    {ev.state === 'ready' && <div className="shrink-0 text-right font-semibold tabular-nums text-primary-dark">{baht(ev.calc.total)}</div>}
+                                </div>
+                                {disabled && <div className="mt-1 text-xs">{ev.reason}</div>}
+                                {rowError && <div className="mt-1 text-xs text-red-600">{rowError}</div>}
+                                {!disabled && (
+                                    // ช่องปัจจุบัน (ต้องกรอก) เด่นและกว้างกว่า ช่องก่อนหน้า (ดึงให้แล้ว แก้ได้) เรียบและแคบ
+                                    <div className="mt-2.5 grid grid-cols-[1.5rem_4.5rem_minmax(0,1fr)_4rem] items-center gap-x-2 gap-y-1.5">
+                                        <span />
+                                        <span className="text-xs text-muted text-center">ก่อนหน้า</span>
+                                        <span className="text-xs text-muted text-center">ปัจจุบัน</span>
+                                        <span />
+                                        {meters.map((m) => (
+                                            <div key={m.col} className="contents">
+                                                <span className="text-sm font-medium text-ink">{m.label}</span>
+                                                <input aria-label={`ห้อง ${r.room} มิเตอร์${m.label}ก่อนหน้า`} className="h-9 w-full min-w-0 border border-transparent bg-sand/70 rounded-lg px-2 text-right tabular-nums text-muted outline-none focus:border-secondary focus:bg-white" inputMode="numeric"
+                                                    value={input[m.prevKey] ?? String(m.prev)} onChange={(e) => setCell(r.room, m.prevKey, e.target.value)} />
+                                                <input aria-label={`ห้อง ${r.room} มิเตอร์${m.label}ปัจจุบัน`} className="h-9 w-full min-w-0 border border-line bg-white rounded-lg px-2.5 text-right tabular-nums text-ink outline-none focus:border-secondary focus:ring-2 focus:ring-secondary/20" inputMode="numeric" data-bulk-col={m.col}
+                                                    value={input[m.currKey] ?? ''} onChange={(e) => setCell(r.room, m.currKey, e.target.value)} onKeyDown={(e) => onEnter(e, m.col)} />
+                                                <span className="text-right text-sm tabular-nums text-muted whitespace-nowrap">{m.units === '' ? '-' : `${m.units} หน่วย`}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </li>
+                        )
+                    })}
+                </ul>
+                <div className="hidden md:block bg-white rounded-2xl shadow-card overflow-x-auto">
                     <table className="w-full text-sm min-w-[880px]">
                         <thead>
                             <tr className="text-left text-muted border-b border-line">
@@ -183,12 +234,13 @@ function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
                         </tbody>
                     </table>
                 </div>
+                </>
             )}
 
             {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
 
             {/* แถบสรุปและปุ่มสร้าง (ต้องกดยืนยันอีกครั้ง เพราะผู้เช่าทุกคนจะได้รับแจ้งเตือนใบแจ้งหนี้ใหม่ทันที) */}
-            <div className="sticky bottom-4 px-4 sm:px-5 py-3 bg-white rounded-2xl border border-line shadow-card flex flex-wrap items-center justify-between gap-3">
+            <div data-bottom-bar className="sticky bottom-4 px-4 sm:px-5 py-3 bg-white rounded-2xl border border-line shadow-card flex flex-wrap items-center justify-between gap-3">
                 <div className="text-sm">
                     <span className="font-medium text-primary-dark">พร้อมสร้าง {summary.records.length} ใบ รวม {baht(summary.total)}</span>
                     {errorCount > 0 && <span className="text-red-600"> · มีแถวที่กรอกไม่ถูกต้อง {errorCount} ห้อง</span>}

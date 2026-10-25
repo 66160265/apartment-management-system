@@ -25,6 +25,8 @@ function MonthPicker({ value, onChange, marked = [], disabled = false }) {
     // ขณะเปิดตารางเดือน: คลิกด้านนอกหรือกด Esc ให้ปิด
     useEffect(() => {
         if (!open) return
+        // ปฏิทินลอยอยู่ล่างจอ: เลื่อนหน้าให้เห็นทั้งก้อน (ไม่ต้องให้ผู้ใช้เลื่อนหาเอง)
+        const frame = requestAnimationFrame(() => ref.current?.querySelector('[data-popover]')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }))
         // คลิกนอกตารางเดือนให้ปิด
         const onClick = (e) => {
             if (ref.current && !ref.current.contains(e.target)) setOpen(false)
@@ -34,6 +36,7 @@ function MonthPicker({ value, onChange, marked = [], disabled = false }) {
         document.addEventListener('mousedown', onClick)
         document.addEventListener('keydown', onKey)
         return () => {
+            cancelAnimationFrame(frame)
             document.removeEventListener('mousedown', onClick)
             document.removeEventListener('keydown', onKey)
         }
@@ -64,28 +67,31 @@ function MonthPicker({ value, onChange, marked = [], disabled = false }) {
         <div ref={ref} className="relative inline-block">
             {/* แถบหลัก: ‹ เดือนก่อน | ชื่อเดือน ปี พ.ศ. (กดเปิดตาราง) | เดือนถัดไป › */}
             <div className="flex items-stretch rounded-xl border border-line bg-white overflow-hidden">
-                <button type="button" onClick={() => shift(-1)} disabled={disabled} aria-label="เดือนก่อนหน้า" className="px-2.5 hover:bg-mist/50 disabled:opacity-40"><Icon name="chevronLeft" className="w-4 h-4" /></button>
+                <button type="button" onClick={() => shift(-1)} disabled={disabled} aria-label="เดือนก่อนหน้า" className="px-3.5 sm:px-2.5 hover:bg-mist/50 disabled:opacity-40"><Icon name="chevronLeft" className="w-4 h-4" /></button>
                 <button
                     type="button"
                     onClick={toggle}
                     disabled={disabled}
                     aria-expanded={open}
-                    className="flex items-center gap-2 min-w-40 px-3 py-1.5 text-sm font-medium text-primary-dark border-x border-line hover:bg-mist/30 disabled:opacity-70"
+                    className="flex items-center gap-2 min-w-40 px-3 py-2.5 sm:py-1.5 text-sm font-medium text-primary-dark border-x border-line hover:bg-mist/30 disabled:opacity-70"
                 >
                     <Icon name="calendar" className="w-4 h-4 text-primary" />
                     {MONTHS_FULL[current.month - 1]} {current.year + 543}
                 </button>
-                <button type="button" onClick={() => shift(1)} disabled={disabled} aria-label="เดือนถัดไป" className="px-2.5 hover:bg-mist/50 disabled:opacity-40"><Icon name="chevronRight" className="w-4 h-4" /></button>
+                <button type="button" onClick={() => shift(1)} disabled={disabled} aria-label="เดือนถัดไป" className="px-3.5 sm:px-2.5 hover:bg-mist/50 disabled:opacity-40"><Icon name="chevronRight" className="w-4 h-4" /></button>
             </div>
 
             {/* ตารางเลือกเดือน */}
+            {/* จอมือถือ: เด้งขึ้นเป็นแผ่นล่างพร้อมฉากมืด จอกว้างขึ้น: ลอยใต้ปุ่มชิดขวาเหมือนเดิม */}
             {open && (
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-line p-3 z-30">
+                <>
+                <div className="fixed inset-0 z-40 bg-black/30 sm:hidden" onClick={() => setOpen(false)} aria-hidden="true" />
+                <div data-popover className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-sm sm:absolute sm:inset-x-auto sm:bottom-auto sm:z-30 sm:mx-0 sm:right-0 sm:mt-2 sm:w-72 sm:max-w-none bg-white rounded-2xl shadow-xl border border-line p-3">
                     {/* เลื่อนปีที่แสดงในตาราง */}
                     <div className="flex items-center justify-between mb-2">
-                        <button type="button" onClick={() => setYear(year - 1)} aria-label="ปีก่อนหน้า" className="px-2.5 py-1.5 rounded-lg hover:bg-mist/50"><Icon name="chevronLeft" className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => setYear(year - 1)} aria-label="ปีก่อนหน้า" className="px-3.5 py-2.5 sm:px-2.5 sm:py-1.5 rounded-lg hover:bg-mist/50"><Icon name="chevronLeft" className="w-4 h-4" /></button>
                         <span className="font-medium text-primary-dark">{year + 543}</span>
-                        <button type="button" onClick={() => setYear(year + 1)} aria-label="ปีถัดไป" className="px-2.5 py-1.5 rounded-lg hover:bg-mist/50"><Icon name="chevronRight" className="w-4 h-4" /></button>
+                        <button type="button" onClick={() => setYear(year + 1)} aria-label="ปีถัดไป" className="px-3.5 py-2.5 sm:px-2.5 sm:py-1.5 rounded-lg hover:bg-mist/50"><Icon name="chevronRight" className="w-4 h-4" /></button>
                     </div>
                     {/* ปุ่ม 12 เดือน: เดือนที่เลือกพื้นทึบ เดือนปัจจุบันมีกรอบ เดือนที่มีใบแจ้งหนี้มีจุดสีส้ม */}
                     <div className="grid grid-cols-3 gap-1.5">
@@ -97,7 +103,7 @@ function MonthPicker({ value, onChange, marked = [], disabled = false }) {
                                     key={key}
                                     type="button"
                                     onClick={() => pick(i + 1)}
-                                    className={`relative py-2 rounded-lg text-sm ${
+                                    className={`relative py-2.5 sm:py-2 rounded-lg text-sm ${
                                         selected
                                             ? 'bg-primary text-white'
                                             : key === now
@@ -119,6 +125,7 @@ function MonthPicker({ value, onChange, marked = [], disabled = false }) {
                         <button type="button" onClick={() => { onChange(now); setOpen(false) }} className="text-primary hover:underline">เดือนนี้</button>
                     </div>
                 </div>
+                </>
             )}
         </div>
     )

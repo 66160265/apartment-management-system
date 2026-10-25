@@ -22,7 +22,7 @@ vi.mock('../lib/supabaseClient', () => {
                     ? { data: null, error: { message: 'relation does not exist' }, count: null }
                     : head
                         ? { data: null, error: null, count: entry ?? 0 }
-                        : { data: entry ?? [], error: null }
+                        : { data: typeof entry === 'number' ? [] : entry ?? [], error: null }
                 return Promise.resolve(result).then(resolve, reject)
             },
         }
@@ -147,10 +147,14 @@ describe('หน้าภาพรวมแอดมิน (เรนเดอ�
     })
 
     it('การเงินของเดือน: เรียกเก็บ ได้รับจริง (ค่าห้อง+ค่าซ่อม) และยังค้าง', async () => {
-        const m = monthNow()
+        // หน้านี้แสดงบิลของ "เดือนก่อนหน้า" ที่ออกในเดือนที่เลือก (บิลเดือน ก.ย. ออกในเดือน ต.ค.) ส่วนเงินที่รับจริงนับตามเดือนที่รับ
+        const [y, mo] = monthNow().split('-').map(Number)
+        const m = mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, '0')}`
         db.invoices = [
             inv({ month: m, total: 1000, status: 'paid', paid_amount: 1000 }),
             inv({ month: m, room: '102', total: 2000, status: 'pending', paid_amount: 500, due_date: iso(+5) }),
+            // ใบของเดือนนี้ ทำให้หน้าเลือกเดือนปัจจุบันเป็นเดือนที่แสดง (เดือนก่อนหน้าจึงเป็นบิลที่เรียกเก็บ)
+            inv({ month: monthNow(), room: '103', total: 0, status: 'paid', paid_amount: 0 }),
         ]
         db.rooms = [{ number: '101', status: 'occupied' }]
         db.invoice_payments = [
@@ -160,7 +164,8 @@ describe('หน้าภาพรวมแอดมิน (เรนเดอ�
         db.repair_payments = [{ amount: 350, status: 'paid', reviewed_at: new Date().toISOString() }]
         await mount()
         const t = text()
-        expect(t).toContain('เรียกเก็บ (2 ใบ)')
+        expect(t).toContain('(2 ใบ)')
+        expect(t).toContain('เรียกเก็บ บิลเดือน')
         expect(t).toContain('฿3,000')
         // ได้รับ 1000 + 500 + ค่าซ่อม 350
         expect(t).toContain('฿1,850')

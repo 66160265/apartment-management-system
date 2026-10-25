@@ -33,7 +33,7 @@ const makeEmptyForm = () => ({
 const summaryCards = [
     { value: 'all', label: 'ทั้งหมด', icon: 'receipt', tone: 'bg-slate-100 text-slate-600' },
     { value: 'pending', label: 'รอชำระ', icon: 'clock', tone: 'bg-amber-50 text-amber-700' },
-    { value: 'review', label: 'รอตรวจสอบ', icon: 'review', tone: 'bg-sky-50 text-sky-700' },
+    { value: 'review', label: 'รอตรวจสอบ', short: 'รอตรวจ', icon: 'review', tone: 'bg-sky-50 text-sky-700' },
     { value: 'paid', label: 'ชำระแล้ว', icon: 'checkCircle', tone: 'bg-emerald-50 text-emerald-700' },
 ]
 
@@ -343,7 +343,7 @@ function AdminInvoices() {
                 }
             />
 
-            <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
+            <div className="px-4 sm:px-6 pb-8 flex flex-col gap-4 sm:gap-6">
                 {bulkNotice && (
                     <div role="status" className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 text-sm px-4 py-3">{bulkNotice}</div>
                 )}
@@ -368,7 +368,8 @@ function AdminInvoices() {
                 )}
 
                 {/* การ์ดสรุปตามสถานะ (กดเพื่อกรอง) การ์ดรอตรวจสอบมีป้ายเตือนเมื่อมีสลิปรอ */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* จอเล็กซ่อน: แท็บสถานะในกล่องรายการมีจำนวนและกรองได้เหมือนกัน */}
+                <div className="hidden sm:grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {summaryCards.map((c) => {
                         const active = filter === c.value
                         const urgent = c.value === 'review' && stats.review.count > 0
@@ -377,17 +378,17 @@ function AdminInvoices() {
                                 key={c.value}
                                 onClick={() => setFilter(c.value)}
                                 aria-pressed={active}
-                                className={`text-left rounded-2xl p-4 bg-white shadow-card border-2 transition ${
+                                className={`text-left rounded-xl sm:rounded-2xl p-2.5 sm:p-4 bg-white shadow-card border-2 transition ${
                                     active ? 'border-primary' : 'border-transparent hover:border-mist'
                                 }`}
                             >
-                                <div className="flex items-center justify-between text-sm text-muted">
+                                <div className="flex items-center justify-between gap-1 text-xs sm:text-sm leading-tight text-muted">
                                     <span>{c.label}</span>
-                                    <span className={`grid place-items-center w-8 h-8 rounded-lg ${c.tone}`}><Icon name={c.icon} className="w-[18px] h-[18px]" /></span>
+                                    <span className={`hidden sm:grid place-items-center w-8 h-8 shrink-0 rounded-lg ${c.tone}`}><Icon name={c.icon} className="w-[18px] h-[18px]" /></span>
                                 </div>
-                                <div className="mt-2 flex items-baseline gap-2">
-                                    <span className="text-2xl font-semibold text-primary-dark">{stats[c.value].count}</span>
-                                    <span className="text-xs text-muted">รายการ</span>
+                                <div className="mt-1 sm:mt-2 flex items-baseline gap-2">
+                                    <span className="text-xl sm:text-2xl font-semibold text-primary-dark">{stats[c.value].count}</span>
+                                    <span className="hidden sm:inline text-xs text-muted">รายการ</span>
                                     {urgent && <span className="ml-auto text-[11px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full">รอคุณตรวจ</span>}
                                 </div>
                                 <div className="text-xs text-muted mt-0.5 tabular-nums">{baht(stats[c.value].sum)}</div>
@@ -399,8 +400,8 @@ function AdminInvoices() {
                 {/* ฟอร์มสร้าง/แก้ไขใบแจ้งหนี้: ซ้าย = กรอกข้อมูล, ขวา = สรุปยอด */}
                 {/* สร้างใบแจ้งหนี้ใช้ปุ่ม "สร้างใบแจ้งหนี้" (ตารางกรอกมิเตอร์ กรอกห้องเดียวหรือหลายห้องก็ได้) ฟอร์มนี้จึงแสดงเฉพาะตอนแก้ไขใบที่สร้างไปแล้ว */}
                 {editingId && (
-                <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
-                    <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                <form onSubmit={handleSubmit} className="grid gap-4 sm:gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
+                    <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
                         {/* หัวฟอร์ม + เลือกเดือน (เดือนที่ห้องนี้มีใบแล้วมีจุด; ตอนแก้ไขเปลี่ยนเดือนไม่ได้) */}
                         <div className="flex flex-wrap justify-between items-center gap-3">
                             <h2 className="font-medium text-primary-dark">
@@ -436,7 +437,7 @@ function AdminInvoices() {
                     </div>
 
                     {/* สรุปยอดแบบสด (ติดหน้าจอบนจอใหญ่) */}
-                    <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4 xl:sticky xl:top-6">
+                    <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4 xl:sticky xl:top-6">
                         <div className="flex justify-between items-baseline gap-3">
                             <h2 className="font-medium text-primary-dark">สรุปยอด</h2>
                             <span className="text-xs text-muted truncate">
@@ -479,7 +480,7 @@ function AdminInvoices() {
                 </form>
                 )}
 
-                <div className="bg-white rounded-2xl shadow-card p-5">
+                <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
                     {/* หัวกล่องรายการ: จำนวน + ตัวกรองเดือน + ช่องค้นหา */}
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                         <h2 className="font-medium text-primary-dark">
@@ -488,7 +489,7 @@ function AdminInvoices() {
                                 {filter === 'all' ? 'ทั้งหมด' : invoiceStatuses[filter].label} ({visible.length})
                             </span>
                         </h2>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="w-full sm:w-auto flex items-center gap-2">
                         <select
                             value={monthFilter}
                             onChange={(e) => setMonthFilter(e.target.value)}
@@ -500,7 +501,7 @@ function AdminInvoices() {
                                 <option key={m} value={m}>{formatMonth(m)}</option>
                             ))}
                         </select>
-                        <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-64 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
+                        <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 flex-1 min-w-0 sm:flex-none sm:w-64 focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                             <Icon name="search" className="w-4 h-4 text-muted" />
                             <input
                                 type="text"
@@ -513,7 +514,7 @@ function AdminInvoices() {
                         </div>
                     </div>
                     {/* แท็บสถานะพร้อมจำนวน */}
-                    <div role="tablist" aria-label="หมวดหมู่ใบแจ้งหนี้" className="flex gap-1 overflow-x-auto overflow-y-hidden mb-4 border-b border-line">
+                    <div role="tablist" aria-label="หมวดหมู่ใบแจ้งหนี้" className="flex sm:gap-1 overflow-x-auto overflow-y-hidden mb-4 border-b border-line">
                         {summaryCards.map((c) => {
                             const active = filter === c.value
                             return (
@@ -522,12 +523,14 @@ function AdminInvoices() {
                                     role="tab"
                                     aria-selected={active}
                                     onClick={() => setFilter(c.value)}
-                                    className={`flex items-center gap-2 px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                                    className={`flex-1 sm:flex-none min-w-0 flex items-center justify-center gap-0.5 sm:gap-2 px-0.5 sm:px-4 py-2.5 text-xs sm:text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
                                         active ? 'border-primary text-primary-dark font-medium' : 'border-transparent text-muted hover:text-primary-dark hover:bg-sand/60'
                                     }`}
                                 >
-                                    {c.label}
-                                    <span className={`min-w-6 text-center text-xs rounded-full px-1.5 py-0.5 ${active ? 'bg-primary text-white' : 'bg-sand text-muted'}`}>
+                                    {/* จอเล็ก: 4 แท็บเท่ากันในแถวเดียว ไม่ต้องเลื่อน (ใช้ชื่อสั้นถ้ามี) */}
+                                    <span className="sm:hidden">{c.short ?? c.label}</span>
+                                    <span className="hidden sm:inline">{c.label}</span>
+                                    <span className={`min-w-5 sm:min-w-6 text-center text-xs rounded-full px-1 sm:px-1.5 py-0.5 ${active ? 'bg-primary text-white' : 'bg-sand text-muted'}`}>
                                         {stats[c.value].count}
                                     </span>
                                 </button>

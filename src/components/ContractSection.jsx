@@ -39,7 +39,7 @@ function ContractSection({ tenant, endDate, onRenewed }) {
     }
 
     return (
-        <section aria-label="สัญญาเช่า" className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+        <section aria-label="สัญญาเช่า" className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h2 className="text-lg font-semibold text-primary-dark">สัญญาเช่า</h2>

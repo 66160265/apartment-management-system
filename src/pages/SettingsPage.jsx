@@ -12,7 +12,7 @@ const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2.5 
 // กล่องหัวข้อในหน้าตั้งค่า: ไอคอน ชื่อหัวข้อ คำอธิบาย และเนื้อหา
 function Section({ icon, title, hint, children }) {
     return (
-        <section className="bg-white rounded-2xl shadow-card p-5">
+        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
             <div className="flex items-center gap-3 mb-4">
                 <span className="grid place-items-center w-10 h-10 rounded-xl bg-mist/60 text-primary-dark">
                     <Icon name={icon} className="w-5 h-5" />
@@ -160,7 +160,7 @@ function SettingsPage() {
             ) : !form ? (
                 <SkeletonForm className="px-4 sm:px-6 pb-28" />
             ) : (
-                <form onSubmit={handleSubmit} className="px-4 sm:px-6 pb-28 flex flex-col gap-6">
+                <form onSubmit={handleSubmit} className="px-4 sm:px-6 pb-28 flex flex-col gap-4 sm:gap-6">
                     {/* ส่วนที่ 1: ข้อมูลหอพัก */}
                     <Section icon="building" title="ข้อมูลหอพัก" hint="แสดงที่หัวใบแจ้งหนี้ (PDF)">
                         <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
@@ -186,7 +186,7 @@ function SettingsPage() {
 
                     {/* ส่วนที่ 2: บัญชีธนาคารและพร้อมเพย์ + QR ทดสอบ (ช่องพร้อมเพย์ขอบแดงเมื่อรูปแบบไม่ถูก) */}
                     <Section icon="bank" title="บัญชีรับชำระเงิน" hint="ผู้เช่าเห็นข้อมูลนี้ในหน้าชำระเงินและในไฟล์ PDF">
-                        <div className="grid gap-6 lg:grid-cols-[1fr_16rem] items-start">
+                        <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1fr_16rem] items-start">
                             <div className="grid gap-4 sm:grid-cols-2">
                                 <Field label="ธนาคาร">
                                     <input className={inputClass} value={form.bankName} onChange={set('bankName')} />
@@ -286,7 +286,7 @@ function SettingsPage() {
                     </Section>
 
                     {/* แถบด้านล่าง: ข้อความ error/บันทึกแล้ว + ปุ่มบันทึก */}
-                    <div className="fixed bottom-0 right-0 left-0 lg:left-64 z-20 bg-white/90 backdrop-blur border-t border-line px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+                    <div data-bottom-bar className="fixed bottom-0 right-0 left-0 lg:left-64 z-20 bg-white/90 backdrop-blur border-t border-line px-6 py-3 flex flex-wrap items-center justify-between gap-3">
                         <div className="min-h-6 text-sm">
                             {error && <span className="text-red-600">{error}</span>}
                             {saved && (
