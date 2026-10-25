@@ -213,14 +213,14 @@ function ReportsPage() {
                                 <MonthPicker value={month} onChange={setMonth} />
                             </div>
                             <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-5">
-                                <Stat label="ใบแจ้งหนี้ที่ออกเดือนนี้" value={summary.issuedCount} hint={`บิลเดือน ${formatMonth(summary.billMonth)} · เรียกเก็บ ${baht(summary.billed)}`} mobileHint={`เรียกเก็บ ${baht(summary.billed)}`} />
+                                <Stat label={`ใบแจ้งหนี้ บิลเดือน ${formatMonth(summary.billMonth)}`} value={`${summary.issuedCount} ใบ`} hint={`ออกเดือน ${formatMonth(month)} · เรียกเก็บ ${baht(summary.billed)}`} mobileHint={`เรียกเก็บ ${baht(summary.billed)}`} />
                                 <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.receivedTotal)} hint="ค่าห้อง ค่าน้ำไฟ และค่าซ่อมที่รวมในใบแจ้งหนี้" mobileHint={null} tone="text-emerald-700" />
                                 <Stat label={`ค้างของบิล ${formatMonth(summary.billMonth)}`} value={baht(summary.outstanding)} hint={`${summary.unpaidCount} ใบ ณ วันนี้`} tone={summary.outstanding > 0 ? 'text-amber-700' : 'text-primary-dark'} />
                                 <Stat label="รายจ่ายเดือนนี้" value={baht(summary.spent)} hint={<><span className="block">ค่าซ่อมที่หอพักจ่าย {baht(summary.repairCost)}</span><span className="block">ค่าใช้จ่ายของหอ {baht(summary.expenseTotal)}</span></>} mobileHint={`ซ่อม ${baht(summary.repairCost)} · หอ ${baht(summary.expenseTotal)}`} />
                                 <Stat className="col-span-2 lg:col-span-1" label="คงเหลือเดือนนี้" value={baht(summary.net)} hint="รับเงินจริง − รายจ่ายเดือนนี้" tone={summary.net < 0 ? 'text-red-700' : 'text-emerald-700'} />
                             </div>
                             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                                <ExportButton onClick={exportInvoices} short="ใบแจ้งหนี้ CSV">ใบแจ้งหนี้ที่ออกเดือนนี้ (CSV)</ExportButton>
+                                <ExportButton onClick={exportInvoices} short={`บิล ${formatMonth(summary.billMonth)} CSV`}>ใบแจ้งหนี้ บิลเดือน {formatMonth(summary.billMonth)} (CSV)</ExportButton>
                                 <ExportButton onClick={exportPayments} short="การรับเงิน CSV">การรับเงินเดือนนี้ (CSV)</ExportButton>
                             </div>
                         </section>
@@ -406,7 +406,7 @@ function ReportsPage() {
                                 <h2 className="font-medium text-primary-dark">รายเดือนย้อนหลัง 12 เดือน</h2>
                                 <ExportButton onClick={exportMonthly}>สรุปรายเดือน (CSV)</ExportButton>
                             </div>
-                            <p className="-mt-1 text-xs text-muted">ใบที่ออก เรียกเก็บ และยังค้าง นับจากบิลที่ออกในเดือนนั้น (บิลของเดือนก่อนหน้า)</p>
+                            <p className="-mt-1 text-xs text-muted">ใบที่ออก เรียกเก็บ และยังค้าง นับจากบิลของเดือนก่อนหน้า (บิลเดือนไหนออกในเดือนถัดไป เช่น แถว ต.ค. = บิลเดือน ก.ย.)</p>
                             <ul className="md:hidden flex flex-col gap-2">
                                 {rows12.map((r) => (
                                     <MobileCard
