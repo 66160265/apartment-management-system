@@ -8,11 +8,14 @@ import { formatDate } from '../lib/tenants'
 import { downloadCsv } from '../lib/downloadCsv'
 import {
     csvFileName, expiringContracts, invoiceColumns, monthlyColumns, monthlyRows, monthlySummary, monthOf, moveOutColumns, occupancy, outstandingColumns, outstandingRows,
-    owedFromMoveOuts, paymentColumns, recentMonths, repairStats, roomUsage, toCsv, utilityColumns, utilityHistory, utilityStats, vacancyRows,
+    owedFromMoveOuts, paymentColumns, recentMonths, repairStats, reportYears, roomUsage, toCsv, trendRows, unpaidRepairSummary, utilityColumns, utilityHistory, utilityStats, vacancyRows,
+    yearlyColumns, yearlySummary,
 } from '../lib/reports'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import MonthlyColumns from '../components/MonthlyColumns'
+import TrendChart from '../components/TrendChart'
+import ExpensesSection from '../components/ExpensesSection'
 import { useSettings } from '../lib/useSettings'
 import { SkeletonCardGrid, SkeletonTable } from '../components/Skeleton.jsx'
 import { selectAll } from '../lib/selectAll'
@@ -20,7 +23,7 @@ import { selectAll } from '../lib/selectAll'
 // รายงานสำหรับแอดมิน: อัตราเข้าพัก รายรับ-ยอดค้างรายเดือน และส่งออก CSV (เปิดใน Excel/ส่งให้นักบัญชีได้)
 // รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ไม่ใช่เดือนของใบแจ้งหนี้
 
-const emptyData = { rooms: [], invoices: [], invoicePayments: [], repairPayments: [], moveOuts: [], repairs: [], tenants: [] }
+const emptyData = { rooms: [], invoices: [], invoicePayments: [], repairPayments: [], moveOuts: [], repairs: [], tenants: [], expenses: [] }
 
 // แถบเทียบสัดส่วน (ใช้ในสถิติแจ้งซ่อม)
 function CountBar({ label, count, max }) {
@@ -71,16 +74,18 @@ function ReportsPage() {
             selectAll(() => supabase.from('invoices').select('*').order('id')),
             selectAll(() => supabase.from('invoice_payments').select('*').order('id')),
             // ตารางนี้มีเมื่อรัน ส่วน repair-payments ของไฟล์ migration แล้ว ถ้ายังไม่มีให้ถือว่าไม่มีรายรับค่าซ่อม
-            selectAll(() => supabase.from('repair_payments').select('*').eq('status', 'paid').order('id')),
+            selectAll(() => supabase.from('repair_payments').select('*').in('status', ['review', 'paid']).order('id')),
             // ตารางนี้มีเมื่อรัน ส่วน move-out ของไฟล์ migration แล้ว
             selectAll(() => supabase.from('move_outs').select('*').order('move_out_date', { ascending: false }).order('id')),
             // เรื่องแจ้งซ่อม (ใช้ทำสถิติยอดซ่อม)
-            selectAll(() => supabase.from('repairs').select('id, room, problem, category, status, cost, cost_payer, created_at, completed_at').order('id')),
+            selectAll(() => supabase.from('repairs').select('id, room, user_id, problem, category, status, cost, cost_payer, invoice_id, created_at, completed_at').order('id')),
             // ผู้เช่าปัจจุบัน (ใช้ดูสัญญาที่ใกล้หมด)
             supabase.from('tenants').select('room, name, end_date'),
+            // ค่าใช้จ่ายของหอพัก (ตารางมีเมื่อรัน migration 20261025000000 แล้ว ยังไม่มี = ไม่มีค่าใช้จ่าย)
+            selectAll(() => supabase.from('expenses').select('*').order('id')),
         ])
 
-    const apply = useCallback(([rooms, invoices, payments, repairPayments, moveOuts, repairs, tenants]) => {
+    const apply = useCallback(([rooms, invoices, payments, repairPayments, moveOuts, repairs, tenants, expenses]) => {
         const err = rooms.error || invoices.error
         if (err) {
             setError(`โหลดข้อมูลไม่สำเร็จ: ${err.message}`)
@@ -94,6 +99,7 @@ function ReportsPage() {
                 moveOuts: moveOuts.error ? [] : moveOuts.data,
                 repairs: repairs.error ? [] : repairs.data,
                 tenants: tenants.error ? [] : tenants.data,
+                expenses: expenses.error ? [] : expenses.data,
             })
             setNow(new Date())
             setError('')
@@ -110,7 +116,9 @@ function ReportsPage() {
     }, [apply])
 
     // อัปเดตเองเมื่อมีการเปลี่ยนใบแจ้งหนี้ การรับเงิน ค่าซ่อม เรื่องแจ้งซ่อม การย้ายออก หรือห้อง
-    useRealtimeReload(['invoices', 'invoice_payments', 'repair_payments', 'repairs', 'move_outs', 'rooms', 'tenants'], () => fetchAll().then(apply))
+    useRealtimeReload(['invoices', 'invoice_payments', 'repair_payments', 'repairs', 'move_outs', 'rooms', 'tenants', 'expenses'], () => fetchAll().then(apply))
+    // โหลดใหม่หลังเพิ่ม/ลบค่าใช้จ่าย
+    const reload = () => fetchAll().then(apply)
 
     const months = useMemo(() => recentMonths(currentMonth(), 12), [])
     const summary = useMemo(() => monthlySummary(data, month, now), [data, month, now])
@@ -119,15 +127,16 @@ function ReportsPage() {
     const outstanding = useMemo(() => outstandingRows(data.invoices, now, dueDay), [data.invoices, now, dueDay])
     const outstandingTotal = outstanding.reduce((acc, r) => acc + r.balance, 0)
     const owedAfterMoveOut = owedFromMoveOuts(data.moveOuts)
-    // ห้องว่าง (ว่างมากี่วัน ค่าเช่าที่ไม่ได้รับ) สัญญาที่หมดใน 90 วัน และสถิติแจ้งซ่อม
+    // ห้องว่าง (ว่างมากี่วัน) สัญญาที่หมดใน 90 วัน และสถิติแจ้งซ่อม
     const vacancies = useMemo(() => vacancyRows(data.rooms, data.moveOuts, now), [data.rooms, data.moveOuts, now])
-    const vacancyLost = vacancies.reduce((acc, v) => acc + (v.lost ?? 0), 0)
     const expiring = useMemo(() => expiringContracts(data.tenants, now, 90), [data.tenants, now])
     const rstats = useMemo(() => repairStats(data.repairs, now), [data.repairs, now])
+    const unpaidRepair = useMemo(() => unpaidRepairSummary(data.repairs, data.repairPayments), [data.repairs, data.repairPayments])
     const invoiceById = useMemo(() => Object.fromEntries(data.invoices.map((i) => [i.id, i])), [data.invoices])
 
+    // ใบแจ้งหนี้ที่ออกในเดือนที่เลือก (บิลของเดือนก่อนหน้า)
     const exportInvoices = () =>
-        downloadCsv(csvFileName('ใบแจ้งหนี้', month), toCsv(data.invoices.filter((i) => i.month === month).sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true })), invoiceColumns))
+        downloadCsv(csvFileName('ใบแจ้งหนี้', summary.billMonth), toCsv(data.invoices.filter((i) => i.month === summary.billMonth).sort((a, b) => a.room.localeCompare(b.room, undefined, { numeric: true })), invoiceColumns))
     const exportPayments = () =>
         downloadCsv(
             csvFileName('การรับเงิน', month),
@@ -144,6 +153,13 @@ function ReportsPage() {
     const electricRows = useMemo(() => history.map((h) => ({ key: h.month, label: formatMonth(h.month), value: h.electric })), [history])
     const exportUtility = () => downloadCsv(csvFileName('การใช้น้ำไฟ', month), toCsv(usageRows, utilityColumns))
     const exportMoveOuts = () => downloadCsv(csvFileName('ย้ายออกและเงินประกัน', thaiDateOf(now)), toCsv(data.moveOuts, moveOutColumns))
+    // แนวโน้มรายรับ-รายจ่าย 12 เดือนล่าสุด (นับถึงเดือนที่เลือก)
+    const trend = useMemo(() => trendRows(data, month, 12, now).map((r) => ({ ...r, key: r.month, label: formatMonth(r.month) })), [data, month, now])
+    // สรุปรายปี (ปี ค.ศ. ในข้อมูล แสดงเป็น พ.ศ.)
+    const years = useMemo(() => reportYears(data, now), [data, now])
+    const [year, setYear] = useState(() => thaiDateOf(new Date()).slice(0, 4))
+    const yearly = useMemo(() => yearlySummary(data, year, now), [data, year, now])
+    const exportYearly = () => downloadCsv(csvFileName('สรุปรายปี', year), toCsv([...yearly.rows, { ...yearly.totals, month: 'รวม' }], yearlyColumns))
     const exportMonthly = () => downloadCsv(csvFileName('สรุปรายเดือน', `${months.at(-1)}_${months[0]}`), toCsv([...rows12].reverse(), monthlyColumns))
 
     return (
@@ -171,16 +187,26 @@ function ReportsPage() {
                                 <MonthPicker value={month} onChange={setMonth} />
                             </div>
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-                                <Stat label="ใบแจ้งหนี้ที่ออก" value={summary.issuedCount} hint={`เรียกเก็บ ${baht(summary.billed)}`} />
+                                <Stat label="ใบแจ้งหนี้ที่ออกเดือนนี้" value={summary.issuedCount} hint={`บิลเดือน ${formatMonth(summary.billMonth)} · เรียกเก็บ ${baht(summary.billed)}`} />
                                 <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.receivedTotal)} hint="ค่าห้อง ค่าน้ำไฟ และค่าซ่อมที่รวมในใบแจ้งหนี้" tone="text-emerald-700" />
-                                <Stat label="ค้างชำระของใบเดือนนี้" value={baht(summary.outstanding)} hint={`${summary.unpaidCount} ใบ ณ วันนี้`} tone={summary.outstanding > 0 ? 'text-amber-700' : 'text-primary-dark'} />
-                                <Stat label="ค่าซ่อมของเดือนนี้ (หอพักจ่าย)" value={baht(summary.repairCost)} hint={`งานซ่อมที่เสร็จ ${summary.repairCount + summary.repairTenantCount} งาน · ผู้เช่าจ่าย ${baht(summary.repairTenantCost)}`} />
-                                <Stat label="คงเหลือเดือนนี้" value={baht(summary.net)} hint="รับเงินจริง − ค่าซ่อมที่หอพักจ่าย" tone={summary.net < 0 ? 'text-red-700' : 'text-emerald-700'} />
+                                <Stat label={`ค้างชำระของบิลเดือน ${formatMonth(summary.billMonth)}`} value={baht(summary.outstanding)} hint={`${summary.unpaidCount} ใบ ณ วันนี้`} tone={summary.outstanding > 0 ? 'text-amber-700' : 'text-primary-dark'} />
+                                <Stat label="รายจ่ายเดือนนี้" value={baht(summary.spent)} hint={<><span className="block">ค่าซ่อมที่หอพักจ่าย {baht(summary.repairCost)}</span><span className="block">ค่าใช้จ่ายของหอ {baht(summary.expenseTotal)}</span></>} />
+                                <Stat label="คงเหลือเดือนนี้" value={baht(summary.net)} hint="รับเงินจริง − รายจ่ายเดือนนี้" tone={summary.net < 0 ? 'text-red-700' : 'text-emerald-700'} />
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                <ExportButton onClick={exportInvoices}>ใบแจ้งหนี้เดือนนี้ (CSV)</ExportButton>
+                                <ExportButton onClick={exportInvoices}>ใบแจ้งหนี้ที่ออกเดือนนี้ (CSV)</ExportButton>
                                 <ExportButton onClick={exportPayments}>การรับเงินเดือนนี้ (CSV)</ExportButton>
                             </div>
+                        </section>
+
+                        {/* ค่าใช้จ่ายของหอพักของเดือนที่เลือก */}
+                        <ExpensesSection month={month} expenses={data.expenses} invoices={data.invoices} onChanged={reload} />
+
+                        {/* แนวโน้มรายรับ-รายจ่าย 12 เดือน */}
+                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                            <h2 className="font-medium text-primary-dark">แนวโน้ม 12 เดือนล่าสุด (ถึง {formatMonth(month)})</h2>
+                            <TrendChart title="รายรับและรายจ่ายรายเดือน" rows={trend} />
+                            <p className="text-xs text-muted">รายรับ = เงินที่ได้รับจริงในเดือนนั้น · รายจ่าย = ค่าซ่อมที่หอพักจ่าย + ค่าใช้จ่ายของหอพักที่บันทึกไว้</p>
                         </section>
 
                         {/* ยอดค้างชำระ */}
@@ -222,10 +248,7 @@ function ReportsPage() {
                         {/* ห้องว่าง และสัญญาที่ใกล้หมด */}
                         <div className="grid gap-6 lg:grid-cols-2">
                             <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
-                                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                    <h2 className="font-medium text-primary-dark">ห้องว่าง ({vacancies.length} ห้อง)</h2>
-                                    {vacancyLost > 0 && <span className="text-sm text-red-700">ค่าเช่าที่ไม่ได้รับรวม {baht(vacancyLost)}</span>}
-                                </div>
+                                <h2 className="font-medium text-primary-dark">ห้องว่าง ({vacancies.length} ห้อง)</h2>
                                 {vacancies.length === 0 ? (
                                     <p className="text-sm text-muted py-4 text-center">ไม่มีห้องว่าง</p>
                                 ) : (
@@ -235,8 +258,7 @@ function ReportsPage() {
                                                 <tr className="text-left text-muted border-b border-line">
                                                     <th className="py-2 pr-3">ห้อง</th>
                                                     <th className="py-2 px-3">ว่างตั้งแต่</th>
-                                                    <th className="py-2 px-3 text-right">ว่างมา</th>
-                                                    <th className="py-2 pl-3 text-right">ค่าเช่าที่ไม่ได้รับ</th>
+                                                    <th className="py-2 pl-3 text-right">ว่างมา</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -244,15 +266,14 @@ function ReportsPage() {
                                                     <tr key={v.room} className="border-b border-line/60">
                                                         <td className="py-2 pr-3 font-medium text-ink">{v.room} <span className="text-xs font-normal text-muted">· {baht(v.rent)}/เดือน</span></td>
                                                         <td className="py-2 px-3">{v.since ? formatDate(v.since) : <span className="text-muted">ไม่มีบันทึกย้ายออก</span>}</td>
-                                                        <td className="py-2 px-3 text-right tabular-nums">{v.days === null ? '-' : `${v.days} วัน`}</td>
-                                                        <td className={`py-2 pl-3 text-right tabular-nums ${v.lost ? 'text-red-700 font-medium' : 'text-muted'}`}>{v.lost === null ? '-' : baht(v.lost)}</td>
+                                                        <td className="py-2 pl-3 text-right tabular-nums">{v.days === null ? '-' : `${v.days} วัน`}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
                                         </table>
                                     </div>
                                 )}
-                                <p className="text-xs text-muted">นับจากวันที่ผู้เช่าคนล่าสุดย้ายออก ค่าเช่าที่ไม่ได้รับคิดจากค่าเช่าห้องเดือนละ 30 วัน</p>
+                                <p className="text-xs text-muted">นับจากวันที่ผู้เช่าคนล่าสุดย้ายออก</p>
                             </section>
 
                             <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
@@ -294,7 +315,12 @@ function ReportsPage() {
                                 <Stat label="เรื่องแจ้งซ่อมทั้งหมด" value={rstats.total} hint="ไม่นับเรื่องที่ยกเลิก" />
                                 <Stat label="ซ่อมเสร็จแล้ว" value={rstats.doneCount} tone="text-emerald-700" />
                                 <Stat label="ยังไม่เสร็จ" value={rstats.openCount} hint={rstats.overdue.length > 0 ? `ค้างเกิน 7 วัน ${rstats.overdue.length} เรื่อง` : undefined} tone={rstats.overdue.length > 0 ? 'text-amber-700' : 'text-primary-dark'} />
-                                <Stat label="ใช้เวลาซ่อมเฉลี่ย" value={rstats.avgDays === null ? '-' : `${rstats.avgDays} วัน`} hint="จากวันที่แจ้งถึงวันที่เสร็จ" />
+                                <Stat
+                                    label="ผู้เช่าที่ยังไม่ชำระค่าซ่อม"
+                                    value={`${unpaidRepair.tenantCount} คน`}
+                                    hint={unpaidRepair.repairCount > 0 ? `ค้างรวม ${baht(unpaidRepair.total)} จาก ${unpaidRepair.repairCount} เรื่อง` : 'ไม่มีค่าซ่อมค้างชำระ'}
+                                    tone={unpaidRepair.tenantCount > 0 ? 'text-amber-700' : 'text-primary-dark'}
+                                />
                                 <Stat label="ค่าซ่อมทั้งหมด" value={baht(rstats.costTotal)} hint={`หอพักจ่าย ${baht(rstats.costOwner)} · ผู้เช่าจ่าย ${baht(rstats.costTenant)}`} />
                             </div>
                             {rstats.total > 0 && (
@@ -338,13 +364,14 @@ function ReportsPage() {
                                 <h2 className="font-medium text-primary-dark">รายเดือนย้อนหลัง 12 เดือน</h2>
                                 <ExportButton onClick={exportMonthly}>สรุปรายเดือน (CSV)</ExportButton>
                             </div>
+                            <p className="-mt-1 text-xs text-muted">ใบที่ออก เรียกเก็บ และยังค้าง นับจากบิลที่ออกในเดือนนั้น (บิลของเดือนก่อนหน้า)</p>
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm min-w-[880px] table-fixed">
-                                    {/* ความกว้างคอลัมน์คงที่: เดือนและจำนวนใบแคบ ช่องเงิน 6 ช่องกว้างเท่ากัน */}
+                                <table className="w-full text-sm min-w-[960px] table-fixed">
+                                    {/* ความกว้างคอลัมน์คงที่: เดือนและจำนวนใบแคบ ช่องเงิน 7 ช่องกว้างเท่ากัน */}
                                     <colgroup>
                                         <col className="w-[10%]" />
-                                        <col className="w-[8%]" />
-                                        {Array.from({ length: 6 }, (_, i) => <col key={i} className="w-[13.66%]" />)}
+                                        <col className="w-[7%]" />
+                                        {Array.from({ length: 7 }, (_, i) => <col key={i} className="w-[11.86%]" />)}
                                     </colgroup>
                                     <thead>
                                         <tr className="text-left text-muted border-b border-line">
@@ -354,6 +381,7 @@ function ReportsPage() {
                                             <th className="py-2 px-3 text-right">รับเงิน</th>
                                             <th className="py-2 px-3 text-right">ค่าซ่อม (ผู้เช่าจ่าย)</th>
                                             <th className="py-2 px-3 text-right">ค่าซ่อม (หอพักจ่าย)</th>
+                                            <th className="py-2 px-3 text-right">ค่าใช้จ่ายหอ</th>
                                             <th className="py-2 px-3 text-right">คงเหลือ</th>
                                             <th className="py-2 pl-3 text-right">ยังค้าง</th>
                                         </tr>
@@ -367,6 +395,7 @@ function ReportsPage() {
                                                 <td className="py-2 px-3 text-right tabular-nums text-emerald-700">{baht(r.receivedTotal)}</td>
                                                 <td className="py-2 px-3 text-right tabular-nums">{baht(r.repairTenantCost)}</td>
                                                 <td className="py-2 px-3 text-right tabular-nums">{baht(r.repairCost)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.expenseTotal)}</td>
                                                 <td className={`py-2 px-3 text-right tabular-nums font-medium ${r.net < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{baht(r.net)}</td>
                                                 <td className={`py-2 pl-3 text-right tabular-nums ${r.outstanding > 0 ? 'text-amber-700 font-medium' : ''}`}>{baht(r.outstanding)}</td>
                                             </tr>
@@ -375,6 +404,66 @@ function ReportsPage() {
                                 </table>
                             </div>
                             <p className="text-xs text-muted">รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ใบเดือนก่อนที่เพิ่งได้รับเงินจะไปอยู่ในเดือนที่รับ ส่วนยอดค้างคือยอดของใบเดือนนั้นที่ยังไม่ชำระ ณ วันนี้</p>
+                        </section>
+
+                        {/* สรุปรายปี */}
+                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <h2 className="font-medium text-primary-dark">สรุปรายปี {Number(year) + 543}</h2>
+                                <div className="flex items-center gap-2">
+                                    <select value={year} onChange={(e) => setYear(e.target.value)} aria-label="เลือกปี" className="border border-line bg-sand/50 rounded-xl px-3 py-1.5 text-sm outline-none focus:border-secondary">
+                                        {years.map((y) => <option key={y} value={y}>พ.ศ. {Number(y) + 543}</option>)}
+                                    </select>
+                                    <ExportButton onClick={exportYearly}>สรุปรายปี (CSV)</ExportButton>
+                                </div>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <Stat label="รับเงินจริงทั้งปี" value={baht(yearly.totals.receivedTotal)} hint={`เรียกเก็บ ${baht(yearly.totals.billed)} จาก ${yearly.totals.issuedCount} ใบ`} tone="text-emerald-700" />
+                                <Stat label="ค่าซ่อมที่หอพักจ่าย" value={baht(yearly.totals.repairCost)} hint={`ผู้เช่าจ่ายเอง ${baht(yearly.totals.repairTenantCost)}`} />
+                                <Stat label="ค่าใช้จ่ายของหอพัก" value={baht(yearly.totals.expenseTotal)} hint="ค่าไฟ ค่าน้ำ ค่าแม่บ้าน ฯลฯ ที่บันทึกไว้" />
+                                <Stat label="คงเหลือทั้งปี" value={baht(yearly.totals.net)} hint="รับเงินจริง − รายจ่ายทั้งหมด" tone={yearly.totals.net < 0 ? 'text-red-700' : 'text-emerald-700'} />
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm min-w-[760px] table-fixed">
+                                    <colgroup>
+                                        <col className="w-[12%]" />
+                                        {Array.from({ length: 5 }, (_, i) => <col key={i} className="w-[17.6%]" />)}
+                                    </colgroup>
+                                    <thead>
+                                        <tr className="text-left text-muted border-b border-line">
+                                            <th className="py-2 pr-3">เดือน</th>
+                                            <th className="py-2 px-3 text-right">รับเงินจริง</th>
+                                            <th className="py-2 px-3 text-right">ค่าซ่อม (หอพักจ่าย)</th>
+                                            <th className="py-2 px-3 text-right">ค่าใช้จ่ายหอ</th>
+                                            <th className="py-2 px-3 text-right">รายจ่ายรวม</th>
+                                            <th className="py-2 pl-3 text-right">คงเหลือ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {yearly.rows.map((r) => (
+                                            <tr key={r.month} className="border-b border-line/60">
+                                                <td className="py-2 pr-3 font-medium text-ink">{formatMonth(r.month)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums text-emerald-700">{baht(r.receivedTotal)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.repairCost)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.expenseTotal)}</td>
+                                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.spent)}</td>
+                                                <td className={`py-2 pl-3 text-right tabular-nums font-medium ${r.net < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{baht(r.net)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="font-semibold text-ink border-t-2 border-line">
+                                            <td className="py-2.5 pr-3">รวมทั้งปี</td>
+                                            <td className="py-2.5 px-3 text-right tabular-nums text-emerald-700">{baht(yearly.totals.receivedTotal)}</td>
+                                            <td className="py-2.5 px-3 text-right tabular-nums">{baht(yearly.totals.repairCost)}</td>
+                                            <td className="py-2.5 px-3 text-right tabular-nums">{baht(yearly.totals.expenseTotal)}</td>
+                                            <td className="py-2.5 px-3 text-right tabular-nums">{baht(yearly.totals.spent)}</td>
+                                            <td className={`py-2.5 pl-3 text-right tabular-nums ${yearly.totals.net < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{baht(yearly.totals.net)}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <p className="text-xs text-muted">นับถึงเดือนปัจจุบัน รายรับนับตามวันที่ได้รับเงินจริง ค่าปรับที่เก็บได้ทั้งปี {baht(yearly.totals.lateFees)}</p>
                         </section>
 
                         {/* แนวโน้มการใช้น้ำ-ไฟย้อนหลัง (แยกสองกราฟ เพราะคนละหน่วยและคนละสเกล) */}

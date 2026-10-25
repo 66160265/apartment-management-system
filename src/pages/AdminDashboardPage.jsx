@@ -7,7 +7,8 @@ import { baht, currentMonth, formatMonth } from '../lib/billing'
 import { fetchSlipUsage, quotaStatus } from '../lib/slipUsage'
 import { attentionItems, expiringContracts, notYetDueCount, overdueInvoices, uniqueRooms, uninvoicedRooms } from '../lib/dashboard'
 import { useRealtimeReload } from '../lib/realtime'
-import { monthlySummary, occupancy } from '../lib/reports'
+import { issueMonthOf, monthlySummary, occupancy } from '../lib/reports'
+import { formatPeriod, normalizePeriod, todayIso } from '../lib/repairs'
 import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 import { SkeletonList } from '../components/Skeleton.jsx'
@@ -20,7 +21,7 @@ import { selectAll } from '../lib/selectAll'
 // ดึงข้อมูลจากฐานข้อมูล (ไม่มีการ setState เพื่อให้เรียกซ้ำได้อย่างปลอดภัย)
 // ใบแจ้งหนี้และห้องจำเป็น พลาดแล้วโยน error ส่วนที่เหลือมาจาก SQL รุ่นหลัง ถ้ายังไม่มีตารางให้ถือว่าไม่มีข้อมูล หน้ายังใช้ได้
 async function fetchDashboardData() {
-    const [invoicesRes, roomsRes, paymentsRes, repairPaymentsRes, pendingRepairsRes, tenantsRes, slipUsage] = await Promise.all([
+    const [invoicesRes, roomsRes, paymentsRes, repairPaymentsRes, pendingRepairsRes, tenantsRes, slipUsage, todayRepairsRes] = await Promise.all([
         selectAll(() => supabase.from('invoices').select('*').order('created_at', { ascending: false }).order('id')),
         supabase.from('rooms').select('number, status'),
         selectAll(() => supabase.from('invoice_payments').select('amount, confirmed_at').order('id')),
@@ -28,6 +29,8 @@ async function fetchDashboardData() {
         supabase.from('repairs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         supabase.from('tenants').select('room, end_date'),
         fetchSlipUsage(),
+        // นัดซ่อมของวันนี้ (เวลาไทย)
+        supabase.from('repairs').select('*').eq('status', 'in_progress').eq('appointment_date', todayIso()),
     ])
 
     if (invoicesRes.error) throw invoicesRes.error
@@ -41,10 +44,12 @@ async function fetchDashboardData() {
         pendingRepairs: pendingRepairsRes.error ? 0 : pendingRepairsRes.count || 0,
         tenants: tenantsRes.error ? [] : tenantsRes.data || [],
         slipUsage,
+        // เรียงตามเวลานัด
+        todayRepairs: (todayRepairsRes.error ? [] : todayRepairsRes.data || []).sort((a, b) => normalizePeriod(a.appointment_period).localeCompare(normalizePeriod(b.appointment_period))),
     }
 }
 
-const emptyData = { invoices: [], rooms: [], invoicePayments: [], repairPayments: [], pendingRepairs: 0, tenants: [], slipUsage: null }
+const emptyData = { invoices: [], rooms: [], invoicePayments: [], repairPayments: [], pendingRepairs: 0, tenants: [], slipUsage: null, todayRepairs: [] }
 
 // สีของการ์ด "ต้องจัดการ" ตามประเภท
 const attentionTone = {
@@ -129,7 +134,8 @@ function AdminDashboardPage() {
     const reloadQuiet = useCallback(() => fetchDashboardData().then(applyData).catch(() => {}), [applyData])
     useRealtimeReload(['invoices', 'invoice_payments', 'rooms', 'repairs', 'repair_payments', 'move_outs', 'tenants'], reloadQuiet)
 
-    const monthsWithInvoices = useMemo(() => [...new Set(data.invoices.map((i) => i.month))].sort(), [data.invoices])
+    // เดือนที่มีการออกบิล (บิลของเดือนไหนออกในเดือนถัดไป)
+    const monthsWithInvoices = useMemo(() => [...new Set(data.invoices.map((i) => issueMonthOf(i.month)))].sort(), [data.invoices])
 
     // การเงินของเดือนที่เลือก: เรียกเก็บ / ได้รับจริง / ยังค้าง (นิยามเดียวกับหน้ารายงาน)
     const summary = useMemo(
@@ -196,16 +202,56 @@ function AdminDashboardPage() {
                 )}
             </section>
 
+            {/* นัดซ่อมวันนี้ เรียงตามเวลา (ใช้ตอนเช้าก่อนเริ่มงาน) */}
+            <section aria-label="นัดซ่อมวันนี้" className="bg-white rounded-2xl shadow-card border border-line p-5 flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <h2 className="text-lg font-bold text-primary-dark flex items-center gap-2">
+                        <Icon name="calendar" className="w-5 h-5" />
+                        นัดซ่อมวันนี้
+                        {!loading && data.todayRepairs.length > 0 && <span className="text-sm font-normal text-muted">({data.todayRepairs.length} นัด)</span>}
+                    </h2>
+                    <Link to="/repairs" className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-dark font-semibold">
+                        ไปที่ระบบแจ้งซ่อม
+                        <Icon name="arrowRight" className="w-3.5 h-3.5" />
+                    </Link>
+                </div>
+                {loading ? (
+                    <SkeletonList rows={2} avatar={false} />
+                ) : data.todayRepairs.length === 0 ? (
+                    <p className="text-sm text-muted py-2">วันนี้ไม่มีนัดซ่อม</p>
+                ) : (
+                    <ol className="flex flex-col divide-y divide-line/60">
+                        {data.todayRepairs.map((r) => (
+                            <li key={r.id}>
+                                <Link to="/repairs" className={`flex flex-wrap items-center gap-x-4 gap-y-1 py-3 px-2 rounded-lg hover:bg-sand/50 ${r.pinned ? 'bg-red-50' : ''}`}>
+                                    <span className="w-32 shrink-0 whitespace-nowrap text-base font-bold tabular-nums text-primary-dark">{formatPeriod(r.appointment_period) || '-'}</span>
+                                    <span className="inline-block px-2.5 py-0.5 rounded-lg bg-mist/60 text-primary-dark text-sm font-semibold">{r.room}</span>
+                                    <span className="flex-1 min-w-40 text-sm text-ink">
+                                        {r.problem}
+                                        <span className="block text-xs text-muted">
+                                            {r.technician ? `ช่าง${r.technician}${r.technician_phone ? ` · ${r.technician_phone}` : ''}` : 'ยังไม่ระบุช่าง'}
+                                            {r.contact_phone && ` · ผู้เช่า ${r.contact_phone}`}
+                                        </span>
+                                    </span>
+                                    {r.allow_entry && <span className="text-xs text-emerald-700">เข้าห้องได้แม้ไม่อยู่</span>}
+                                    {r.appointment_state === 'proposed' && <span className="text-xs font-semibold text-amber-700">รอผู้เช่ายืนยัน</span>}
+                                </Link>
+                            </li>
+                        ))}
+                    </ol>
+                )}
+            </section>
+
             {/* 2) การเงินของเดือน / เกินกำหนด / อัตราเข้าพัก */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 <Card
                     title={`การเงินเดือน ${formatMonth(selectedMonth)}`}
                     action={<MonthPicker value={selectedMonth} onChange={setSelectedMonth} marked={monthsWithInvoices} />}
-                    hint="ได้รับ = เงินที่รับจริงในเดือนนี้ (ค่าห้อง+ค่าซ่อม รวมค่าปรับ และอาจมีใบของเดือนก่อนที่เพิ่งชำระ)"
+                    hint={`เรียกเก็บและยังค้าง = บิลเดือน ${formatMonth(summary.billMonth)} ที่ออกในเดือนนี้ · ได้รับ = เงินที่รับจริงในเดือนนี้ (ค่าห้อง+ค่าซ่อม รวมค่าปรับ)`}
                 >
                     <dl className="flex flex-col gap-2">
                         <div className="flex items-baseline justify-between gap-3">
-                            <dt className="text-sm text-muted">เรียกเก็บ ({summary.issuedCount} ใบ)</dt>
+                            <dt className="text-sm text-muted">เรียกเก็บ บิลเดือน {formatMonth(summary.billMonth)} ({summary.issuedCount} ใบ)</dt>
                             <dd className="text-xl font-semibold text-ink tabular-nums">{loading ? loadingText : baht(summary.billed)}</dd>
                         </div>
                         <div className="flex items-baseline justify-between gap-3">
@@ -213,7 +259,7 @@ function AdminDashboardPage() {
                             <dd className="text-xl font-semibold text-emerald-700 tabular-nums">{loading ? loadingText : baht(received)}</dd>
                         </div>
                         <div className="flex items-baseline justify-between gap-3 border-t border-line pt-2">
-                            <dt className="text-sm text-muted">ยังค้างของใบเดือนนี้ ({summary.unpaidCount} ใบ)</dt>
+                            <dt className="text-sm text-muted">ยังค้างของบิลเดือน {formatMonth(summary.billMonth)} ({summary.unpaidCount} ใบ)</dt>
                             <dd className={`text-xl font-semibold tabular-nums ${summary.outstanding > 0 ? 'text-amber-700' : 'text-ink'}`}>{loading ? loadingText : baht(summary.outstanding)}</dd>
                         </div>
                     </dl>

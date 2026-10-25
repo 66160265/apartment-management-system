@@ -21,6 +21,14 @@ const tabs = [
     { key: 'unread', label: 'ยังไม่อ่าน' },
 ]
 
+// กรองตามประเภท (system = ประกาศ สัญญาเช่า และเรื่องอื่นของระบบ)
+const typeFilters = [
+    { key: 'all', label: 'ทุกประเภท' },
+    { key: 'repair', label: 'แจ้งซ่อม' },
+    { key: 'invoice', label: 'ใบแจ้งหนี้' },
+    { key: 'system', label: 'ประกาศและอื่น ๆ' },
+]
+
 // หน้ารายการแจ้งเตือน: ดูรายละเอียด ทำเครื่องหมายอ่านแล้ว และลบแจ้งเตือน
 function NotificationsPage() {
     const navigate = useNavigate()
@@ -29,13 +37,15 @@ function NotificationsPage() {
 
     // แท็บที่เลือก และเปิดหน้าต่างยืนยันล้างรายการที่อ่านแล้ว
     const [activeTab, setActiveTab] = useState('all')
+    const [typeFilter, setTypeFilter] = useState('all')
     const [confirmClear, setConfirmClear] = useState(false)
 
     // แจ้งเตือนที่เปิดดูอยู่มาจาก ?id= ใน URL (เปิดจากกระดิ่งหรือลิงก์ได้), จำนวนที่อ่านแล้ว และรายการตามแท็บ
     const rawId = searchParams.get('id')
     const selected = rawId ? items.find((n) => n.id === rawId) : null
     const readCount = items.length - unreadCount
-    const visible = activeTab === 'unread' ? items.filter((n) => !n.read_at) : items
+    const ofType = typeFilter === 'all' ? items : items.filter((n) => (typeLabels[n.type] ? n.type : 'system') === typeFilter)
+    const visible = activeTab === 'unread' ? ofType.filter((n) => !n.read_at) : ofType
 
     // เปิดรายละเอียดจากลิงก์ (เช่น กดจากกระดิ่ง) ให้ทำเครื่องหมายว่าอ่านแล้ว
     useEffect(() => {
@@ -78,7 +88,7 @@ function NotificationsPage() {
                     <div role="tablist" aria-label="กรองการแจ้งเตือน" className="flex gap-1">
                         {tabs.map((t) => {
                             const active = activeTab === t.key
-                            const n = t.key === 'all' ? items.length : unreadCount
+                            const n = t.key === 'all' ? ofType.length : ofType.filter((x) => !x.read_at).length
                             return (
                                 <button
                                     key={t.key}
@@ -115,13 +125,34 @@ function NotificationsPage() {
                     </div>
                 </div>
 
+                {/* กรองตามประเภท */}
+                <div role="group" aria-label="กรองตามประเภท" className="flex flex-wrap gap-2 py-2">
+                    {typeFilters.map((t) => {
+                        const active = typeFilter === t.key
+                        const count = t.key === 'all' ? items.length : items.filter((n) => (typeLabels[n.type] ? n.type : 'system') === t.key).length
+                        return (
+                            <button
+                                key={t.key}
+                                type="button"
+                                aria-pressed={active}
+                                onClick={() => setTypeFilter(t.key)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm ring-1 transition-colors ${active ? 'bg-primary text-white ring-primary' : 'bg-white text-ink ring-line hover:bg-sand/60'}`}
+                            >
+                                {t.key !== 'all' && <Icon name={typeStyle[t.key].icon} className="w-4 h-4" />}
+                                {t.label}
+                                <span className={`text-xs tabular-nums ${active ? 'text-white/80' : 'text-muted'}`}>{count}</span>
+                            </button>
+                        )
+                    })}
+                </div>
+
                 {/* กำลังโหลด / error / ไม่มีรายการ / รายการแจ้งเตือน (ยังไม่อ่านตัวหนา มีจุดแดง) */}
                 {loading || error ? (
                     loading ? <SkeletonList rows={6} /> : <p className="py-14 text-center text-sm text-red-600">{error}</p>
                 ) : visible.length === 0 ? (
                     <div className="py-14 text-center text-muted text-sm">
                         <span className="mx-auto mb-3 grid place-items-center w-12 h-12 rounded-full bg-sand text-muted"><Icon name="bell" className="w-6 h-6" /></span>
-                        {items.length === 0 ? 'ยังไม่มีรายการแจ้งเตือน' : 'ไม่มีการแจ้งเตือนที่ยังไม่อ่าน'}
+                        {items.length === 0 ? 'ยังไม่มีรายการแจ้งเตือน' : activeTab === 'unread' ? 'ไม่มีการแจ้งเตือนที่ยังไม่อ่าน' : 'ไม่มีการแจ้งเตือนประเภทนี้'}
                     </div>
                 ) : (
                     <ul className="flex flex-col">

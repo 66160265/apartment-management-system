@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient'
-import { MAX_SLOTS, REPAIR_HOURS, legacyPeriods } from '../data/repairs'
+import { MAX_SLOTS, REPAIR_BREAK, REPAIR_HOURS, legacyPeriods } from '../data/repairs'
 
 // ข้อจำกัดรูปแจ้งซ่อม: ไม่เกิน 5 MB และชนิดไฟล์ที่รับ (MIME -> นามสกุลไฟล์)
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024
@@ -53,16 +53,25 @@ export const formatThaiDay = (isoDate) =>
         ? new Date(`${isoDate}T00:00:00`).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short', year: '2-digit' })
         : '-'
 
-// เวลาเริ่มที่เลือกได้ 09:00, 10:00, ..., 18:00
+// เวลาทั้งหมดในขอบเขต 09:00, 10:00, ..., 18:00
 const toMinutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
 const toHhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-export const repairTimeOptions = Array.from(
+const allTimes = Array.from(
     { length: (toMinutes(REPAIR_HOURS.end) - toMinutes(REPAIR_HOURS.start)) / REPAIR_HOURS.step + 1 },
     (_, i) => toHhmm(toMinutes(REPAIR_HOURS.start) + i * REPAIR_HOURS.step),
 )
 
-// เวลาเริ่ม -> ช่วงนัด 1 ครั้ง เช่น "09:00" -> "09:00-10:00"
-export const periodAt = (start) => `${start}-${toHhmm(toMinutes(start) + REPAIR_HOURS.step)}`
+// เวลาเริ่มที่เลือกได้ 09:00, 10:00, 11:00, 13:00, ..., 17:00 (ไม่รวมเวลาสิ้นสุดของวัน และเวลาพัก 12:00)
+export const repairStartOptions = allTimes.slice(0, -1).filter((t) => t !== REPAIR_BREAK.start)
+
+// เวลาสิ้นสุดที่เลือกได้ เมื่อเริ่มตอน start: ตั้งแต่ 1 ชั่วโมงหลังเวลาเริ่มถึง 18:00 (ยังไม่เลือกเวลาเริ่ม = ทุกเวลาหลัง 09:00)
+export const repairEndOptions = (start) => allTimes.filter((t) => t > (start || REPAIR_HOURS.start))
+
+// ช่วงนี้เริ่มในเวลาพักของช่างไหม (12:00-13:00)
+export const isBreakTime = (period) => {
+    const { start } = parsePeriod(period)
+    return start >= REPAIR_BREAK.start && start < REPAIR_BREAK.end
+}
 
 // แปลงค่าแบบเดิม (morning) เป็นช่วงเวลา "09:00-12:00"
 export const normalizePeriod = (period) => legacyPeriods[period] ?? period ?? ''
@@ -73,20 +82,19 @@ export const parsePeriod = (period) => {
     return { start, end }
 }
 
-// เวลาถูกต้อง: เป็นช่วงนัด 1 ครั้งที่เริ่มตามเวลาที่เลือกได้ (09:00-10:00 ... 18:00-19:00)
+// ช่วงเวลาถูกต้อง: เวลาเริ่มและสิ้นสุดเป็นเวลาที่เลือกได้ และสิ้นสุดหลังเวลาเริ่ม (เช่น 09:00-16:00)
 export const isValidPeriod = (period) => {
-    const { start } = parsePeriod(period)
-    return repairTimeOptions.includes(start) && normalizePeriod(period) === periodAt(start)
+    const { start, end } = parsePeriod(period)
+    return repairStartOptions.includes(start) && repairEndOptions(start).includes(end)
 }
 
-// "09:00-10:00" -> "09:00 น." (ช่วงแบบเดิมที่ยาวกว่า 1 ครั้ง เช่น "13:00-15:30" -> "13:00-15:30 น.")
+// "09:00-16:00" -> "09:00-16:00 น."
 export const formatPeriod = (period) => {
     const { start, end } = parsePeriod(period)
-    if (!start || !end) return ''
-    return isValidPeriod(period) ? `${start} น.` : `${start}-${end} น.`
+    return start && end ? `${start}-${end} น.` : ''
 }
 
-// สองช่วงเวลาซ้อนกันไหม (ใช้เตือนนัดชน)
+// สองช่วงเวลาซ้อนกันไหม (ใช้บอกผู้ดูแลว่าช่วงนี้มีงานอื่นแล้วกี่งาน)
 export const periodsOverlap = (a, b) => {
     const p = parsePeriod(a)
     const q = parsePeriod(b)
@@ -108,15 +116,17 @@ export const isInSlots = (slots, date, period) => {
     })
 }
 
-// ช่วงแบบเดิม (เช่น "13:00-15:30", morning) -> เวลานัด 1 ครั้งที่เริ่มตามต้นช่วง (ปัดลงเป็นเวลาที่เลือกได้)
+// ช่วงแบบเดิม (เช่น "13:00-15:30", "17:00-20:00", morning) -> ช่วงที่เลือกได้ใกล้เคียงที่สุด (ปัดเวลาเริ่มลง เวลาสิ้นสุดขึ้น ไม่เกินขอบเขต)
 export const toSlotPeriod = (period) => {
     if (isValidPeriod(period)) return normalizePeriod(period)
-    const { start } = parsePeriod(period)
-    const fit = [...repairTimeOptions].reverse().find((t) => t <= start) ?? repairTimeOptions[0]
-    return periodAt(fit)
+    const { start, end } = parsePeriod(period)
+    const from = [...repairStartOptions].reverse().find((t) => t <= start) ?? repairStartOptions[0]
+    const ends = repairEndOptions(from)
+    const to = ends.find((t) => t >= end) ?? ends[ends.length - 1]
+    return `${from}-${to}`
 }
 
-// ตัดช่วงเวลาที่ผ่านไปแล้วทิ้ง (ใช้ตอนเปิดฟอร์มแก้ไข) แปลงช่วงแบบเดิมเป็นเวลานัด 1 ครั้ง เรียงตามวัน และเก็บไว้ไม่เกิน MAX_SLOTS
+// ตัดช่วงเวลาที่ผ่านไปแล้วทิ้ง (ใช้ตอนเปิดฟอร์มแก้ไข) แปลงช่วงแบบเดิมเป็นช่วงที่เลือกได้ เรียงตามวัน และเก็บไว้ไม่เกิน MAX_SLOTS
 export const upcomingSlots = (slots) =>
     (slots ?? [])
         .filter((s) => s.date >= todayIso())
@@ -134,28 +144,39 @@ export const isPastTime = (date, period) => {
     return parsePeriod(period).start <= nowHhmm
 }
 
-// ---- เวลาที่มีนัดซ่อมของห้องอื่นแล้ว (เลือกซ้ำไม่ได้) ----
-
-// วัน + เวลานี้ชนกับนัดที่มีอยู่แล้วไหม (booked = [{ date, period }])
-export const isBooked = (booked, date, period) => (booked ?? []).some((b) => b.date === date && periodsOverlap(b.period, period))
-
-// นัดซ่อมที่ยังไม่ถึงของทุกห้อง (เฉพาะวันและเวลา ไม่มีข้อมูลห้อง) ไม่นับรายการ excludeId
-export async function loadBookedTimes(excludeId = null) {
-    const { data, error } = await supabase.rpc('repair_booked_times', { p_exclude: excludeId })
-    return error ? [] : (data ?? []).map((r) => ({ date: r.appointment_date, period: r.appointment_period }))
-}
+// จำนวนนัดซ่อมของห้องอื่นที่ทับกับวันและช่วงนี้ (appointments = [{ date, period }]) ใช้เตือนผู้ดูแล ไม่ได้ห้ามนัด
+export const countOverlaps = (appointments, date, period) =>
+    (appointments ?? []).filter((a) => a.date === date && periodsOverlap(a.period, period)).length
 
 // ตรวจช่วงเวลาที่ผู้เช่ากรอก: คืนข้อความ error หรือสตริงว่าง
-export function validateAvailability({ slots, allowEntry, urgency, booked = [] }) {
-    if (slots.some((s) => !s.date || !s.period)) return 'กรุณาเลือกวันและเวลาให้ครบทุกช่อง'
-    if (slots.some((s) => !isValidPeriod(s.period))) return `กรุณาเลือกเวลาระหว่าง ${REPAIR_HOURS.start}-${REPAIR_HOURS.end} น.`
+export function validateAvailability({ slots, allowEntry, urgency }) {
+    if (slots.some((s) => !s.date || !parsePeriod(s.period).start || !parsePeriod(s.period).end)) return 'กรุณาเลือกวัน เวลาเริ่ม และเวลาสิ้นสุดให้ครบทุกช่อง'
+    const onBreak = slots.find((s) => isBreakTime(s.period))
+    if (onBreak) return `เวลา ${REPAIR_BREAK.start}-${REPAIR_BREAK.end} น. เป็นเวลาพักของช่าง กรุณาเลือกช่วงเวลาอื่น`
+    if (slots.some((s) => !isValidPeriod(s.period))) return `กรุณาเลือกช่วงเวลาระหว่าง ${REPAIR_HOURS.start}-${REPAIR_HOURS.end} น. โดยเวลาสิ้นสุดต้องหลังเวลาเริ่ม`
     if (slots.some((s) => s.date < todayIso())) return 'ไม่สามารถเลือกวันที่ผ่านมาแล้ว'
     if (slots.some((s) => isPastTime(s.date, s.period))) return 'เวลานี้ผ่านไปแล้ว กรุณาเลือกเวลาอื่น'
-    const keys = slots.map((s) => `${s.date}|${s.period}`)
-    if (new Set(keys).size !== keys.length) return 'มีวันและเวลาซ้ำกัน'
-    const taken = slots.find((s) => isBooked(booked, s.date, s.period))
-    if (taken) return `${formatSlot(taken.date, taken.period)} มีห้องอื่นนัดหรือเลือกไว้แล้ว กรุณาเลือกเวลาอื่น`
+    // ช่วงในวันเดียวกันห้ามซ้อนกัน (เลือกช่วงยาวช่วงเดียวแทนได้)
+    if (slots.some((s, i) => slots.some((o, j) => j < i && o.date === s.date && periodsOverlap(o.period, s.period))))
+        return 'มีช่วงเวลาในวันเดียวกันซ้อนกัน กรุณารวมเป็นช่วงเดียวหรือเลือกเวลาอื่น'
     if (slots.length === 0 && !allowEntry && urgency !== 'emergency')
         return 'กรุณาเลือกช่วงเวลาที่สะดวกอย่างน้อย 1 ช่วง หรืออนุญาตให้ช่างเข้าห้องได้แม้ไม่อยู่'
     return ''
+}
+
+// ตรวจข้อมูลช่างตอนเปลี่ยนเป็น "กำลังดำเนินการ": ต้องมีชื่อและเบอร์โทร (ตัวเลข 9-10 หลัก ใส่ขีดหรือเว้นวรรคได้) คืนข้อความ error หรือสตริงว่าง
+export function validateTechnician(name, phone) {
+    if (!name.trim() || !phone.trim()) return 'กรุณาใส่ชื่อช่างและเบอร์โทรช่างก่อนเปลี่ยนเป็น "กำลังดำเนินการ"'
+    const digits = phone.replace(/\D/g, '')
+    if (!/^[\d\s()+-]+$/.test(phone.trim()) || digits.length < 9 || digits.length > 10) return 'เบอร์โทรช่างไม่ถูกต้อง (ตัวเลข 9-10 หลัก)'
+    return ''
+}
+
+// เรียงรายการแจ้งซ่อม: เรื่องที่ปักหมุดอยู่บนสุด (ปักล่าสุดก่อน) ที่เหลือเรียงตามวันที่แจ้ง ใหม่สุดก่อน หรือเก่าสุดก่อน
+export function sortRepairs(list, oldestFirst = false) {
+    return [...list].sort((a, b) => {
+        if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1
+        if (a.pinned) return String(b.pinned_at ?? '').localeCompare(String(a.pinned_at ?? ''))
+        return (oldestFirst ? 1 : -1) * a.created_at.localeCompare(b.created_at)
+    })
 }

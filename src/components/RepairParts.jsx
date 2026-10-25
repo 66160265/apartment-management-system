@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import DatePicker from './DatePicker'
 import { MAX_SLOTS, repairStatuses, repairUrgencies } from '../data/repairs'
-import { formatSize, formatSlot, getRepairImageUrl, isBooked, isPastTime, parsePeriod, periodAt, repairTimeOptions, todayIso, validateImage } from '../lib/repairs'
+import { formatSize, formatSlot, getRepairImageUrl, isPastTime, parsePeriod, repairEndOptions, repairStartOptions, todayIso, validateImage } from '../lib/repairs'
 
 // ป้ายสถานะงานซ่อม (รอดำเนินการ / กำลังดำเนินการ / เสร็จสิ้น) สีตามสถานะ ถ้าไม่รู้จักสถานะจะแสดงเป็นสีเทา
 export function RepairStatusBadge({ status }) {
@@ -219,30 +219,42 @@ function TimeSelect({ value, options, isBlocked, onChange, disabled, label, alig
     )
 }
 
-// เลือกเวลาเข้าซ่อม 09:00, 10:00, ..., 18:00 ค่าเป็นช่วงนัด 1 ครั้ง "09:00-10:00"
-// isBlocked(period) = เวลานี้เลือกไม่ได้ (มีนัดของห้องอื่นแล้ว)
-function TimePicker({ value, onChange, isBlocked, disabled = false, selectClassName = 'w-full border border-line rounded-xl px-3 py-2 text-sm bg-white outline-none focus:border-secondary' }) {
-    const { start } = parsePeriod(value)
+// เลือกช่วงเวลาที่สะดวก: เวลาเริ่ม ถึง เวลาสิ้นสุด ค่าเป็น "09:00-16:00" (เลือกไม่ครบ = "09:00-" หรือ "-16:00")
+// isStartBlocked(start) = เวลาเริ่มนี้เลือกไม่ได้ (เช่น กระชั้นเกินไป)
+function TimeRangePicker({ value, onChange, isStartBlocked, disabled = false }) {
+    const { start, end } = parsePeriod(value)
+    const className = 'w-full border border-line rounded-xl px-3 py-2 text-sm bg-white outline-none focus:border-secondary'
     return (
-        <div className="w-36 shrink-0 flex items-center gap-1.5">
+        <div className="order-last sm:order-none w-full sm:w-64 shrink-0 flex items-center gap-1.5">
             <TimeSelect
                 value={start}
-                options={repairTimeOptions}
-                isBlocked={isBlocked ? (t) => isBlocked(periodAt(t)) : undefined}
-                onChange={(t) => onChange(periodAt(t))}
+                options={repairStartOptions}
+                isBlocked={isStartBlocked}
+                // เปลี่ยนเวลาเริ่มแล้วเวลาสิ้นสุดเดิมไม่หลังเวลาเริ่ม ให้ล้างเวลาสิ้นสุด
+                onChange={(t) => onChange(`${t}-${end && end > t ? end : ''}`)}
                 disabled={disabled}
-                label="เวลาเข้าซ่อม"
+                label="เวลาเริ่ม"
+                placeholder="เริ่ม"
+                className={className}
+            />
+            <span className="text-muted text-sm">ถึง</span>
+            <TimeSelect
+                value={end}
+                options={repairEndOptions(start)}
+                onChange={(t) => onChange(`${start}-${t}`)}
+                disabled={disabled}
+                label="เวลาสิ้นสุด"
+                placeholder="สิ้นสุด"
                 align="right"
-                className={selectClassName}
+                className={className}
             />
             <span className="text-muted text-sm">น.</span>
         </div>
     )
 }
 
-// ตัวเลือกวันและเวลาที่สะดวกให้ช่างเข้า (สูงสุด MAX_SLOTS ตัวเลือก) ค่าเป็น [{ date: 'YYYY-MM-DD', period: '09:00-10:00' }]
-// booked = เวลาที่มีนัดซ่อมของห้องอื่นแล้ว [{ date, period }] (เลือกไม่ได้)
-export function SlotPicker({ slots, onChange, booked = [], disabled = false }) {
+// ตัวเลือกวันและช่วงเวลาที่สะดวกให้ช่างเข้า (สูงสุด MAX_SLOTS ตัวเลือก) ค่าเป็น [{ date: 'YYYY-MM-DD', period: '09:00-16:00' }]
+export function SlotPicker({ slots, onChange, disabled = false }) {
     // แสดงช่องตัวเลือกที่ 1 ไว้เสมอ ถ้ายังไม่ได้เลือกวันจะยังไม่นับเป็นข้อมูล (ส่ง [] ออกไป แต่จำเวลาที่ตั้งไว้)
     const [draftPeriod, setDraftPeriod] = useState('')
     const rows = slots.length > 0 ? slots : [{ date: '', period: draftPeriod }]
@@ -262,15 +274,14 @@ export function SlotPicker({ slots, onChange, booked = [], disabled = false }) {
         <div className="flex flex-col gap-2">
             {rows.map((s, i) => (
                 <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-2 rounded-xl border border-line bg-sand/40 p-2">
-                    <span className="text-xs text-muted w-14 shrink-0">ตัวเลือก {i + 1}</span>
                     <div className="flex-1 min-w-40">
                         <DatePicker value={s.date} onChange={(v) => update(i, 'date', v)} min={todayIso()} disabled={disabled} placeholder="เลือกวัน" />
                     </div>
-                    <TimePicker
+                    <TimeRangePicker
                         value={s.period}
                         onChange={(v) => update(i, 'period', v)}
-                        // ปิดเวลาที่มีนัดของห้องอื่นแล้ว และเวลาที่ตัวเลือกอื่นในวันเดียวกันเลือกไปแล้ว
-                        isBlocked={(p) => Boolean(s.date) && (isPastTime(s.date, p) || isBooked(booked, s.date, p) || rows.some((o, j) => j !== i && o.date === s.date && o.period === p))}
+                        // ปิดเวลาเริ่มที่ผ่านไปแล้ว
+                        isStartBlocked={(t) => Boolean(s.date) && isPastTime(s.date, `${t}-`)}
                         disabled={disabled}
                     />
                     {/* ช่องแรกลบไม่ได้ ลบได้เฉพาะช่องที่เพิ่มเอง (ช่องแรกเว้นที่ว่างเท่าปุ่ม ให้ช่องวันที่กว้างเท่ากันทุกแถว) */}
@@ -289,6 +300,9 @@ export function SlotPicker({ slots, onChange, booked = [], disabled = false }) {
                     เพิ่มช่วงเวลาที่สะดวก (เลือกได้อีก {MAX_SLOTS - rows.length})
                 </button>
             )}
+            <p className="text-xs text-muted">
+                เลือกได้สูงสุด {MAX_SLOTS} ตัวเลือก ช่วงยิ่งกว้างยิ่งนัดได้เร็ว
+            </p>
         </div>
     )
 }
@@ -332,8 +346,24 @@ export function AppointmentBox({ repair, children }) {
                 </span>
             </div>
             <div className="mt-1 text-base font-semibold text-ink">{formatSlot(repair.appointment_date, repair.appointment_period)}</div>
-            {repair.technician && <div className="text-sm text-muted mt-0.5">ช่าง: {repair.technician}</div>}
+            <TechnicianInfo repair={repair} className="mt-0.5" />
             {children}
+        </div>
+    )
+}
+
+// ชื่อช่างและเบอร์โทร (กดโทรได้) ไม่มีชื่อช่าง = ไม่แสดง
+export function TechnicianInfo({ repair, className = '' }) {
+    if (!repair.technician) return null
+    return (
+        <div className={`text-sm text-muted flex flex-wrap items-center gap-x-2 ${className}`}>
+            <span>ช่าง: <span className="text-ink">{repair.technician}</span></span>
+            {repair.technician_phone && (
+                <a href={`tel:${repair.technician_phone}`} className="inline-flex items-center gap-1 text-primary hover:underline">
+                    <Icon name="phone" className="w-3.5 h-3.5" />
+                    {repair.technician_phone}
+                </a>
+            )}
         </div>
     )
 }
