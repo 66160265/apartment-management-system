@@ -60,7 +60,7 @@ const attentionTone = {
 function Card({ title, children, hint, action, className = '', hintClassName = '' }) {
     return (
         <div className={`bg-white rounded-2xl p-4 sm:p-5 shadow-card border border-line flex flex-col gap-2 sm:gap-3 ${className}`}>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                 <span className="text-sm font-medium text-muted">{title}</span>
                 {action}
             </div>
@@ -210,7 +210,7 @@ function AdminDashboardPage() {
                         นัดซ่อมวันนี้
                         {!loading && data.todayRepairs.length > 0 && <span className="text-sm font-normal text-muted">({data.todayRepairs.length} นัด)</span>}
                     </h2>
-                    <Link to="/repairs" className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-dark font-semibold">
+                    <Link to="/repairs" className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-dark font-semibold py-2.5 -my-2.5 lg:py-0 lg:my-0">
                         ไปที่ระบบแจ้งซ่อม
                         <Icon name="arrowRight" className="w-3.5 h-3.5" />
                     </Link>
@@ -243,9 +243,10 @@ function AdminDashboardPage() {
             </section>
 
             {/* 2) การเงินของเดือน / เกินกำหนด / อัตราเข้าพัก */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
+            {/* 3 การ์ดเรียงข้างกันเมื่อจอกว้างพอ (xl) ที่ lg มีเมนูข้าง 256px ทำให้เนื้อหาแคบ การ์ดแรกจึงกินเต็มแถวก่อน */}
+            <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-5">
                 <Card
-                    className="col-span-2 lg:col-span-1"
+                    className="col-span-2 xl:col-span-1"
                     hintClassName="hidden sm:block"
                     title={`การเงินเดือน ${formatMonth(selectedMonth)}`}
                     action={<MonthPicker value={selectedMonth} onChange={setSelectedMonth} marked={monthsWithInvoices} />}
@@ -307,7 +308,7 @@ function AdminDashboardPage() {
                             <span className="text-xs bg-red-100 text-red-800 font-semibold px-2.5 py-0.5 rounded-full">{overdue.length} ใบ</span>
                         )}
                     </div>
-                    <Link to="/invoices" className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-dark font-semibold transition">
+                    <Link to="/invoices" className="inline-flex items-center gap-1 text-xs text-primary hover:text-primary-dark font-semibold transition py-2.5 -my-2.5 lg:py-0 lg:my-0">
                         จัดการใบแจ้งหนี้ทั้งหมด
                         <Icon name="arrowRight" className="w-3.5 h-3.5" />
                     </Link>
@@ -354,7 +355,7 @@ function AdminDashboardPage() {
 
             <p className="text-xs text-muted">
                 รายงานย้อนหลัง 12 เดือน สถิติการใช้น้ำ-ไฟรายห้อง และการส่งออก CSV อยู่ที่{' '}
-                <Link to="/admin/reports" className="text-primary font-medium hover:underline">หน้ารายงาน</Link>
+                <Link to="/admin/reports" className="text-primary font-medium hover:underline inline-block py-2 -my-2 lg:py-0 lg:my-0">หน้ารายงาน</Link>
             </p>
         </div>
     )

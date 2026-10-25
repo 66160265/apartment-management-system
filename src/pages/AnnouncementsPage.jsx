@@ -181,8 +181,8 @@ function AnnouncementCard({ item, isAdmin, onChanged }) {
                         </div>
                         {isAdmin && (
                             <div className="flex gap-2">
-                                <button type="button" onClick={() => setEditing(true)} className="border border-line bg-white text-primary-dark hover:bg-mist/40 px-3 py-1 rounded-lg text-sm">แก้ไข</button>
-                                <button type="button" onClick={() => setConfirmDelete(true)} className="border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 px-3 py-1 rounded-lg text-sm">ลบ</button>
+                                <button type="button" onClick={() => setEditing(true)} className="border border-line bg-white text-primary-dark hover:bg-mist/40 px-4 py-2 sm:px-3 sm:py-1 rounded-lg text-sm">แก้ไข</button>
+                                <button type="button" onClick={() => setConfirmDelete(true)} className="border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 px-4 py-2 sm:px-3 sm:py-1 rounded-lg text-sm">ลบ</button>
                             </div>
                         )}
                     </div>

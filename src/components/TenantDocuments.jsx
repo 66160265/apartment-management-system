@@ -12,7 +12,7 @@ const EXTENSIONS = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png':
 const formatSize = (bytes) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(bytes / 1024)} KB`)
 
 // คลาสของปุ่มในกลุ่มปุ่ม ดู/แก้ไข
-const btn = 'px-3 py-1 text-sm hover:bg-mist/50'
+const btn = 'px-3.5 py-2 sm:px-3 sm:py-1 text-sm hover:bg-mist/50'
 
 // แถวเอกสารหนึ่งประเภท: ถ้ามีไฟล์แล้วแสดงปุ่มดู/แก้ไข/ลบ ถ้ายังไม่มีแสดงปุ่มเพิ่ม
 function DocRow({ title, doc, onAdd, onView, onEdit, onDelete }) {
@@ -38,7 +38,7 @@ function DocRow({ title, doc, onAdd, onView, onEdit, onDelete }) {
                 <div className="inline-flex rounded-lg border border-line bg-white overflow-hidden divide-x divide-line">
                     <button type="button" onClick={() => onView(doc)} className={`${btn} text-primary-dark`}>ดู</button>
                     <button type="button" onClick={() => onEdit(doc)} className={`${btn} text-ink`}>แก้ไข</button>
-                    <button type="button" onClick={() => onDelete(doc)} className="px-3 py-1 text-sm text-red-600 hover:bg-red-50">ลบ</button>
+                    <button type="button" onClick={() => onDelete(doc)} className="px-3.5 py-2 sm:px-3 sm:py-1 text-sm text-red-600 hover:bg-red-50">ลบ</button>
                 </div>
             ) : (
                 <button type="button" onClick={onAdd} className="px-4 py-1.5 text-sm rounded-lg bg-primary text-white hover:bg-primary-dark">เพิ่มเอกสาร</button>
