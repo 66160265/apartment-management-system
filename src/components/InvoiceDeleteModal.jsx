@@ -17,7 +17,7 @@ function InvoiceDeleteModal({ invoice, onConfirm, onCancel }) {
 
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 shadow-xl w-[420px] max-w-[92vw] flex flex-col gap-4">
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl w-[420px] max-w-[92vw] flex flex-col gap-4">
                 <div className="flex items-center gap-3">
                     <span className="grid place-items-center w-10 h-10 rounded-full bg-red-50 text-red-600"><Icon name="trash" className="w-5 h-5" /></span>
                     <h2 className="text-lg font-semibold text-primary-dark">ลบใบแจ้งหนี้</h2>

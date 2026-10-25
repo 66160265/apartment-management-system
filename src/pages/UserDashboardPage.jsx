@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import DownloadInvoiceButton from '../components/DownloadInvoiceButton'
@@ -289,13 +288,13 @@ function UserDashboardPage() {
     // โหลดครั้งแรก: แสดงโครงหน้าแบบกล่องเทากระพริบ
     if (loading && !tenantInfo) {
         return (
-            <div className="p-4 sm:p-6 flex flex-col gap-6">
+            <div className="p-4 sm:p-6 flex flex-col gap-4 sm:gap-6">
                 <div className="flex justify-between items-center animate-pulse">
                     <div className="h-8 bg-line rounded-lg w-48" />
                     <div className="w-10 h-10 bg-line rounded-full" />
                 </div>
                 <div className="h-36 bg-line rounded-2xl animate-pulse" />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="grid grid-cols-2 gap-3 sm:gap-5">
                     <div className="h-32 bg-line rounded-2xl animate-pulse" />
                     <div className="h-32 bg-line rounded-2xl animate-pulse" />
                 </div>
@@ -306,7 +305,7 @@ function UserDashboardPage() {
     // บัญชียังไม่ผูกกับห้อง: แสดงข้อความให้ติดต่อผู้ดูแล
     if (!tenantInfo) {
         return (
-            <div className="p-4 sm:p-6 flex flex-col gap-6">
+            <div className="p-4 sm:p-6 flex flex-col gap-4 sm:gap-6">
                 <PageHeader flush title="ภาพรวม" subtitle="ยินดีต้อนรับเข้าสู่ระบบจัดการห้องพัก" />
                 <div className="bg-white rounded-2xl p-12 text-center shadow-card border border-line flex flex-col items-center gap-3">
                     <span className="w-16 h-16 rounded-full bg-sand flex items-center justify-center text-muted">
@@ -322,7 +321,7 @@ function UserDashboardPage() {
     }
 
     return (
-        <div className="p-4 sm:p-6 flex flex-col gap-6">
+        <div className="p-4 sm:p-6 flex flex-col gap-4 sm:gap-6">
             {/* Error Message ถ้ามี */}
             {loadError && (
                 <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex justify-between items-center">
@@ -363,26 +362,43 @@ function UserDashboardPage() {
                     )}
 
                     {/* การ์ดต้อนรับและข้อมูลสัญญาเช่า (Desktop Banner ตามข้อมูลในรูปแรก) */}
-                    <div className="bg-linear-to-r from-primary-dark via-primary to-primary-deep text-white rounded-2xl p-6 md:p-8 shadow-card flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                    <div className="bg-linear-to-r from-primary-dark via-primary to-primary-deep text-white rounded-2xl p-4 md:p-8 shadow-card flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-6">
                         {/* ห้อง/ชั้น วันที่วันนี้ คำทักทาย และเบอร์โทร */}
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-1.5 md:gap-2">
                             <div className="flex items-center gap-2 text-xs md:text-sm text-mist font-medium">
-                                <span className="bg-white/15 px-3 py-1 rounded-full backdrop-blur-xs">
+                                <span className="bg-white/15 px-2.5 md:px-3 py-0.5 md:py-1 rounded-full backdrop-blur-xs">
                                     ห้อง {tenantInfo?.room || '-'} - ชั้น {roomInfo?.floor || '1'}
                                 </span>
                                 <span>·</span>
                                 <span>{formatThaiToday()}</span>
                             </div>
-                            <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
+                            <h2 className="text-xl md:text-3xl font-bold tracking-tight">
                                 สวัสดี, คุณ{tenantInfo?.name || 'ผู้เช่า'}
                             </h2>
-                            <p className="text-xs md:text-sm text-white/80">
+                            <p className="hidden md:block text-sm text-white/80">
                                 เบอร์โทรติดต่อ: {tenantInfo?.phone || '-'}
+                            </p>
+                            {/* จอเล็ก: สัญญาเช่าเป็นบรรทัดเดียวแทนกล่อง (ประหยัดพื้นที่) */}
+                            <p className="md:hidden flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/85">
+                                <span>
+                                    {tenantInfo?.end_date
+                                        ? `สัญญาถึง ${new Date(tenantInfo.end_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}`
+                                        : 'ไม่ได้ระบุวันสิ้นสุดสัญญา'}
+                                </span>
+                                {contractRemainingDays !== null && (
+                                    <span
+                                        className={`px-2 py-0.5 rounded-full font-bold ${
+                                            contractRemainingDays > 30 ? 'bg-emerald-500/20 text-emerald-200' : contractRemainingDays > 0 ? 'bg-amber-500/20 text-amber-200' : 'bg-red-500/20 text-red-200'
+                                        }`}
+                                    >
+                                        {contractRemainingDays > 0 ? `เหลือ ${contractRemainingDays} วัน` : 'หมดสัญญาแล้ว'}
+                                    </span>
+                                )}
                             </p>
                         </div>
 
-                        {/* กล่องข้อมูลสัญญาเช่า */}
-                        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-4 flex flex-col gap-1.5 min-w-56">
+                        {/* กล่องข้อมูลสัญญาเช่า (จอ md ขึ้นไป) */}
+                        <div className="hidden md:flex bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-4 flex-col gap-1.5 md:min-w-56">
                             <div className="text-xs text-mist font-medium flex items-center justify-between">
                                 <span>สัญญาเช่า</span>
                                 {contractRemainingDays !== null && (
@@ -415,7 +431,7 @@ function UserDashboardPage() {
 
                     {/* ค้างชำระหลายใบ: แสดงรายการทั้งหมด เลือกใบที่จะดู/จ่ายได้ (ถ้ามีใบเดียว การ์ดการดำเนินการด้านล่างครอบคลุมแล้ว) */}
                     {unpaid.length > 1 && (
-                        <section className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex flex-col gap-3">
+                        <section className="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5 flex flex-col gap-3">
                             <h3 className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
                                 <Icon name="alert" className="w-4 h-4" />
                                 มี {unpaid.length} ใบที่ยังต้องชำระ · รวม {baht(unpaid.reduce((sum, u) => sum + u.balance, 0))}
@@ -466,12 +482,13 @@ function UserDashboardPage() {
                     <AnnouncementBanner />
 
                     {/* การ์ดสรุปตัวเลข */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* จอเล็กก็วาง 2 ใบคู่กัน (ตัวเลขเล็กลงและขอบในแคบลง) */}
+                    <div className="grid grid-cols-2 gap-3 sm:gap-5">
                         {/* 1. ยอดเดือนนี้ */}
-                        <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col justify-between">
+                        <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-card border border-line flex flex-col justify-between min-w-0">
                             <span className="text-sm font-medium text-muted">ยอดใบแจ้งหนี้</span>
-                            <div className="mt-3">
-                                <div className="text-3xl sm:text-4xl font-bold text-ink tracking-tight tabular-nums">
+                            <div className="mt-2 sm:mt-3">
+                                <div className="text-2xl sm:text-4xl font-bold text-ink tracking-tight tabular-nums">
                                     {activeInvoice ? baht(activeInvoice.total) : '฿0'}
                                 </div>
                                 <div className="text-xs text-muted mt-1.5 font-medium">
@@ -491,10 +508,10 @@ function UserDashboardPage() {
                         </div>
 
                         {/* 2. สถานะ */}
-                        <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col justify-between">
+                        <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-card border border-line flex flex-col justify-between min-w-0">
                             <span className="text-sm font-medium text-muted">สถานะ</span>
-                            <div className="mt-3">
-                                <div className="text-2xl sm:text-3xl font-bold tracking-tight">
+                            <div className="mt-2 sm:mt-3">
+                                <div className="text-xl sm:text-3xl font-bold tracking-tight">
                                     {activeInvoice ? (
                                         <span
                                             className={
@@ -529,10 +546,10 @@ function UserDashboardPage() {
                     </div>
 
                     {/* ส่วนเนื้อหาหลัก: รายการค่าใช้จ่าย (Desktop 2 คอลัมน์) */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
                         {/* ฝั่งซ้าย: รายการค่าใช้จ่าย (ตามรูปแรก) */}
-                        <div className="lg:col-span-8 bg-white rounded-2xl p-6 md:p-8 shadow-card border border-line flex flex-col gap-5">
-                            <div className="flex justify-between items-center border-b border-line pb-4">
+                        <div className="lg:col-span-8 bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-card border border-line flex flex-col gap-3 sm:gap-5">
+                            <div className="flex justify-between items-center border-b border-line pb-3 sm:pb-4">
                                 <h3 className="text-lg font-bold text-primary-dark">รายการค่าใช้จ่าย</h3>
                                 {activeInvoice && (
                                     <span className="bg-mist/40 text-primary-dark font-semibold text-xs px-3 py-1 rounded-full">
@@ -545,7 +562,7 @@ function UserDashboardPage() {
                             {invoiceBreakdown ? (
                                 <div className="flex flex-col divide-y divide-line/70">
                                     {/* ค่าห้อง */}
-                                    <div className="py-3.5 flex justify-between items-center text-sm">
+                                    <div className="py-2.5 sm:py-3.5 flex justify-between items-center gap-3 text-sm">
                                         <div className="flex items-center gap-3">
                                             <span className="grid place-items-center w-8 h-8 rounded-lg bg-sky-50 text-sky-700">
                                                 <Icon name="home" className="w-4 h-4" />
@@ -558,7 +575,7 @@ function UserDashboardPage() {
                                     </div>
 
                                     {/* ค่าน้ำ */}
-                                    <div className="py-3.5 flex justify-between items-center text-sm">
+                                    <div className="py-2.5 sm:py-3.5 flex justify-between items-center gap-3 text-sm">
                                         <div className="flex items-center gap-3">
                                             <span className="grid place-items-center w-8 h-8 rounded-lg bg-cyan-50 text-cyan-700">
                                                 <Icon name="droplet" className="w-4 h-4" />
@@ -578,7 +595,7 @@ function UserDashboardPage() {
                                     </div>
 
                                     {/* ค่าไฟ */}
-                                    <div className="py-3.5 flex justify-between items-center text-sm">
+                                    <div className="py-2.5 sm:py-3.5 flex justify-between items-center gap-3 text-sm">
                                         <div className="flex items-center gap-3">
                                             <span className="grid place-items-center w-8 h-8 rounded-lg bg-amber-50 text-amber-700">
                                                 <Icon name="bolt" className="w-4 h-4" />
@@ -598,7 +615,7 @@ function UserDashboardPage() {
                                     </div>
 
                                     {/* ค่าส่วนกลาง */}
-                                    <div className="py-3.5 flex justify-between items-center text-sm">
+                                    <div className="py-2.5 sm:py-3.5 flex justify-between items-center gap-3 text-sm">
                                         <div className="flex items-center gap-3">
                                             <span className="grid place-items-center w-8 h-8 rounded-lg bg-violet-50 text-violet-700">
                                                 <Icon name="building" className="w-4 h-4" />
@@ -612,7 +629,7 @@ function UserDashboardPage() {
 
                                     {/* ค่าซ่อมที่รวมมาในใบนี้ (เฉพาะใบเก่าช่วงที่ค่าซ่อมรวมในใบแจ้งหนี้ ตอนนี้จ่ายแยกแล้ว) */}
                                     {invoiceBreakdown.repairFee > 0 && (
-                                        <div className="py-3.5 flex justify-between items-center text-sm">
+                                        <div className="py-2.5 sm:py-3.5 flex justify-between items-center gap-3 text-sm">
                                             <div className="flex items-center gap-3">
                                                 <span className="grid place-items-center w-8 h-8 rounded-lg bg-rose-50 text-rose-700">
                                                     <Icon name="wrench" className="w-4 h-4" />
@@ -626,9 +643,9 @@ function UserDashboardPage() {
                                     )}
 
                                     {/* รวมทั้งหมด */}
-                                    <div className="pt-5 flex justify-between items-center">
+                                    <div className="pt-3 sm:pt-5 flex justify-between items-center">
                                         <span className="text-base font-bold text-ink">รวมทั้งหมด</span>
-                                        <span className="text-2xl font-bold text-primary-dark tabular-nums">
+                                        <span className="text-xl sm:text-2xl font-bold text-primary-dark tabular-nums">
                                             {baht(invoiceBreakdown.total)}
                                         </span>
                                     </div>
@@ -642,8 +659,8 @@ function UserDashboardPage() {
 
                         {/* ฝั่งขวา: กล่อง Action (ปุ่มชำระเงินตามรูปแรก ที่เมื่อกดแล้วจะเปิดหน้าในรูปที่สอง) */}
                         <div className="lg:col-span-4 flex flex-col gap-5">
-                            <div className="bg-white rounded-2xl p-6 shadow-card border border-line flex flex-col gap-4">
-                                <h3 className="text-base font-bold text-ink">การดำเนินการ</h3>
+                            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-card border border-line flex flex-col gap-3 sm:gap-4">
+                                <h3 className="hidden sm:block text-base font-bold text-ink">การดำเนินการ</h3>
 
                                 {/* เนื้อหาตามสถานะ: รอชำระ = ปุ่มไปหน้าชำระเงิน, รอตรวจ = ปุ่มดูรายละเอียด, ชำระแล้ว = ข้อความยืนยัน */}
                                 {activeInvoice?.status === 'pending' ? (
@@ -693,10 +710,6 @@ function UserDashboardPage() {
                                     <p className="text-xs text-muted">ไม่มีรายการที่ต้องดำเนินการ</p>
                                 )}
 
-                                <Link to="/invoices" className="text-center text-xs text-primary-dark hover:underline font-medium">
-                                    ดูประวัติใบแจ้งหนี้ทั้งหมด
-                                </Link>
-
                                 {/* ปุ่มดาวน์โหลดใบแจ้งหนี้ PDF */}
                                 {activeInvoice && (
                                     <DownloadInvoiceButton invoice={activeInvoice} className="w-full border border-line bg-sand/30 hover:bg-mist/40 text-primary-dark font-medium py-2.5 px-4 rounded-xl text-sm flex items-center justify-center gap-2 transition cursor-pointer" />
@@ -714,7 +727,7 @@ function UserDashboardPage() {
                     <PageHeader flush title="ชำระเงิน" subtitle="สแกน QR หรือโอนตามยอด แล้วแนบสลิปเพื่อให้ผู้ดูแลตรวจสอบ" onBack={() => setCurrentView('overview')} backLabel="กลับไปภาพรวม" />
 
                     {/* การ์ดสรุปยอดที่ต้องชำระ (ตามส่วนบนของรูปที่สอง) */}
-                    <div className="bg-white rounded-2xl p-6 md:p-8 shadow-card border border-line text-center flex flex-col items-center justify-center">
+                    <div className="bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-card border border-line text-center flex flex-col items-center justify-center">
                         <span className="text-xs md:text-sm text-muted font-medium">
                             ยอดที่ต้องชำระ · ประจำเดือน {activeInvoice ? formatMonth(activeInvoice.month) : '-'} (ห้อง {tenantInfo?.room})
                         </span>
@@ -738,9 +751,9 @@ function UserDashboardPage() {
                     </div>
 
                     {/* กล่องการชำระเงินและแนบสลิป (Desktop 2 คอลัมน์) */}
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
                         {/* ฝั่งซ้าย: สแกน QR PromptPay และข้อมูลบัญชีธนาคาร (ตามรูปที่สอง) */}
-                        <div className="lg:col-span-6 bg-white rounded-2xl p-6 md:p-8 shadow-card border border-line flex flex-col items-center text-center gap-5">
+                        <div className="lg:col-span-6 bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-card border border-line flex flex-col items-center text-center gap-5">
                             <h3 className="text-lg font-bold text-ink">
                                 สแกน QR PromptPay
                             </h3>
@@ -795,7 +808,7 @@ function UserDashboardPage() {
                         </div>
 
                         {/* ฝั่งขวา: แนบสลิปโอนเงิน + ปุ่มส่งหลักฐาน + ปุ่มดาวน์โหลด PDF (ตามรูปที่สอง) */}
-                        <div className="lg:col-span-6 bg-white rounded-2xl p-6 md:p-8 shadow-card border border-line flex flex-col gap-5">
+                        <div className="lg:col-span-6 bg-white rounded-2xl p-4 sm:p-6 md:p-8 shadow-card border border-line flex flex-col gap-5">
                             <div className="text-center">
                                 <span className="text-xs font-semibold text-muted/70 tracking-wider">
                                     — หรือแนบสลิปโอนเงิน —
@@ -828,7 +841,7 @@ function UserDashboardPage() {
 
                             {/* กล่อง Dropzone / Preview */}
                             {uploadFile ? (
-                                <div className="flex flex-col items-center gap-3 rounded-2xl bg-sand/60 border border-line p-5">
+                                <div className="flex flex-col items-center gap-3 rounded-2xl bg-sand/60 border border-line p-4 sm:p-5">
                                     <img
                                         src={uploadPreview}
                                         alt="ตัวอย่างรูปสลิป"

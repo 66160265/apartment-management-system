@@ -32,7 +32,7 @@ function RenewContractModal({ room, tenantName, currentEnd, onClose, onRenewed }
 
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <form onSubmit={submit} role="dialog" aria-modal="true" aria-label="ต่อสัญญา" className="bg-white rounded-2xl p-6 shadow-xl w-[460px] max-w-full max-h-[95vh] overflow-y-auto flex flex-col gap-4">
+            <form onSubmit={submit} role="dialog" aria-modal="true" aria-label="ต่อสัญญา" className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl w-[460px] max-w-full max-h-[95vh] overflow-y-auto flex flex-col gap-4">
                 <div>
                     <h2 className="text-lg font-semibold text-primary-dark">ต่อสัญญา ห้อง {room}</h2>
                     <p className="text-sm text-muted">{tenantName} · สัญญาปัจจุบันสิ้นสุด {formatDate(currentEnd)}</p>

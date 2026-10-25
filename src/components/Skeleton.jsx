@@ -73,7 +73,7 @@ export function SkeletonTable({ rows = 6, cols = 5, className = '' }) {
 // การ์ดเดี่ยว: หัวข้อ + ข้อความ
 export function SkeletonCard({ lines = 3, className = '' }) {
     return (
-        <div aria-hidden="true" className={`bg-white rounded-2xl shadow-card border border-line p-5 flex flex-col gap-3 ${className}`}>
+        <div aria-hidden="true" className={`bg-white rounded-2xl shadow-card border border-line p-4 sm:p-5 flex flex-col gap-3 ${className}`}>
             <div className={`${bar} h-5 w-1/3`} />
             <SkeletonText lines={lines} />
         </div>
@@ -109,9 +109,9 @@ export function SkeletonCards({ count = 3, lines = 3, className = '' }) {
 // ฟอร์มหลายส่วน (หน้าตั้งค่า): การ์ดละหลายช่องกรอก
 export function SkeletonForm({ sections = 3, fields = 4, className = '' }) {
     return (
-        <SkeletonRegion className={`flex flex-col gap-6 ${className}`}>
+        <SkeletonRegion className={`flex flex-col gap-4 sm:gap-6 ${className}`}>
             {Array.from({ length: sections }, (_, s) => (
-                <div key={s} aria-hidden="true" className="bg-white rounded-2xl shadow-card p-5">
+                <div key={s} aria-hidden="true" className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
                     <div className="flex items-center gap-3 mb-5">
                         <div className={`${bar} h-10 w-10 rounded-xl!`} />
                         <div className="flex flex-col gap-2 flex-1">
@@ -150,7 +150,7 @@ export function SkeletonHeader() {
 // ทั้งหน้า: หัวหน้า + การ์ดสรุป + ตาราง/รายการ ใช้ตอนรอโค้ดของหน้า (Suspense) และตอนรอข้อมูลผู้ใช้
 export function SkeletonPage({ className = '' }) {
     return (
-        <SkeletonRegion className={`p-4 sm:p-6 flex flex-col gap-6 ${className}`}>
+        <SkeletonRegion className={`p-4 sm:p-6 flex flex-col gap-4 sm:gap-6 ${className}`}>
             <SkeletonHeader />
             <SkeletonCardGrid count={3} className="grid gap-5 md:grid-cols-3" />
             <SkeletonTable rows={5} cols={5} />

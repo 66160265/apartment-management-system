@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Icon from './Icon.jsx'
+import ScrollDownHint from './ScrollDownHint.jsx'
 import Sidebar from './Sidebar.jsx'
 import { SkeletonPage } from './Skeleton.jsx'
 import { prefetchPages } from '../lib/pages.js'
@@ -64,6 +65,8 @@ function Layout() {
                     </Suspense>
                 </div>
             </main>
+            {/* ลูกศรบอกว่ายังเลื่อนลงได้ (ทุกหน้า) ซ่อนตอนเมนูบนจอเล็กเปิดอยู่ */}
+            {!menuOpen && <ScrollDownHint watchKey={pathname} />}
         </div>
     )
 }

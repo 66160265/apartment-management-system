@@ -4,7 +4,7 @@
 export const repairStatuses = {
     pending: { label: 'รอดำเนินการ', color: 'bg-sky-50 text-sky-800 ring-1 ring-sky-200', dot: 'bg-sky-500' },
     scheduled: { label: 'นัดหมายแล้ว', color: 'bg-violet-50 text-violet-800 ring-1 ring-violet-200', dot: 'bg-violet-500' },
-    in_progress: { label: 'กำลังดำเนินการ', color: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200', dot: 'bg-amber-500' },
+    in_progress: { label: 'กำลังดำเนินการ', short: 'กำลังซ่อม', color: 'bg-amber-50 text-amber-800 ring-1 ring-amber-200', dot: 'bg-amber-500' },
     done: { label: 'เสร็จสิ้น', color: 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200', dot: 'bg-emerald-500' },
     cancelled: { label: 'ยกเลิก', color: 'bg-slate-100 text-slate-600 ring-1 ring-slate-200', dot: 'bg-slate-400' },
 }

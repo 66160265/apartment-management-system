@@ -19,6 +19,7 @@ const paths = {
     ban: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8',
     chevronLeft: 'm15 6-6 6 6 6',
     chevronRight: 'm9 6 6 6-6 6',
+    chevronDown: 'm6 9 6 6 6-6',
     arrowLeft: 'M19 12H5M11 6l-6 6 6 6',
     arrowRight: 'M5 12h14M13 6l6 6-6 6',
     copy: 'M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15V5a1 1 0 0 1 1-1h10',

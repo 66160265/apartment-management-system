@@ -28,7 +28,7 @@ function DeleteTenantModal({ tenant, onConfirm, onCancel }) {
 
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 shadow-xl w-[420px] max-w-[92vw] flex flex-col gap-4">
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl w-[420px] max-w-[92vw] flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-primary-dark">ลบผู้เช่า</h2>
                 <p className="text-sm text-ink">
                     ลบ {tenant.name} (ห้อง {tenant.room}) พร้อมเอกสารทั้งหมดและบัญชีเข้าสู่ระบบ {tenant.username && `(${tenant.username})`}
@@ -145,7 +145,7 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
             <div className="px-4 sm:px-6 pb-28 flex flex-col gap-4">
 
                 {/* การ์ดสรุป: ชื่อ สถานะสัญญา บัญชีเข้าสู่ระบบ และข้อมูลห้อง/เบอร์/ระยะสัญญา/เวลาที่เหลือ */}
-                <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-5">
+                <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-5">
                     <div className="flex flex-wrap items-center gap-4">
                         <Avatar name={tenant.name} className="w-16 h-16 text-2xl" />
                         <div className="flex-1 min-w-48">
@@ -178,7 +178,7 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
                 <ContractSection tenant={tenant} endDate={contractEnd} onRenewed={handleRenewed} />
 
                 {/* ฟอร์มแก้ไขข้อมูลผู้เช่า (ปุ่มบันทึกอยู่ที่แถบด้านล่าง ผูกด้วย form="tenant-form") */}
-                <form id="tenant-form" onSubmit={handleSave} className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                <form id="tenant-form" onSubmit={handleSave} className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
                     <div>
                         <h2 className="text-lg font-semibold text-primary-dark">ข้อมูลผู้เช่า</h2>
                         <p className="text-sm text-muted">แก้ไขแล้วกด "บันทึก" ที่แถบด้านล่าง</p>
@@ -215,14 +215,15 @@ function TenantDetail({ tenant, floor, onBack, onChanged }) {
                 </form>
 
                 {/* เงินประกันและการย้ายออก */}
-                <MoveOutSection tenant={tenant} />
+                {/* ใช้วันสิ้นสุดสัญญาล่าสุด (เพิ่งต่อสัญญาในหน้านี้ก็นับวันใหม่) */}
+                <MoveOutSection tenant={{ ...tenant, endDate: contractEnd }} />
 
                 {/* การ์ดเอกสารของผู้เช่า */}
                 <TenantDocuments room={tenant.room} />
             </div>
 
             {/* แถบปุ่มติดด้านล่างจอ: ลบผู้เช่า | ยกเลิก / บันทึก */}
-            <div className="fixed bottom-0 right-0 left-0 lg:left-64 z-20 bg-white/90 backdrop-blur border-t border-line px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div data-bottom-bar className="fixed bottom-0 right-0 left-0 lg:left-64 z-20 bg-white/90 backdrop-blur border-t border-line px-6 py-3 flex flex-wrap items-center justify-between gap-3">
                 <button
                     type="button"
                     onClick={() => setConfirmDelete(true)}

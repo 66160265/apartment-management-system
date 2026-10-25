@@ -57,15 +57,15 @@ const attentionTone = {
     amber: 'bg-amber-50 ring-amber-200 text-amber-900',
 }
 
-function Card({ title, children, hint, action }) {
+function Card({ title, children, hint, action, className = '', hintClassName = '' }) {
     return (
-        <div className="bg-white rounded-2xl p-5 shadow-card border border-line flex flex-col gap-3">
+        <div className={`bg-white rounded-2xl p-4 sm:p-5 shadow-card border border-line flex flex-col gap-2 sm:gap-3 ${className}`}>
             <div className="flex items-center justify-between gap-3">
                 <span className="text-sm font-medium text-muted">{title}</span>
                 {action}
             </div>
             {children}
-            {hint && <div className="text-xs text-muted">{hint}</div>}
+            {hint && <div className={`text-xs text-muted ${hintClassName}`}>{hint}</div>}
         </div>
     )
 }
@@ -166,7 +166,7 @@ function AdminDashboardPage() {
     const loadingText = <span className="inline-block h-6 w-24 align-middle rounded-lg bg-line/70 motion-safe:animate-pulse"><span className="sr-only">กำลังโหลด...</span></span>
 
     return (
-        <div className="p-4 sm:p-6 flex flex-col gap-6">
+        <div className="p-4 sm:p-6 flex flex-col gap-3 sm:gap-6">
             <PageHeader flush title="ภาพรวมระบบ" subtitle="สิ่งที่ต้องจัดการ การเงินของเดือน และอัตราเข้าพัก" />
 
             {loadError && (
@@ -177,20 +177,20 @@ function AdminDashboardPage() {
             )}
 
             {/* 1) ต้องจัดการตอนนี้ */}
-            <section aria-label="ต้องจัดการตอนนี้" className="bg-white rounded-2xl shadow-card border border-line p-5 flex flex-col gap-4">
-                <h2 className="text-lg font-bold text-primary-dark">ต้องจัดการตอนนี้</h2>
+            <section aria-label="ต้องจัดการตอนนี้" className="bg-white rounded-2xl shadow-card border border-line p-4 sm:p-5 flex flex-col gap-3 sm:gap-4">
+                <h2 className="text-base sm:text-lg font-bold text-primary-dark">ต้องจัดการตอนนี้</h2>
                 {loading ? (
                     <SkeletonList rows={3} avatar={false} />
                 ) : attention.length === 0 ? (
-                    <div className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 p-4 flex items-center gap-3 text-sm">
+                    <div className="rounded-xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 p-3 sm:p-4 flex items-center gap-2 sm:gap-3 text-sm">
                         <Icon name="checkCircle" className="w-5 h-5 text-emerald-600 shrink-0" />
                         ไม่มีงานค้าง ไม่มีสลิปรอตรวจ และไม่มีเรื่องซ่อมรอดำเนินการ
                     </div>
                 ) : (
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-5">
                         {attention.map((item) => (
-                            <Link key={item.key} to={item.to} className={`rounded-xl ring-1 p-4 flex flex-col gap-1 hover:shadow-md transition ${attentionTone[item.tone]}`}>
-                                <span className="text-3xl font-bold tabular-nums">{item.count}</span>
+                            <Link key={item.key} to={item.to} className={`rounded-xl ring-1 p-3 sm:p-4 flex flex-col gap-0.5 sm:gap-1 hover:shadow-md transition ${attentionTone[item.tone]}`}>
+                                <span className="text-2xl sm:text-3xl font-bold tabular-nums">{item.count}</span>
                                 <span className="text-sm font-medium">{item.label}</span>
                                 {item.amount > 0 && <span className="text-xs opacity-80 tabular-nums">รวม {baht(item.amount)}</span>}
                                 <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold">
@@ -203,9 +203,9 @@ function AdminDashboardPage() {
             </section>
 
             {/* นัดซ่อมวันนี้ เรียงตามเวลา (ใช้ตอนเช้าก่อนเริ่มงาน) */}
-            <section aria-label="นัดซ่อมวันนี้" className="bg-white rounded-2xl shadow-card border border-line p-5 flex flex-col gap-3">
+            <section aria-label="นัดซ่อมวันนี้" className="bg-white rounded-2xl shadow-card border border-line p-4 sm:p-5 flex flex-col gap-2 sm:gap-3">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <h2 className="text-lg font-bold text-primary-dark flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-bold text-primary-dark flex items-center gap-2">
                         <Icon name="calendar" className="w-5 h-5" />
                         นัดซ่อมวันนี้
                         {!loading && data.todayRepairs.length > 0 && <span className="text-sm font-normal text-muted">({data.todayRepairs.length} นัด)</span>}
@@ -218,12 +218,12 @@ function AdminDashboardPage() {
                 {loading ? (
                     <SkeletonList rows={2} avatar={false} />
                 ) : data.todayRepairs.length === 0 ? (
-                    <p className="text-sm text-muted py-2">วันนี้ไม่มีนัดซ่อม</p>
+                    <p className="text-sm text-muted sm:py-2">วันนี้ไม่มีนัดซ่อม</p>
                 ) : (
                     <ol className="flex flex-col divide-y divide-line/60">
                         {data.todayRepairs.map((r) => (
                             <li key={r.id}>
-                                <Link to="/repairs" className={`flex flex-wrap items-center gap-x-4 gap-y-1 py-3 px-2 rounded-lg hover:bg-sand/50 ${r.pinned ? 'bg-red-50' : ''}`}>
+                                <Link to="/repairs" className={`flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1 py-2.5 sm:py-3 px-2 rounded-lg hover:bg-sand/50 ${r.pinned ? 'bg-red-50' : ''}`}>
                                     <span className="w-32 shrink-0 whitespace-nowrap text-base font-bold tabular-nums text-primary-dark">{formatPeriod(r.appointment_period) || '-'}</span>
                                     <span className="inline-block px-2.5 py-0.5 rounded-lg bg-mist/60 text-primary-dark text-sm font-semibold">{r.room}</span>
                                     <span className="flex-1 min-w-40 text-sm text-ink">
@@ -243,38 +243,40 @@ function AdminDashboardPage() {
             </section>
 
             {/* 2) การเงินของเดือน / เกินกำหนด / อัตราเข้าพัก */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5">
                 <Card
+                    className="col-span-2 lg:col-span-1"
+                    hintClassName="hidden sm:block"
                     title={`การเงินเดือน ${formatMonth(selectedMonth)}`}
                     action={<MonthPicker value={selectedMonth} onChange={setSelectedMonth} marked={monthsWithInvoices} />}
                     hint={`เรียกเก็บและยังค้าง = บิลเดือน ${formatMonth(summary.billMonth)} ที่ออกในเดือนนี้ · ได้รับ = เงินที่รับจริงในเดือนนี้ (ค่าห้อง+ค่าซ่อม รวมค่าปรับ)`}
                 >
-                    <dl className="flex flex-col gap-2">
+                    <dl className="flex flex-col gap-1.5 sm:gap-2">
                         <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-sm text-muted">เรียกเก็บ บิลเดือน {formatMonth(summary.billMonth)} ({summary.issuedCount} ใบ)</dt>
-                            <dd className="text-xl font-semibold text-ink tabular-nums">{loading ? loadingText : baht(summary.billed)}</dd>
+                            <dd className="text-lg sm:text-xl font-semibold text-ink tabular-nums">{loading ? loadingText : baht(summary.billed)}</dd>
                         </div>
                         <div className="flex items-baseline justify-between gap-3">
                             <dt className="text-sm text-muted">ได้รับแล้ว</dt>
-                            <dd className="text-xl font-semibold text-emerald-700 tabular-nums">{loading ? loadingText : baht(received)}</dd>
+                            <dd className="text-lg sm:text-xl font-semibold text-emerald-700 tabular-nums">{loading ? loadingText : baht(received)}</dd>
                         </div>
                         <div className="flex items-baseline justify-between gap-3 border-t border-line pt-2">
                             <dt className="text-sm text-muted">ยังค้างของบิลเดือน {formatMonth(summary.billMonth)} ({summary.unpaidCount} ใบ)</dt>
-                            <dd className={`text-xl font-semibold tabular-nums ${summary.outstanding > 0 ? 'text-amber-700' : 'text-ink'}`}>{loading ? loadingText : baht(summary.outstanding)}</dd>
+                            <dd className={`text-lg sm:text-xl font-semibold tabular-nums ${summary.outstanding > 0 ? 'text-amber-700' : 'text-ink'}`}>{loading ? loadingText : baht(summary.outstanding)}</dd>
                         </div>
                     </dl>
                 </Card>
 
-                <Card title="เกินกำหนดชำระ" hint={loading ? undefined : `ยังไม่ถึงกำหนดอีก ${notYetDue} ใบ (ไม่นับเป็นค้าง)`}>
+                <Card title="เกินกำหนดชำระ" hint={loading ? undefined : `ยังไม่ถึงกำหนดอีก ${notYetDue} ใบ`}>
                     {loading ? (
                         loadingText
                     ) : (
                         <>
                             <div className="flex items-baseline gap-2">
-                                <span className={`text-4xl font-bold tabular-nums ${overdue.length > 0 ? 'text-red-600' : 'text-ink'}`}>{uniqueRooms(overdue)}</span>
-                                <span className="text-xl text-muted/70">ห้อง</span>
+                                <span className={`text-3xl sm:text-4xl font-bold tabular-nums ${overdue.length > 0 ? 'text-red-600' : 'text-ink'}`}>{uniqueRooms(overdue)}</span>
+                                <span className="text-base sm:text-xl text-muted/70">ห้อง</span>
                             </div>
-                            <div className="text-sm text-muted tabular-nums">รวมยอดค้าง {baht(overdueTotal)} (รวมค่าปรับของวันนี้)</div>
+                            <div className="text-sm text-muted tabular-nums">รวมยอดค้าง {baht(overdueTotal)}<span className="hidden sm:inline"> (รวมค่าปรับของวันนี้)</span></div>
                         </>
                     )}
                 </Card>
@@ -285,8 +287,8 @@ function AdminDashboardPage() {
                     ) : (
                         <>
                             <div className="flex items-baseline gap-2">
-                                <span className="text-4xl font-bold text-ink tabular-nums">{occ.rate}%</span>
-                                <span className="text-xl text-muted/70">ว่าง {occ.vacant} ห้อง</span>
+                                <span className="text-3xl sm:text-4xl font-bold text-ink tabular-nums">{occ.rate}%</span>
+                                <span className="text-base sm:text-xl text-muted/70">ว่าง {occ.vacant} ห้อง</span>
                             </div>
                             <div className="h-2 rounded-full bg-sand overflow-hidden" role="presentation">
                                 <div className="h-full bg-primary rounded-full" style={{ width: `${Math.min(100, occ.rate)}%` }} />
@@ -297,10 +299,10 @@ function AdminDashboardPage() {
             </div>
 
             {/* 3) ตารางเกินกำหนดชำระ (เฉพาะรายการเร่งด่วนสุด ที่เหลืออยู่หน้ารายงาน) */}
-            <div className="bg-white rounded-2xl p-6 shadow-card border border-line">
-                <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-card border border-line">
+                <div className="flex justify-between items-center mb-2 sm:mb-4 gap-3 flex-wrap">
                     <div className="flex items-center gap-2">
-                        <h2 className="text-lg font-bold text-ink">เกินกำหนดชำระ</h2>
+                        <h2 className="text-base sm:text-lg font-bold text-ink">เกินกำหนดชำระ</h2>
                         {!loading && overdue.length > 0 && (
                             <span className="text-xs bg-red-100 text-red-800 font-semibold px-2.5 py-0.5 rounded-full">{overdue.length} ใบ</span>
                         )}
@@ -316,8 +318,8 @@ function AdminDashboardPage() {
                         <thead>
                             <tr className="border-b border-line text-xs text-muted/70 font-normal">
                                 <th className="py-3 px-2 font-normal">ห้อง / ผู้เช่า</th>
-                                <th className="py-3 px-2 font-normal">เดือน</th>
-                                <th className="py-3 px-2 font-normal text-right">ค้างชำระ (บาท)</th>
+                                <th className="hidden sm:table-cell py-3 px-2 font-normal">เดือน</th>
+                                <th className="py-3 px-2 font-normal text-right">ค้างชำระ<span className="hidden sm:inline"> (บาท)</span></th>
                                 <th className="py-3 px-2 font-normal text-right">เกินกำหนด</th>
                             </tr>
                         </thead>
@@ -329,10 +331,13 @@ function AdminDashboardPage() {
                             ) : (
                                 overdue.slice(0, 8).map((r) => (
                                     <tr key={r.id} onClick={() => navigate('/invoices')} className="hover:bg-sand/30 transition-colors cursor-pointer" title="คลิกเพื่อไปที่หน้าใบแจ้งหนี้">
-                                        <td className="py-3.5 px-2 font-medium text-ink">{r.room} <span className="font-normal text-muted">· {r.tenant}</span></td>
-                                        <td className="py-3.5 px-2 text-muted">{formatMonth(r.month)}</td>
-                                        <td className="py-3.5 px-2 text-right text-ink font-semibold tabular-nums">{baht(r.balance)}</td>
-                                        <td className="py-3.5 px-2 text-right"><span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 ring-1 ring-red-200">{r.daysLate} วัน</span></td>
+                                        <td className="py-2.5 sm:py-3.5 px-2 font-medium text-ink">
+                                            {r.room} <span className="font-normal text-muted">· {r.tenant}</span>
+                                            <span className="block sm:hidden text-xs font-normal text-muted">{formatMonth(r.month)}</span>
+                                        </td>
+                                        <td className="hidden sm:table-cell py-3.5 px-2 text-muted">{formatMonth(r.month)}</td>
+                                        <td className="py-2.5 sm:py-3.5 px-2 text-right text-ink font-semibold tabular-nums">{baht(r.balance)}</td>
+                                        <td className="py-2.5 sm:py-3.5 px-2 text-right whitespace-nowrap"><span className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 ring-1 ring-red-200">{r.daysLate} วัน</span></td>
                                     </tr>
                                 ))
                             )}

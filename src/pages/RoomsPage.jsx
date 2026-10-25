@@ -57,7 +57,7 @@ function RoomModal({ title, initial, onSave, onCancel }) {
 
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-xl w-[440px] max-w-full max-h-[92vh] overflow-y-auto flex flex-col gap-4">
+            <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl w-[440px] max-w-full max-h-[92vh] overflow-y-auto flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-primary-dark">{title}</h2>
                 {/* เลขห้องและชั้น */}
                 <div className="grid grid-cols-2 gap-4">
@@ -173,9 +173,9 @@ function RoomsPage() {
                 subtitle="ดูสถานะของทุกห้อง ค่าเช่า และผู้เช่าที่พักอยู่"
             />
 
-            <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6">
+            <div className="px-4 sm:px-6 pb-10 flex flex-col gap-4 sm:gap-6">
                 {/* การ์ดสรุปจำนวนห้องตามสถานะ (ทำหน้าที่เป็นตัวกรอง) */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                     {summaryCards.map((c) => {
                         const active = filter === c.value
                         return (
@@ -183,15 +183,15 @@ function RoomsPage() {
                                 key={c.value}
                                 onClick={() => setFilter(c.value)}
                                 aria-pressed={active}
-                                className={`text-left rounded-2xl p-4 bg-white shadow-card border-2 transition ${active ? 'border-primary' : 'border-transparent hover:border-mist'}`}
+                                className={`text-left rounded-xl sm:rounded-2xl p-2.5 sm:p-4 bg-white shadow-card border-2 transition ${active ? 'border-primary' : 'border-transparent hover:border-mist'}`}
                             >
-                                <div className="flex items-center justify-between text-sm text-muted">
+                                <div className="flex items-center justify-between gap-1 text-xs sm:text-sm leading-tight text-muted">
                                     <span>{c.label}</span>
-                                    <span className={`grid place-items-center w-8 h-8 rounded-lg ${c.tone}`}><Icon name={c.icon} className="w-[18px] h-[18px]" /></span>
+                                    <span className={`hidden sm:grid place-items-center w-8 h-8 shrink-0 rounded-lg ${c.tone}`}><Icon name={c.icon} className="w-[18px] h-[18px]" /></span>
                                 </div>
-                                <div className="mt-2 flex items-baseline gap-2">
-                                    <span className="text-2xl font-semibold text-primary-dark">{count(c.value)}</span>
-                                    <span className="text-xs text-muted">ห้อง</span>
+                                <div className="mt-1 sm:mt-2 flex items-baseline gap-2">
+                                    <span className="text-xl sm:text-2xl font-semibold text-primary-dark">{count(c.value)}</span>
+                                    <span className="hidden sm:inline text-xs text-muted">ห้อง</span>
                                 </div>
                             </button>
                         )
@@ -225,7 +225,7 @@ function RoomsPage() {
                                         className={`text-left bg-white rounded-2xl border-2 p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-md ${s.card}`}
                                     >
                                         <div className="flex items-start justify-between gap-2">
-                                            <span className="text-2xl font-semibold text-primary-dark">{room.number}</span>
+                                            <span className="text-xl sm:text-2xl font-semibold text-primary-dark">{room.number}</span>
                                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${s.badge}`}>
                                                 <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
                                                 {s.label}

@@ -45,9 +45,9 @@ function newForm() {
 // แท็บกรองรายชื่อ: ทั้งหมด / ใกล้หมดสัญญา / หมดสัญญา / เอกสารไม่ครบ
 const tabs = [
     { value: 'all', label: 'ทั้งหมด' },
-    { value: 'expiring', label: 'ใกล้หมดสัญญา' },
-    { value: 'expired', label: 'หมดสัญญา' },
-    { value: 'docs', label: 'เอกสารไม่ครบ' },
+    { value: 'expiring', label: 'ใกล้หมดสัญญา', short: 'ใกล้หมด' },
+    { value: 'expired', label: 'หมดสัญญา', short: 'หมดแล้ว' },
+    { value: 'docs', label: 'เอกสารไม่ครบ', short: 'ขาดเอกสาร' },
 ]
 
 // หน้าต่างเพิ่มผู้เช่าใหม่ (สร้างบัญชีให้อัตโนมัติ) แล้วแสดงชื่อผู้ใช้/รหัสผ่านเริ่มต้น
@@ -110,7 +110,7 @@ function AddTenantModal({ rooms, onSave, onClose }) {
             <div className="bg-white rounded-2xl shadow-xl w-[480px] max-w-full max-h-[95vh] overflow-y-auto">
                 {/* สร้างสำเร็จ: แสดงชื่อผู้ใช้/รหัสผ่านพร้อมปุ่มคัดลอก / ยังไม่สร้าง: ฟอร์มเพิ่มผู้เช่า */}
                 {created ? (
-                    <div className="p-6 flex flex-col gap-4 items-stretch">
+                    <div className="p-4 sm:p-6 flex flex-col gap-4 items-stretch">
                         <div className="flex flex-col items-center text-center gap-2">
                             <span className="grid place-items-center w-14 h-14 rounded-full bg-emerald-50 text-emerald-600">
                                 <Icon name="checkCircle" className="w-8 h-8" />
@@ -131,7 +131,7 @@ function AddTenantModal({ rooms, onSave, onClose }) {
                         <button onClick={onClose} className="bg-primary hover:bg-primary-dark text-white py-2.5 rounded-xl font-medium shadow-card">เสร็จสิ้น</button>
                     </div>
                 ) : (
-                    <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
+                    <form onSubmit={handleSubmit} className="p-4 sm:p-6 flex flex-col gap-4">
                         <div>
                             <h2 className="text-lg font-semibold text-primary-dark">เพิ่มผู้เช่าใหม่</h2>
                             <p className="text-sm text-muted mt-0.5">ระบบจะสร้างบัญชีเข้าสู่ระบบให้ผู้เช่าอัตโนมัติ</p>
@@ -315,10 +315,10 @@ function TenantsPage() {
 
     // การ์ดสรุปด้านบน (การ์ดที่มี tab กดเพื่อกรองได้)
     const summary = [
-        { label: 'ผู้เช่าทั้งหมด', value: tenants.length, unit: 'ราย', icon: 'users', tone: 'bg-slate-100 text-slate-600', tab: 'all' },
-        { label: 'ใกล้หมดสัญญา', value: counts.expiring, unit: 'ราย', icon: 'alert', tone: 'bg-amber-50 text-amber-700', tab: 'expiring' },
-        { label: 'หมดสัญญาแล้ว', value: counts.expired, unit: 'ราย', icon: 'calendar', tone: 'bg-red-50 text-red-700', tab: 'expired' },
-        { label: 'ห้องว่างพร้อมเข้าอยู่', value: freeRooms.length, unit: 'ห้อง', icon: 'door', tone: 'bg-sky-50 text-sky-700' },
+        { label: 'ผู้เช่าทั้งหมด', short: 'ทั้งหมด', value: tenants.length, unit: 'ราย', icon: 'users', tone: 'bg-slate-100 text-slate-600', tab: 'all' },
+        { label: 'ใกล้หมดสัญญา', short: 'ใกล้หมด', value: counts.expiring, unit: 'ราย', icon: 'alert', tone: 'bg-amber-50 text-amber-700', tab: 'expiring' },
+        { label: 'หมดสัญญาแล้ว', short: 'หมดแล้ว', value: counts.expired, unit: 'ราย', icon: 'calendar', tone: 'bg-red-50 text-red-700', tab: 'expired' },
+        { label: 'ห้องว่างพร้อมเข้าอยู่', short: 'ห้องว่าง', value: freeRooms.length, unit: 'ห้อง', icon: 'door', tone: 'bg-sky-50 text-sky-700' },
     ]
 
     // คลาสของช่องในตารางและหัวตาราง
@@ -339,7 +339,7 @@ function TenantsPage() {
                     </>
                 } />
 
-            <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
+            <div className="px-4 sm:px-6 pb-8 flex flex-col gap-4 sm:gap-6">
                 {notice && (
                     <div role="status" className="rounded-xl bg-amber-50 ring-1 ring-amber-200 text-amber-900 text-sm px-4 py-3 flex items-start justify-between gap-3">
                         <span>{notice}</span>
@@ -347,17 +347,17 @@ function TenantsPage() {
                     </div>
                 )}
                 {/* การ์ดสรุป: ผู้เช่าทั้งหมด ใกล้หมดสัญญา หมดสัญญา ห้องว่าง */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                     {summary.map((c) => {
                         const body = (
                             <>
-                                <div className="flex items-center justify-between text-sm text-muted">
-                                    <span>{c.label}</span>
-                                    <span className={`grid place-items-center w-8 h-8 rounded-lg ${c.tone}`}><Icon name={c.icon} className="w-[18px] h-[18px]" /></span>
+                                <div className="flex items-center justify-between gap-1 text-xs sm:text-sm leading-tight text-muted">
+                                    <span><span className="sm:hidden">{c.short}</span><span className="hidden sm:inline">{c.label}</span></span>
+                                    <span className={`hidden sm:grid place-items-center w-8 h-8 shrink-0 rounded-lg ${c.tone}`}><Icon name={c.icon} className="w-[18px] h-[18px]" /></span>
                                 </div>
-                                <div className="mt-2 flex items-baseline gap-2">
-                                    <span className="text-2xl font-semibold text-primary-dark">{c.value}</span>
-                                    <span className="text-xs text-muted">{c.unit}</span>
+                                <div className="mt-1 sm:mt-2 flex items-baseline gap-2">
+                                    <span className="text-xl sm:text-2xl font-semibold text-primary-dark">{c.value}</span>
+                                    <span className="hidden sm:inline text-xs text-muted">{c.unit}</span>
                                 </div>
                             </>
                         )
@@ -366,24 +366,25 @@ function TenantsPage() {
                                 key={c.label}
                                 onClick={() => setTab(c.tab)}
                                 aria-pressed={tab === c.tab}
-                                className={`text-left rounded-2xl p-4 bg-white shadow-card border-2 transition ${tab === c.tab ? 'border-primary' : 'border-transparent hover:border-mist'}`}
+                                className={`text-left rounded-xl sm:rounded-2xl p-2.5 sm:p-4 bg-white shadow-card border-2 transition ${tab === c.tab ? 'border-primary' : 'border-transparent hover:border-mist'}`}
                             >
                                 {body}
                             </button>
                         ) : (
-                            <div key={c.label} className="rounded-2xl p-4 bg-white shadow-card border-2 border-transparent">{body}</div>
+                            <div key={c.label} className="rounded-xl sm:rounded-2xl p-2.5 sm:p-4 bg-white shadow-card border-2 border-transparent">{body}</div>
                         )
                     })}
                 </div>
 
-                <div className="bg-white rounded-2xl shadow-card p-5">
+                <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
                     {/* หัวกล่อง: จำนวนผู้เช่า + ช่องค้นหา */}
                     <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                         <h2 className="font-medium text-primary-dark">
                             รายชื่อผู้เช่า
                             <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
                         </h2>
-                        <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
+                        {/* จอเล็ก: ช่องค้นหาเต็มความกว้างกล่อง */}
+                        <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-full sm:w-72 focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                             <Icon name="search" className="w-4 h-4 text-muted" />
                             <input
                                 type="text"
@@ -396,7 +397,7 @@ function TenantsPage() {
                     </div>
 
                     {/* แท็บกรองพร้อมจำนวน */}
-                    <div role="tablist" aria-label="หมวดหมู่ผู้เช่า" className="flex gap-1 overflow-x-auto overflow-y-hidden mb-4 border-b border-line">
+                    <div role="tablist" aria-label="หมวดหมู่ผู้เช่า" className="flex sm:gap-1 overflow-x-auto overflow-y-hidden mb-4 border-b border-line">
                         {tabs.map((x) => {
                             const active = tab === x.value
                             return (
@@ -405,12 +406,14 @@ function TenantsPage() {
                                     role="tab"
                                     aria-selected={active}
                                     onClick={() => setTab(x.value)}
-                                    className={`flex items-center gap-2 px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                                    className={`flex-1 sm:flex-none min-w-0 flex items-center justify-center gap-0.5 sm:gap-2 px-0.5 sm:px-4 py-2.5 text-xs sm:text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
                                         active ? 'border-primary text-primary-dark font-medium' : 'border-transparent text-muted hover:text-primary-dark hover:bg-sand/60'
                                     }`}
                                 >
-                                    {x.label}
-                                    <span className={`min-w-6 text-center text-xs rounded-full px-1.5 py-0.5 ${active ? 'bg-primary text-white' : 'bg-sand text-muted'}`}>
+                                    {/* จอเล็ก: 4 แท็บเท่ากันในแถวเดียว ไม่ต้องเลื่อน (ใช้ชื่อสั้นถ้ามี) */}
+                                    <span className="sm:hidden">{x.short ?? x.label}</span>
+                                    <span className="hidden sm:inline">{x.label}</span>
+                                    <span className={`min-w-5 sm:min-w-6 text-center text-xs rounded-full px-1 sm:px-1.5 py-0.5 ${active ? 'bg-primary text-white' : 'bg-sand text-muted'}`}>
                                         {counts[x.value]}
                                     </span>
                                 </button>
