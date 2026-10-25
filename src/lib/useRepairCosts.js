@@ -26,7 +26,7 @@ async function load(userId) {
     const [repairsRes, paymentsRes] = await Promise.all([
         supabase
             .from('repairs')
-            .select('id, room, problem, status, cost, cost_payer, completed_at, invoice_id')
+            .select('id, room, problem, status, cost, cost_payer, completed_at, pay_due_date, late_fee_rate, late_fee_grace, late_fee_cap')
             .eq('user_id', userId)
             .eq('status', 'done')
             .eq('cost_payer', 'tenant')

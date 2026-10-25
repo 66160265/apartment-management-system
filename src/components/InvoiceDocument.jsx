@@ -60,9 +60,6 @@ function InvoiceDocument({ invoice, tenant, floor, settings, qr, paidAt }) {
         { name: 'ค่าไฟฟ้า', sub: '', prev: invoice.elec_prev, curr: invoice.elec_curr, qty: `${elecUnits} หน่วย`, rate: baht(invoice.elec_rate), amount: baht(elecCost) },
     ]
     if (commonFee > 0) rows.push({ name: 'ค่าบริการส่วนกลาง', sub: '', prev: '-', curr: '-', qty: '1 งวด', rate: baht(commonFee), amount: baht(commonFee) })
-    // ค่าซ่อมที่ผู้เช่าต้องชำระ รวมมาในใบนี้
-    const repairFee = Number(invoice.repair_fee || 0)
-    if (repairFee > 0) rows.push({ name: 'ค่าซ่อม', sub: 'ค่าซ่อมที่ผู้เช่าเป็นผู้ชำระ', prev: '-', curr: '-', qty: '1 รายการ', rate: baht(repairFee), amount: baht(repairFee) })
 
     return (
         <div

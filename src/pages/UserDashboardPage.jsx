@@ -280,7 +280,6 @@ function UserDashboardPage() {
             elecRate: Number(activeInvoice.elec_rate || 0),
             elecCost,
             commonFee: Number(activeInvoice.common_fee || 0),
-            repairFee: Number(activeInvoice.repair_fee || 0),
             total: Number(activeInvoice.total || 0),
         }
     }, [activeInvoice])
@@ -626,21 +625,6 @@ function UserDashboardPage() {
                                             {baht(invoiceBreakdown.commonFee)}
                                         </span>
                                     </div>
-
-                                    {/* ค่าซ่อมที่รวมมาในใบนี้ (เฉพาะใบเก่าช่วงที่ค่าซ่อมรวมในใบแจ้งหนี้ ตอนนี้จ่ายแยกแล้ว) */}
-                                    {invoiceBreakdown.repairFee > 0 && (
-                                        <div className="py-2.5 sm:py-3.5 flex justify-between items-center gap-3 text-sm">
-                                            <div className="flex items-center gap-3">
-                                                <span className="grid place-items-center w-8 h-8 rounded-lg bg-rose-50 text-rose-700">
-                                                    <Icon name="wrench" className="w-4 h-4" />
-                                                </span>
-                                                <span className="text-gray-800 font-medium">ค่าซ่อม</span>
-                                            </div>
-                                            <span className="font-semibold text-gray-900 tabular-nums">
-                                                {baht(invoiceBreakdown.repairFee)}
-                                            </span>
-                                        </div>
-                                    )}
 
                                     {/* รวมทั้งหมด */}
                                     <div className="pt-3 sm:pt-5 flex justify-between items-center">

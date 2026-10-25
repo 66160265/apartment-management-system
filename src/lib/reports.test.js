@@ -253,11 +253,11 @@ describe('ย้ายออกและเงินประกัน', () => {
 
 describe('คอลัมน์ส่งออก', () => {
     it('ใบแจ้งหนี้: คำนวณหน่วยและค่าน้ำไฟ ค่าปรับแสดงเฉพาะใบที่ชำระแล้ว', () => {
-        const csv = toCsv([inv(), inv({ id: 'p', status: 'paid', late_fee: 100, paid_amount: 4300, repair_fee: 500 })], invoiceColumns)
+        const csv = toCsv([inv(), inv({ id: 'p', status: 'paid', late_fee: 100, paid_amount: 4300 })], invoiceColumns)
         const [header, a, b] = csv.split('\r\n')
         expect(header).toContain('ยอดบิล')
-        expect(a).toBe('2026-10,101,สมชาย,3500,10,180,60,420,100,0,4200,,0,รอชำระ')
-        expect(b).toBe('2026-10,101,สมชาย,3500,10,180,60,420,100,500,4200,100,4300,ชำระแล้ว')
+        expect(a).toBe('2026-10,101,สมชาย,3500,10,180,60,420,100,4200,,0,รอชำระ')
+        expect(b).toBe('2026-10,101,สมชาย,3500,10,180,60,420,100,4200,100,4300,ชำระแล้ว')
     })
 
     it('ชื่อผู้เช่าที่เป็นสูตรถูกกันในไฟล์ส่งออกจริง', () => {
@@ -428,12 +428,11 @@ describe('ค่าใช้จ่ายของหอพัก สรุปร
 })
 
 describe('unpaidRepairSummary', () => {
-    it('นับผู้เช่าที่ยังไม่ชำระค่าซ่อม (ไม่นับที่ส่งสลิปแล้ว รวมในใบแจ้งหนี้ หรือหอพักจ่าย)', () => {
+    it('นับผู้เช่าที่ยังไม่ชำระค่าซ่อม (ไม่นับที่ส่งสลิปแล้ว หรือหอพักจ่าย)', () => {
         const repairs = [
             { id: 'r1', room: '101', user_id: 'u1', status: 'done', cost_payer: 'tenant', cost: 300 },
             { id: 'r2', room: '101', user_id: 'u1', status: 'done', cost_payer: 'tenant', cost: 200 },
             { id: 'r3', room: '102', user_id: 'u2', status: 'done', cost_payer: 'tenant', cost: 500 },
-            { id: 'r4', room: '103', user_id: 'u3', status: 'done', cost_payer: 'tenant', cost: 400, invoice_id: 'i1' },
             { id: 'r5', room: '104', user_id: 'u4', status: 'done', cost_payer: 'owner', cost: 900 },
             { id: 'r6', room: '105', user_id: 'u5', status: 'in_progress', cost_payer: 'tenant', cost: 100 },
         ]
