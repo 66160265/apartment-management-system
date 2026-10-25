@@ -107,12 +107,12 @@ describe('หน้าภาพรวมผู้เช่า (เรนเด�
         expect(text()).toContain(new Date('2030-01-20T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }))
     })
 
-    it('ไม่มีการ์ดน้ำ-ไฟซ้ำ และมีลิงก์ไปประวัติใบแจ้งหนี้', async () => {
+    it('ไม่มีการ์ดน้ำ-ไฟซ้ำ และไม่มีลิงก์ประวัติใบแจ้งหนี้ (ดูได้จากเมนูข้าง)', async () => {
         db.invoices = [inv({ water_curr: 10, water_rate: 18, elec_curr: 20, elec_rate: 8 })]
         await mount()
         expect(text()).not.toContain('การใช้น้ำและไฟฟ้าเดือนนี้')
         expect(text()).toContain('ค่าน้ำ 10 หน่วย')
-        expect([...container.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toContain('/invoices')
+        expect(text()).not.toContain('ดูประวัติใบแจ้งหนี้ทั้งหมด')
     })
 
     it('ชำระครบทุกใบ: ไม่มีแถบค้างชำระ', async () => {

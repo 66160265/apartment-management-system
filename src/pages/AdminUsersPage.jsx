@@ -75,7 +75,7 @@ function EditModal({ user, onSave, onCancel }) {
 
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-xl w-[420px] max-w-[92vw] max-h-[95vh] overflow-y-auto flex flex-col gap-4">
+            <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl w-[420px] max-w-[92vw] max-h-[95vh] overflow-y-auto flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-primary-dark">แก้ไขบัญชี {emailToUsername(user.email)}</h2>
                 {/* ข้อมูลผู้เช่า (เฉพาะบัญชีผู้เช่า): ชื่อ เบอร์โทร ห้อง และวันเริ่ม/สิ้นสุดสัญญา */}
                 {t && (
@@ -177,7 +177,7 @@ function DeleteModal({ user, onConfirm, onCancel }) {
 
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 shadow-xl w-[400px] max-w-[92vw] flex flex-col gap-4">
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl w-[400px] max-w-[92vw] flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-primary-dark">ลบบัญชี {emailToUsername(user.email)}</h2>
                 {/* อธิบายผลของการลบ (บัญชีผู้เช่าจะลบข้อมูลผู้เช่าและคืนห้องเป็นว่างด้วย) */}
                 <p className="text-sm text-ink">
@@ -283,14 +283,14 @@ function AdminUsersPage() {
                 <p className="px-6 text-red-600">หน้านี้สำหรับผู้ดูแลระบบเท่านั้น</p>
             ) : (
                 <div className="px-4 sm:px-6 pb-10">
-                    <div className="bg-white rounded-2xl shadow-card p-5">
+                    <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
                         {/* หัวกล่อง: จำนวนบัญชี + ช่องค้นหา */}
                         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                             <h2 className="font-medium text-primary-dark">
                                 บัญชีทั้งหมด
                                 <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
                             </h2>
-                            <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-72 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
+                            <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-full sm:w-72 focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                                 <Icon name="search" className="w-4 h-4 text-muted" />
                                 <input
                                     type="text"

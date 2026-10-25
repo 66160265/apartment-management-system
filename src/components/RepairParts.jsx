@@ -130,7 +130,7 @@ export function RepairImagePicker({ file, existingPath, onPick, onClear, disable
 export function ConfirmDialog({ title, children, confirmLabel, busy, onCancel, onConfirm }) {
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-            <div role="alertdialog" aria-modal="true" className="bg-white rounded-2xl p-6 shadow-xl w-[380px] max-w-full flex flex-col gap-3">
+            <div role="alertdialog" aria-modal="true" className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl w-[380px] max-w-full flex flex-col gap-3">
                 {/* หัวข้อ, ข้อความ (children) และปุ่ม ไม่ใช่ / ยืนยัน */}
                 <h3 className="text-lg font-semibold text-primary-dark">{title}</h3>
                 <div className="text-sm text-muted">{children}</div>

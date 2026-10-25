@@ -118,7 +118,7 @@ function DocumentModal({ doc, room, onSaved, onCancel }) {
 
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 shadow-xl w-[440px] max-w-[92vw] max-h-[92vh] overflow-y-auto flex flex-col gap-4">
+            <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl w-[440px] max-w-[92vw] max-h-[92vh] overflow-y-auto flex flex-col gap-4">
                 {/* หัวข้อ: เพิ่ม/แก้ไข + ชื่อประเภทเอกสาร */}
                 <h2 className="text-lg font-semibold text-primary-dark">
                     {isEdit ? 'แก้ไขเอกสาร' : 'เพิ่มเอกสาร'}{!isOther && ` · ${doc.title}`}
@@ -181,7 +181,7 @@ function DeleteDocumentModal({ doc, onConfirm, onCancel }) {
 
     return (
         <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-2xl p-6 shadow-xl w-[400px] max-w-[92vw] flex flex-col gap-4">
+            <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-xl w-[400px] max-w-[92vw] flex flex-col gap-4">
                 <h2 className="text-lg font-semibold text-primary-dark">ลบเอกสาร</h2>
                 <p className="text-sm text-ink">ลบ "{doc.title}" ({doc.file_name}) การลบไม่สามารถกู้คืนได้</p>
                 {error && <p className="text-sm text-red-600">{error}</p>}
@@ -272,7 +272,7 @@ function TenantDocuments({ room }) {
     const complete = done === REQUIRED_DOCS.length
 
     return (
-        <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+        <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
             {/* หัวการ์ด + แถบความคืบหน้าเอกสารหลัก (ครบ = เขียว, ไม่ครบ = ส้ม) */}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>

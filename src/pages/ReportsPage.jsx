@@ -38,21 +38,46 @@ function CountBar({ label, count, max }) {
     )
 }
 
-function Stat({ label, value, hint, tone = 'text-primary-dark' }) {
+// mobileHint: คำอธิบายแทนบนจอเล็ก (null = ซ่อนคำอธิบายบนจอเล็ก, ไม่ส่ง = ใช้ hint เดิม)
+function Stat({ label, value, hint, mobileHint, tone = 'text-primary-dark', className = '' }) {
+    const hasMobile = mobileHint !== undefined
     return (
-        <div className="bg-white rounded-2xl shadow-card p-4">
-            <div className="text-sm text-muted">{label}</div>
-            <div className={`text-2xl font-semibold mt-1 tabular-nums ${tone}`}>{value}</div>
-            {hint && <div className="text-xs text-muted mt-0.5">{hint}</div>}
+        <div className={`bg-white rounded-2xl shadow-card p-3 sm:p-4 ${className}`}>
+            <div className="text-xs sm:text-sm leading-tight text-muted">{label}</div>
+            <div className={`text-lg sm:text-2xl font-semibold mt-1 tabular-nums ${tone}`}>{value}</div>
+            {hasMobile && mobileHint && <div className="sm:hidden text-xs text-muted mt-0.5">{mobileHint}</div>}
+            {hint && <div className={`text-xs text-muted mt-0.5 ${hasMobile ? 'hidden sm:block' : ''}`}>{hint}</div>}
         </div>
     )
 }
 
-function ExportButton({ onClick, children }) {
+// การ์ดแทนแถวตารางบนจอเล็ก (ต่ำกว่า md): หัวการ์ด + คู่ ชื่อ/ค่า 2 คอลัมน์
+// rows = [[ชื่อ, ค่า, className ของค่า]] ข้ามแถวที่ค่าเป็น null
+function MobileCard({ title, aside, rows, className = '' }) {
     return (
-        <button type="button" onClick={onClick} className="flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm">
-            <Icon name="download" className="w-4 h-4" />
-            {children}
+        <li className={`rounded-xl border border-line p-3 ${className}`}>
+            <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 text-sm text-ink">{title}</div>
+                {aside && <div className="shrink-0 text-sm text-right">{aside}</div>}
+            </div>
+            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                {rows.filter((r) => r[1] !== null).map(([k, v, cls = 'text-ink']) => (
+                    <div key={k} className="flex items-baseline justify-between gap-2 min-w-0">
+                        <dt className="text-muted truncate">{k}</dt>
+                        <dd className={`tabular-nums whitespace-nowrap ${cls}`}>{v}</dd>
+                    </div>
+                ))}
+            </dl>
+        </li>
+    )
+}
+
+// short: ชื่อปุ่มสั้นบนจอเล็ก
+function ExportButton({ onClick, children, short }) {
+    return (
+        <button type="button" onClick={onClick} className="flex items-center justify-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3 sm:px-3.5 py-1.5 rounded-xl text-sm whitespace-nowrap">
+            <Icon name="download" className="w-4 h-4 shrink-0" />
+            {short ? <><span className="sm:hidden">{short}</span><span className="hidden sm:inline">{children}</span></> : children}
         </button>
     )
 }
@@ -166,36 +191,37 @@ function ReportsPage() {
         <>
             <PageHeader title="รายงาน" subtitle="อัตราเข้าพัก รายรับ ยอดค้างชำระ และส่งออก CSV สำหรับทำบัญชี" />
 
-            <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
+            <div className="px-4 sm:px-6 pb-8 flex flex-col gap-4 sm:gap-6">
                 {error ? (
                     <p className="text-center py-10 text-red-600">{error}</p>
                 ) : loading ? (
-                    <div className="flex flex-col gap-6"><SkeletonCardGrid count={4} /><SkeletonTable rows={5} cols={5} /></div>
+                    <div className="flex flex-col gap-4 sm:gap-6"><SkeletonCardGrid count={4} /><SkeletonTable rows={5} cols={5} /></div>
                 ) : (
                     <>
                         {/* ห้องพัก (ตอนนี้) */}
-                        <section className="grid gap-3 sm:grid-cols-3">
-                            <Stat label="อัตราเข้าพัก" value={`${occ.rate}%`} hint={`มีผู้เช่า ${occ.occupied} จาก ${occ.total - occ.maintenance} ห้อง (ไม่รวมปิดปรับปรุง)`} />
-                            <Stat label="ห้องว่าง" value={occ.vacant} hint={occ.maintenance > 0 ? `ปิดปรับปรุง ${occ.maintenance} ห้อง` : undefined} />
-                            <Stat label="ยอดค้างชำระทั้งหมด" value={baht(outstandingTotal)} hint={`${outstanding.length} ใบ ทุกเดือนที่ยังไม่ชำระ`} tone={outstandingTotal > 0 ? 'text-amber-700' : 'text-primary-dark'} />
+                        {/* จอเล็ก: 3 ช่องในแถวเดียว คำอธิบายสั้น */}
+                        <section className="grid grid-cols-3 gap-2 sm:gap-3">
+                            <Stat label="อัตราเข้าพัก" value={`${occ.rate}%`} hint={`มีผู้เช่า ${occ.occupied} จาก ${occ.total - occ.maintenance} ห้อง (ไม่รวมปิดปรับปรุง)`} mobileHint={`${occ.occupied}/${occ.total - occ.maintenance} ห้อง`} />
+                            <Stat label="ห้องว่าง" value={occ.vacant} hint={occ.maintenance > 0 ? `ปิดปรับปรุง ${occ.maintenance} ห้อง` : undefined} mobileHint={occ.maintenance > 0 ? `ปรับปรุง ${occ.maintenance}` : null} />
+                            <Stat label="ยอดค้างทั้งหมด" value={baht(outstandingTotal)} hint={`${outstanding.length} ใบ ทุกเดือนที่ยังไม่ชำระ`} mobileHint={`${outstanding.length} ใบ`} tone={outstandingTotal > 0 ? 'text-amber-700' : 'text-primary-dark'} />
                         </section>
 
                         {/* สรุปเดือนที่เลือก */}
-                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
+                        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-3 sm:gap-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
                                 <h2 className="font-medium text-primary-dark">สรุปเดือน {formatMonth(month)}</h2>
                                 <MonthPicker value={month} onChange={setMonth} />
                             </div>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-                                <Stat label="ใบแจ้งหนี้ที่ออกเดือนนี้" value={summary.issuedCount} hint={`บิลเดือน ${formatMonth(summary.billMonth)} · เรียกเก็บ ${baht(summary.billed)}`} />
-                                <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.receivedTotal)} hint="ค่าห้อง ค่าน้ำไฟ และค่าซ่อมที่รวมในใบแจ้งหนี้" tone="text-emerald-700" />
-                                <Stat label={`ค้างชำระของบิลเดือน ${formatMonth(summary.billMonth)}`} value={baht(summary.outstanding)} hint={`${summary.unpaidCount} ใบ ณ วันนี้`} tone={summary.outstanding > 0 ? 'text-amber-700' : 'text-primary-dark'} />
-                                <Stat label="รายจ่ายเดือนนี้" value={baht(summary.spent)} hint={<><span className="block">ค่าซ่อมที่หอพักจ่าย {baht(summary.repairCost)}</span><span className="block">ค่าใช้จ่ายของหอ {baht(summary.expenseTotal)}</span></>} />
-                                <Stat label="คงเหลือเดือนนี้" value={baht(summary.net)} hint="รับเงินจริง − รายจ่ายเดือนนี้" tone={summary.net < 0 ? 'text-red-700' : 'text-emerald-700'} />
+                            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-5">
+                                <Stat label="ใบแจ้งหนี้ที่ออกเดือนนี้" value={summary.issuedCount} hint={`บิลเดือน ${formatMonth(summary.billMonth)} · เรียกเก็บ ${baht(summary.billed)}`} mobileHint={`เรียกเก็บ ${baht(summary.billed)}`} />
+                                <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.receivedTotal)} hint="ค่าห้อง ค่าน้ำไฟ และค่าซ่อมที่รวมในใบแจ้งหนี้" mobileHint={null} tone="text-emerald-700" />
+                                <Stat label={`ค้างของบิล ${formatMonth(summary.billMonth)}`} value={baht(summary.outstanding)} hint={`${summary.unpaidCount} ใบ ณ วันนี้`} tone={summary.outstanding > 0 ? 'text-amber-700' : 'text-primary-dark'} />
+                                <Stat label="รายจ่ายเดือนนี้" value={baht(summary.spent)} hint={<><span className="block">ค่าซ่อมที่หอพักจ่าย {baht(summary.repairCost)}</span><span className="block">ค่าใช้จ่ายของหอ {baht(summary.expenseTotal)}</span></>} mobileHint={`ซ่อม ${baht(summary.repairCost)} · หอ ${baht(summary.expenseTotal)}`} />
+                                <Stat className="col-span-2 lg:col-span-1" label="คงเหลือเดือนนี้" value={baht(summary.net)} hint="รับเงินจริง − รายจ่ายเดือนนี้" tone={summary.net < 0 ? 'text-red-700' : 'text-emerald-700'} />
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                                <ExportButton onClick={exportInvoices}>ใบแจ้งหนี้ที่ออกเดือนนี้ (CSV)</ExportButton>
-                                <ExportButton onClick={exportPayments}>การรับเงินเดือนนี้ (CSV)</ExportButton>
+                            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                                <ExportButton onClick={exportInvoices} short="ใบแจ้งหนี้ CSV">ใบแจ้งหนี้ที่ออกเดือนนี้ (CSV)</ExportButton>
+                                <ExportButton onClick={exportPayments} short="การรับเงิน CSV">การรับเงินเดือนนี้ (CSV)</ExportButton>
                             </div>
                         </section>
 
@@ -203,14 +229,14 @@ function ReportsPage() {
                         <ExpensesSection month={month} expenses={data.expenses} invoices={data.invoices} onChanged={reload} />
 
                         {/* แนวโน้มรายรับ-รายจ่าย 12 เดือน */}
-                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-3">
                             <h2 className="font-medium text-primary-dark">แนวโน้ม 12 เดือนล่าสุด (ถึง {formatMonth(month)})</h2>
                             <TrendChart title="รายรับและรายจ่ายรายเดือน" rows={trend} />
                             <p className="text-xs text-muted">รายรับ = เงินที่ได้รับจริงในเดือนนั้น · รายจ่าย = ค่าซ่อมที่หอพักจ่าย + ค่าใช้จ่ายของหอพักที่บันทึกไว้</p>
                         </section>
 
                         {/* ยอดค้างชำระ */}
-                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-3">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <h2 className="font-medium text-primary-dark">ยอดค้างชำระ ({outstanding.length} ใบ)</h2>
                                 <ExportButton onClick={exportOutstanding}>ยอดค้างชำระ (CSV)</ExportButton>
@@ -218,7 +244,22 @@ function ReportsPage() {
                             {outstanding.length === 0 ? (
                                 <p className="text-sm text-muted py-4 text-center">ไม่มียอดค้างชำระ</p>
                             ) : (
-                                <div className="overflow-x-auto">
+                                <>
+                                <ul className="md:hidden flex flex-col gap-2">
+                                    {outstanding.slice(0, 50).map((r) => (
+                                        <MobileCard
+                                            key={`${r.room}-${r.month}`}
+                                            title={<><span className="font-medium">{r.room}</span> <span className="text-muted">· {r.tenant}</span></>}
+                                            aside={<span className="font-semibold tabular-nums text-amber-700">{baht(r.balance)}</span>}
+                                            rows={[
+                                                ['บิลเดือน', formatMonth(r.month)],
+                                                ['ยอดบิล', baht(r.total)],
+                                                ['เกินกำหนด', r.daysLate > 0 ? `${r.daysLate} วัน` : '-', r.daysLate > 0 ? 'text-red-600 font-medium' : 'text-muted'],
+                                            ]}
+                                        />
+                                    ))}
+                                </ul>
+                                <div className="hidden md:block overflow-x-auto">
                                     <table className="w-full text-sm min-w-[600px]">
                                         <thead>
                                             <tr className="text-left text-muted border-b border-line">
@@ -241,13 +282,14 @@ function ReportsPage() {
                                             ))}
                                         </tbody>
                                     </table>
-                                    {outstanding.length > 50 && <p className="text-xs text-muted pt-2">แสดง 50 รายการแรก ดูทั้งหมดในไฟล์ CSV</p>}
                                 </div>
+                                {outstanding.length > 50 && <p className="text-xs text-muted">แสดง 50 รายการแรก ดูทั้งหมดในไฟล์ CSV</p>}
+                                </>
                             )}
                         </section>
                         {/* ห้องว่าง และสัญญาที่ใกล้หมด */}
-                        <div className="grid gap-6 lg:grid-cols-2">
-                            <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+                            <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-3">
                                 <h2 className="font-medium text-primary-dark">ห้องว่าง ({vacancies.length} ห้อง)</h2>
                                 {vacancies.length === 0 ? (
                                     <p className="text-sm text-muted py-4 text-center">ไม่มีห้องว่าง</p>
@@ -276,7 +318,7 @@ function ReportsPage() {
                                 <p className="text-xs text-muted">นับจากวันที่ผู้เช่าคนล่าสุดย้ายออก</p>
                             </section>
 
-                            <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                            <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-3">
                                 <h2 className="font-medium text-primary-dark">สัญญาที่จะหมดใน 90 วัน ({expiring.length} ห้อง)</h2>
                                 {expiring.length === 0 ? (
                                     <p className="text-sm text-muted py-4 text-center">ไม่มีสัญญาที่ใกล้หมด</p>
@@ -309,7 +351,7 @@ function ReportsPage() {
                         </div>
 
                         {/* สถิติแจ้งซ่อม (ทั้งหมดในระบบ ไม่นับเรื่องที่ยกเลิก) */}
-                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
                             <h2 className="font-medium text-primary-dark">สถิติแจ้งซ่อม</h2>
                             <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
                                 <Stat label="เรื่องแจ้งซ่อมทั้งหมด" value={rstats.total} hint="ไม่นับเรื่องที่ยกเลิก" />
@@ -324,7 +366,7 @@ function ReportsPage() {
                                 <Stat label="ค่าซ่อมทั้งหมด" value={baht(rstats.costTotal)} hint={`หอพักจ่าย ${baht(rstats.costOwner)} · ผู้เช่าจ่าย ${baht(rstats.costTenant)}`} />
                             </div>
                             {rstats.total > 0 && (
-                                <div className="grid gap-6 lg:grid-cols-2">
+                                <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
                                     <div className="flex flex-col gap-2">
                                         <h3 className="text-sm font-medium text-ink">แยกตามประเภท</h3>
                                         <ul className="flex flex-col gap-2">
@@ -359,13 +401,30 @@ function ReportsPage() {
                         </section>
 
                         {/* รายเดือนย้อนหลัง 12 เดือน */}
-                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-3">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <h2 className="font-medium text-primary-dark">รายเดือนย้อนหลัง 12 เดือน</h2>
                                 <ExportButton onClick={exportMonthly}>สรุปรายเดือน (CSV)</ExportButton>
                             </div>
                             <p className="-mt-1 text-xs text-muted">ใบที่ออก เรียกเก็บ และยังค้าง นับจากบิลที่ออกในเดือนนั้น (บิลของเดือนก่อนหน้า)</p>
-                            <div className="overflow-x-auto">
+                            <ul className="md:hidden flex flex-col gap-2">
+                                {rows12.map((r) => (
+                                    <MobileCard
+                                        key={r.month}
+                                        title={<span className="font-medium">{formatMonth(r.month)}</span>}
+                                        aside={<span className={`font-semibold tabular-nums ${r.net < 0 ? 'text-red-700' : 'text-emerald-700'}`}>คงเหลือ {baht(r.net)}</span>}
+                                        rows={[
+                                            ['รับเงิน', baht(r.receivedTotal), 'text-emerald-700'],
+                                            ['รายจ่าย', baht(r.spent)],
+                                            [`เรียกเก็บ (${r.issuedCount} ใบ)`, baht(r.billed)],
+                                            ['ยังค้าง', baht(r.outstanding), r.outstanding > 0 ? 'text-amber-700 font-medium' : 'text-ink'],
+                                            ['ซ่อม (หอจ่าย)', baht(r.repairCost)],
+                                            ['ค่าใช้จ่ายหอ', baht(r.expenseTotal)],
+                                        ]}
+                                    />
+                                ))}
+                            </ul>
+                            <div className="hidden md:block overflow-x-auto">
                                 <table className="w-full text-sm min-w-[960px] table-fixed">
                                     {/* ความกว้างคอลัมน์คงที่: เดือนและจำนวนใบแคบ ช่องเงิน 7 ช่องกว้างเท่ากัน */}
                                     <colgroup>
@@ -407,7 +466,7 @@ function ReportsPage() {
                         </section>
 
                         {/* สรุปรายปี */}
-                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <h2 className="font-medium text-primary-dark">สรุปรายปี {Number(year) + 543}</h2>
                                 <div className="flex items-center gap-2">
@@ -417,13 +476,37 @@ function ReportsPage() {
                                     <ExportButton onClick={exportYearly}>สรุปรายปี (CSV)</ExportButton>
                                 </div>
                             </div>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
                                 <Stat label="รับเงินจริงทั้งปี" value={baht(yearly.totals.receivedTotal)} hint={`เรียกเก็บ ${baht(yearly.totals.billed)} จาก ${yearly.totals.issuedCount} ใบ`} tone="text-emerald-700" />
                                 <Stat label="ค่าซ่อมที่หอพักจ่าย" value={baht(yearly.totals.repairCost)} hint={`ผู้เช่าจ่ายเอง ${baht(yearly.totals.repairTenantCost)}`} />
-                                <Stat label="ค่าใช้จ่ายของหอพัก" value={baht(yearly.totals.expenseTotal)} hint="ค่าไฟ ค่าน้ำ ค่าแม่บ้าน ฯลฯ ที่บันทึกไว้" />
-                                <Stat label="คงเหลือทั้งปี" value={baht(yearly.totals.net)} hint="รับเงินจริง − รายจ่ายทั้งหมด" tone={yearly.totals.net < 0 ? 'text-red-700' : 'text-emerald-700'} />
+                                <Stat label="ค่าใช้จ่ายของหอพัก" value={baht(yearly.totals.expenseTotal)} hint="ค่าไฟ ค่าน้ำ ค่าแม่บ้าน ฯลฯ ที่บันทึกไว้" mobileHint={null} />
+                                <Stat label="คงเหลือทั้งปี" value={baht(yearly.totals.net)} hint="รับเงินจริง − รายจ่ายทั้งหมด" mobileHint={null} tone={yearly.totals.net < 0 ? 'text-red-700' : 'text-emerald-700'} />
                             </div>
-                            <div className="overflow-x-auto">
+                            <ul className="md:hidden flex flex-col gap-2">
+                                {yearly.rows.map((r) => (
+                                    <MobileCard
+                                        key={r.month}
+                                        title={<span className="font-medium">{formatMonth(r.month)}</span>}
+                                        aside={<span className={`font-semibold tabular-nums ${r.net < 0 ? 'text-red-700' : 'text-emerald-700'}`}>คงเหลือ {baht(r.net)}</span>}
+                                        rows={[
+                                            ['รับเงินจริง', baht(r.receivedTotal), 'text-emerald-700'],
+                                            ['รายจ่ายรวม', baht(r.spent)],
+                                            ['ซ่อม (หอจ่าย)', baht(r.repairCost)],
+                                            ['ค่าใช้จ่ายหอ', baht(r.expenseTotal)],
+                                        ]}
+                                    />
+                                ))}
+                                <MobileCard
+                                    className="bg-sand/50"
+                                    title={<span className="font-semibold">รวมทั้งปี</span>}
+                                    aside={<span className={`font-semibold tabular-nums ${yearly.totals.net < 0 ? 'text-red-700' : 'text-emerald-700'}`}>คงเหลือ {baht(yearly.totals.net)}</span>}
+                                    rows={[
+                                        ['รับเงินจริง', baht(yearly.totals.receivedTotal), 'text-emerald-700 font-semibold'],
+                                        ['รายจ่ายรวม', baht(yearly.totals.spent), 'text-ink font-semibold'],
+                                    ]}
+                                />
+                            </ul>
+                            <div className="hidden md:block overflow-x-auto">
                                 <table className="w-full text-sm min-w-[760px] table-fixed">
                                     <colgroup>
                                         <col className="w-[12%]" />
@@ -467,16 +550,16 @@ function ReportsPage() {
                         </section>
 
                         {/* แนวโน้มการใช้น้ำ-ไฟย้อนหลัง (แยกสองกราฟ เพราะคนละหน่วยและคนละสเกล) */}
-                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
                             <h2 className="font-medium text-primary-dark">แนวโน้มการใช้น้ำ-ไฟ 12 เดือนล่าสุด (ถึง {formatMonth(month)})</h2>
-                            <div className="grid gap-6 lg:grid-cols-2">
+                            <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
                                 <MonthlyColumns title="หน่วยน้ำรวมทุกห้อง" unit="หน่วย" color="#2a78d6" rows={waterRows} />
                                 <MonthlyColumns title="หน่วยไฟรวมทุกห้อง" unit="หน่วย" color="#eb6834" rows={electricRows} />
                             </div>
                         </section>
 
                         {/* การใช้น้ำ-ไฟของเดือนที่เลือก */}
-                        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <h2 className="font-medium text-primary-dark">การใช้น้ำ-ไฟ เดือน {formatMonth(month)}</h2>
                                 <ExportButton onClick={exportUtility}>การใช้น้ำ-ไฟรายห้อง (CSV)</ExportButton>
@@ -489,7 +572,21 @@ function ReportsPage() {
                             {usageRows.length === 0 ? (
                                 <p className="text-sm text-muted text-center py-4">ยังไม่มีใบแจ้งหนี้ของเดือนนี้</p>
                             ) : (
-                                <div className="border border-line rounded-xl overflow-hidden">
+                                <>
+                                <ul className="md:hidden flex flex-col gap-2 max-h-96 overflow-y-auto">
+                                    {usageRows.map((r) => (
+                                        <MobileCard
+                                            key={r.room}
+                                            title={<><span className="font-medium">{r.room}</span> <span className="text-muted">· {r.tenant}</span></>}
+                                            aside={<span className="font-semibold tabular-nums text-primary-dark">{baht(r.totalCost)}</span>}
+                                            rows={[
+                                                [`น้ำ ${r.water.toLocaleString()} หน่วย`, baht(r.waterCost)],
+                                                [`ไฟ ${r.electric.toLocaleString()} หน่วย`, baht(r.elecCost)],
+                                            ]}
+                                        />
+                                    ))}
+                                </ul>
+                                <div className="hidden md:block border border-line rounded-xl overflow-hidden">
                                     <div className="max-h-80 overflow-auto">
                                         <table className="w-full text-sm min-w-[560px] table-fixed">
                                             {/* ห้อง/ผู้เช่ากว้างกว่า ช่องตัวเลข 3 ช่องเท่ากัน */}
@@ -536,12 +633,13 @@ function ReportsPage() {
                                         </table>
                                     </div>
                                 </div>
+                                </>
                             )}
                         </section>
 
                         {/* ย้ายออกและเงินประกัน */}
                         {data.moveOuts.length > 0 && (
-                            <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-3">
+                            <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-3">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <h2 className="font-medium text-primary-dark">ย้ายออกและเงินประกัน ({data.moveOuts.length} ราย)</h2>
                                     <ExportButton onClick={exportMoveOuts}>ย้ายออก/เงินประกัน (CSV)</ExportButton>
@@ -551,7 +649,22 @@ function ReportsPage() {
                                         ผู้เช่าที่ย้ายออกมียอดต้องจ่ายเพิ่ม (หักเกินเงินประกัน) รวม {baht(owedAfterMoveOut)} ระบบไม่ติดตามยอดนี้ ควรเรียกเก็บนอกระบบ
                                     </p>
                                 )}
-                                <div className="overflow-x-auto">
+                                <ul className="md:hidden flex flex-col gap-2">
+                                    {data.moveOuts.slice(0, 20).map((m) => (
+                                        <MobileCard
+                                            key={m.id}
+                                            title={<><span className="font-medium">{m.room}</span> <span className="text-muted">· {m.tenant_name}</span><span className="block text-xs text-muted">ย้ายออก {formatDate(m.move_out_date)}</span></>}
+                                            aside={m.refund_status === 'pending' ? <span className="text-sky-700 font-medium">รอคืนเงิน</span> : m.refund_status === 'done' ? <span className="text-emerald-700">คืนแล้ว</span> : <span className="text-muted">ไม่มียอดคืน</span>}
+                                            rows={[
+                                                ['เงินประกัน', baht(m.deposit)],
+                                                ['หัก', baht(m.deductions_total)],
+                                                ['คืนผู้เช่า', Number(m.refund_amount) > 0 ? baht(m.refund_amount) : '-', Number(m.refund_amount) > 0 ? 'font-medium text-emerald-700' : 'text-muted'],
+                                                ['ต้องจ่ายเพิ่ม', Number(m.owed_amount) > 0 ? baht(m.owed_amount) : '-', Number(m.owed_amount) > 0 ? 'font-medium text-red-700' : 'text-muted'],
+                                            ]}
+                                        />
+                                    ))}
+                                </ul>
+                                <div className="hidden md:block overflow-x-auto">
                                     <table className="w-full text-sm min-w-[760px] table-fixed">
                                         {/* ความกว้างคอลัมน์คงที่: ห้อง/ผู้เช่ากว้างกว่า ช่องเงิน 4 ช่องเท่ากัน */}
                                         <colgroup>

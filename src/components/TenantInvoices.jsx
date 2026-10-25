@@ -147,7 +147,7 @@ function InvoiceDetail({ invoice, userId, onBack, onChanged }) {
             <button onClick={onBack} className="self-start flex items-center gap-1.5 border border-line bg-white text-primary-dark hover:bg-mist/40 px-3.5 py-1.5 rounded-xl text-sm"><Icon name="arrowLeft" className="w-4 h-4" />กลับไปรายการใบแจ้งหนี้</button>
 
             {/* หัว: เดือน ห้อง ปุ่มดาวน์โหลด PDF ป้ายสถานะ และไทม์ไลน์ขั้นตอน */}
-            <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-5">
+            <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <h2 className="text-lg font-semibold text-primary-dark">ใบแจ้งหนี้เดือน {formatMonth(invoice.month)}</h2>
@@ -170,7 +170,7 @@ function InvoiceDetail({ invoice, userId, onBack, onChanged }) {
                 </div>
 
                 {/* ขวา: เนื้อหาตามสถานะ */}
-                <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
                     {/* รอชำระ: แสดงเหตุผลถ้าสลิปก่อนหน้าถูกปฏิเสธ + กล่องแนบสลิป */}
                     {invoice.status === 'pending' && (
                         <>
@@ -282,14 +282,14 @@ function TenantInvoices({ userId }) {
             {selected ? (
                 <InvoiceDetail key={selected.id} invoice={selected} userId={userId} onBack={() => setSelectedId(null)} onChanged={load} />
             ) : (
-                <div className="px-4 sm:px-6 pb-8 flex flex-col gap-6">
+                <div className="px-4 sm:px-6 pb-8 flex flex-col gap-4 sm:gap-6">
                     {loading || loadError ? (
                         loading ? <SkeletonCards count={2} lines={4} /> : <p className="text-center py-10 text-red-600">{loadError}</p>
                     ) : (
                         <>
                             {/* การ์ดเด่นด้านบน: ยอดที่ต้องจ่าย/รอตรวจ หรือข้อความ "ไม่มียอดค้างชำระ" */}
                             {focus ? (
-                                <div className="rounded-2xl bg-linear-to-br from-primary-dark to-primary text-white p-6 shadow-card flex flex-wrap items-center justify-between gap-5">
+                                <div className="rounded-2xl bg-linear-to-br from-primary-dark to-primary text-white p-4 sm:p-6 shadow-card flex flex-wrap items-center justify-between gap-5">
                                     <div>
                                         <div className="text-sm text-white/75">
                                             {focus.status === 'pending' ? `ยอดที่ต้องชำระ${isPartiallyPaid(focus) ? 'คงเหลือ' : ''} · เดือน ${formatMonth(focus.month)}` : `รอตรวจสอบสลิป · เดือน ${formatMonth(focus.month)}`}
@@ -308,7 +308,7 @@ function TenantInvoices({ userId }) {
                                     </button>
                                 </div>
                             ) : invoices.length > 0 ? (
-                                <div className="rounded-2xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 p-6 flex items-center gap-4">
+                                <div className="rounded-2xl bg-emerald-50 ring-1 ring-emerald-200 text-emerald-900 p-4 sm:p-6 flex items-center gap-4">
                                     <span className="grid place-items-center w-11 h-11 rounded-full bg-white text-emerald-600"><Icon name="checkCircle" className="w-6 h-6" /></span>
                                     <div>
                                         <div className="font-medium">ไม่มียอดค้างชำระ</div>

@@ -2,24 +2,20 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('./supabaseClient', () => ({ supabase: {} }))
 
-const { settlement, unpaidInvoicesOf, reviewingInvoicesOf, validateCustoms, buildDeductions, moveOutOutcome, forfeitsDeposit, forfeitDeduction, firstYearEnd } = await import('./moveOut')
+const { settlement, unpaidInvoicesOf, reviewingInvoicesOf, validateCustoms, buildDeductions, moveOutOutcome, forfeitsDeposit, forfeitDeduction } = await import('./moveOut')
 
-describe('ไม่คืนเงินประกันถ้าย้ายออกก่อนครบปีแรก', () => {
-    it('ครบปีแรก = วันเริ่มสัญญา + 12 เดือน', () => {
-        expect(firstYearEnd('2026-01-31')).toBe('2027-01-31')
-        expect(firstYearEnd(null)).toBe(null)
-    })
-
-    it('ย้ายออกก่อนวันครบปี = ไม่คืน, ตั้งแต่วันครบปี = คืนตามปกติ', () => {
-        expect(forfeitsDeposit('2026-01-15', '2027-01-14')).toBe(true)
-        expect(forfeitsDeposit('2026-01-15', '2027-01-15')).toBe(false)
+describe('ไม่คืนเงินประกันถ้าย้ายออกก่อนวันสิ้นสุดสัญญา', () => {
+    it('ย้ายออกก่อนวันสิ้นสุดสัญญา = ไม่คืน, ตั้งแต่วันสิ้นสุดสัญญา = คืนตามปกติ', () => {
+        expect(forfeitsDeposit('2027-06-30', '2027-06-29')).toBe(true)
+        expect(forfeitsDeposit('2027-06-30', '2027-06-30')).toBe(false)
+        expect(forfeitsDeposit('2027-06-30', '2027-07-05')).toBe(false)
         expect(forfeitsDeposit(null, '2026-05-01')).toBe(false)
     })
 
     it('หักส่วนที่เหลือหลังหักรายการอื่น ยอดคืนจึงเป็น 0', () => {
         const others = [{ label: 'ค่าเช่า', amount: 1500 }]
         const rows = forfeitDeduction(4000, others)
-        expect(rows).toEqual([{ label: 'ไม่คืนเงินประกัน (ย้ายออกก่อนครบสัญญา 1 ปี)', amount: 2500 }])
+        expect(rows).toEqual([{ label: 'ไม่คืนเงินประกัน (ย้ายออกก่อนวันสิ้นสุดสัญญา)', amount: 2500 }])
         expect(settlement(4000, [...others, ...rows])).toEqual({ deposit: 4000, total: 4000, refund: 0, owed: 0 })
         expect(forfeitDeduction(4000, [{ label: 'ค่าเช่า', amount: 5450 }])).toEqual([])
     })

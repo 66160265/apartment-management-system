@@ -68,7 +68,7 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
             <div className="mx-4 sm:mx-6 mb-6 flex flex-col gap-4">
 
                 {/* การ์ดหัว: เลขห้อง ชื่อผู้เช่า สถานะ ปุ่ม PDF/แก้ไข/ลบ และไทม์ไลน์ขั้นตอน */}
-                <div className="bg-white rounded-2xl shadow-card p-5 flex flex-wrap items-center gap-4">
+                <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-wrap items-center gap-4">
                     <span className="grid place-items-center w-14 h-14 rounded-2xl bg-mist text-primary-dark text-lg font-semibold">{invoice.room}</span>
                     <div className="flex-1 min-w-48">
                         <div className="flex items-center gap-3 flex-wrap">
@@ -109,7 +109,7 @@ function InvoiceDetail({ invoice, onBack, onChanged, onEdit, onDelete }) {
                     </div>
 
                     {/* ขวา: รูปสลิป (หรือเหตุผลที่ปฏิเสธครั้งก่อน) และปุ่มตรวจสลิป */}
-                    <div className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+                    <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
                         <div className="flex justify-between items-baseline gap-3">
                             <h3 className="font-medium text-primary-dark">หลักฐานการโอนเงิน</h3>
                             {invoice.slip_uploaded_at && (

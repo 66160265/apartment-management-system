@@ -84,7 +84,7 @@ function ExpensesSection({ month, expenses, invoices, onChanged }) {
     }
 
     return (
-        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h2 className="font-medium text-primary-dark">ค่าใช้จ่ายของหอพัก เดือน {formatMonth(month)}</h2>
                 <span className="text-sm text-muted">รวม <span className="font-semibold text-red-700 tabular-nums">{baht(total)}</span></span>

@@ -1,5 +1,4 @@
 import { balanceOf, formatMonth } from './billing'
-import { addMonthsIso } from './contracts'
 
 // ย้ายออกและคืนเงินประกัน (components/MoveOutSection.jsx, supabase/migrations/20261022000000_initial_schema.sql (ส่วน move-out)): ตรรกะฝั่งเว็บ ใช้แสดงตัวอย่างยอดก่อนบันทึก
 // ยอดจริงคำนวณโดยฟังก์ชัน record_move_out ในฐานข้อมูล สูตรต้องตรงกัน (เทสต์เทียบกับค่าที่ฐานข้อมูลให้ไว้ในชุดทดสอบ SQL)
@@ -59,18 +58,13 @@ export function buildDeductions(selectedInvoices, customs) {
     ]
 }
 
-// ---- ไม่คืนเงินประกันถ้าย้ายออกก่อนครบสัญญาปีแรก ----
+// ---- ไม่คืนเงินประกันถ้าย้ายออกก่อนวันสิ้นสุดสัญญา ----
 
-// อยู่ครบสัญญาปีแรกเมื่อไหร่ (วันเริ่มสัญญา + 12 เดือน) ไม่มีวันเริ่ม = null
-export const firstYearEnd = (startDate) => (startDate ? addMonthsIso(startDate, 12) : null)
+// ย้ายออกก่อนวันสิ้นสุดสัญญา (ตามสัญญาปัจจุบัน รวมที่ต่อสัญญาแล้ว) = ไม่คืนเงินประกัน ย้ายออกตั้งแต่วันสิ้นสุดสัญญา = คืนตามปกติ
+// ไม่มีวันสิ้นสุดสัญญา = คืนตามปกติ
+export const forfeitsDeposit = (endDate, moveOutDate) => Boolean(endDate && moveOutDate && moveOutDate < endDate)
 
-// ย้ายออกก่อนครบปีแรก = ไม่คืนเงินประกัน
-export const forfeitsDeposit = (startDate, moveOutDate) => {
-    const end = firstYearEnd(startDate)
-    return Boolean(end && moveOutDate && moveOutDate < end)
-}
-
-export const FORFEIT_LABEL = 'ไม่คืนเงินประกัน (ย้ายออกก่อนครบสัญญา 1 ปี)'
+export const FORFEIT_LABEL = 'ไม่คืนเงินประกัน (ย้ายออกก่อนวันสิ้นสุดสัญญา)'
 
 // รายการหักส่วนที่ไม่คืน: เงินประกันที่เหลือหลังหักรายการอื่น (ยอดคืนจึงเป็น 0) ไม่มีเหลือ = ไม่มีรายการ
 export function forfeitDeduction(deposit, deductions) {

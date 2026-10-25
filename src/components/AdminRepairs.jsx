@@ -441,7 +441,7 @@ function AdminRepairs({ adminId }) {
     // ยังไม่ได้เลือกวันนัด = เปลี่ยนเป็น "กำลังดำเนินการ" ไม่ได้
     const needSlot = canPickSlot && !form.appointment_date
     // การ์ดสรุปด้านบน (ไม่แสดงสถานะยกเลิก แต่ยังนับรวมใน "ทั้งหมด")
-    const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.filter((k) => k !== 'cancelled').map((k) => ({ key: k, label: repairStatuses[k].label }))]
+    const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.filter((k) => k !== 'cancelled').map((k) => ({ key: k, label: repairStatuses[k].label, short: repairStatuses[k].short }))]
     return (
         <div className="p-4 sm:p-6 flex flex-col gap-5">
             {/* หัวหน้า: ชื่อหน้า + ปุ่ม "แจ้งซ่อม" (แสดงเฉพาะตอนอยู่หน้ารายการ) */}
@@ -458,7 +458,7 @@ function AdminRepairs({ adminId }) {
 
             {/* มีรายการที่กำลังเพิ่ม/แก้ไข แสดงฟอร์ม ไม่งั้นแสดงหน้ารายการ */}
             {editing ? (
-                <form onSubmit={handleSave} className="bg-white rounded-2xl shadow-card p-6 md:p-8 max-w-3xl mx-auto border border-line flex flex-col gap-5">
+                <form onSubmit={handleSave} className="bg-white rounded-2xl shadow-card p-4 sm:p-6 md:p-8 max-w-3xl mx-auto border border-line flex flex-col gap-5">
                     {/* ===== ฟอร์มเพิ่ม/แก้ไขรายการแจ้งซ่อม ===== */}
                     {/* หัวฟอร์ม: ชื่อฟอร์ม + ป้ายสถานะปัจจุบัน (เฉพาะตอนแก้ไข) */}
                     <div className="flex items-center justify-between">
@@ -479,7 +479,23 @@ function AdminRepairs({ adminId }) {
                         </p>
                     )}
 
-                    {/* เลือกห้อง (แก้ได้เฉพาะรายการใหม่) และช่องแสดงผู้แจ้ง/วันที่แจ้ง (อ่านอย่างเดียว) */}
+                    {/* ผู้แจ้ง/วันที่แจ้ง และวันที่เสร็จสิ้น (อ่านอย่างเดียว) อยู่บนสุด แถวเดียวกันทุกขนาดจอ */}
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                        <div className="min-w-0">
+                            <label className="block text-sm text-muted mb-1">{isNew ? 'ผู้แจ้ง' : 'วันที่แจ้ง'}</label>
+                            <input
+                                disabled
+                                value={isNew ? (form.room ? 'ผู้ดูแล' : '-') : formatTimeDate(editing.created_at)}
+                                className={`${inputClass} min-w-0 px-3!`}
+                            />
+                        </div>
+                        <div className="min-w-0">
+                            <label className="block text-sm text-muted mb-1">วันที่เสร็จสิ้น</label>
+                            <input disabled value={!isNew && editing.status === 'done' ? formatTimeDate(editing.completed_at) : '-'} className={`${inputClass} min-w-0 px-3!`} />
+                        </div>
+                    </div>
+
+                    {/* เลือกห้อง (แก้ได้เฉพาะรายการใหม่) และประเภท */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm text-muted mb-1">ห้อง</label>
@@ -494,28 +510,12 @@ function AdminRepairs({ adminId }) {
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm text-muted mb-1">{isNew ? 'ผู้แจ้ง' : 'วันที่แจ้ง'}</label>
-                            <input
-                                disabled
-                                value={isNew ? (form.room ? 'ผู้ดูแล' : '-') : formatTimeDate(editing.created_at)}
-                                className={inputClass}
-                            />
-                        </div>
-                    </div>
-
-                    {/* ประเภท และวันที่เสร็จสิ้น (อ่านอย่างเดียว) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
                             <label className="block text-sm text-muted mb-1">ประเภท</label>
                             <select value={form.category} onChange={set('category')} disabled={fieldLocked} className={inputClass}>
                                 {Object.entries(repairCategories).map(([k, label]) => (
                                     <option key={k} value={k}>{label}</option>
                                 ))}
                             </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm text-muted mb-1">วันที่เสร็จสิ้น</label>
-                            <input disabled value={!isNew && editing.status === 'done' ? formatTimeDate(editing.completed_at) : '-'} className={inputClass} />
                         </div>
                     </div>
 
@@ -765,7 +765,7 @@ function AdminRepairs({ adminId }) {
                     {/* การ์ดสรุปจำนวนตามสถานะ กดเพื่อกรองรายการ (ทำหน้าที่เป็นแท็บ) */}
                     {/* นัดซ่อมที่จะถึง (ตารางงานช่าง) */}
                     {upcoming.length > 0 && (
-                        <div className="bg-white rounded-2xl shadow-card p-5">
+                        <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
                             <h2 className="font-medium text-primary-dark mb-3 flex items-center gap-2">
                                 <Icon name="calendar" className="w-5 h-5" />
                                 นัดซ่อมที่จะถึง
@@ -792,7 +792,7 @@ function AdminRepairs({ adminId }) {
                         </div>
                     )}
 
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-4 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                         {tabs.map((t) => {
                             const active = activeTab === t.key
                             const meta = summaryMeta[t.key]
@@ -801,15 +801,15 @@ function AdminRepairs({ adminId }) {
                                     key={t.key}
                                     onClick={() => setActiveTab(t.key)}
                                     aria-pressed={active}
-                                    className={`text-left rounded-2xl p-4 bg-white shadow-card border-2 transition ${active ? 'border-primary' : 'border-transparent hover:border-mist'}`}
+                                    className={`text-left rounded-xl sm:rounded-2xl p-2.5 sm:p-4 bg-white shadow-card border-2 transition ${active ? 'border-primary' : 'border-transparent hover:border-mist'}`}
                                 >
-                                    <div className="flex items-center justify-between text-sm text-muted">
-                                        <span>{t.label}</span>
-                                        <span className={`grid place-items-center w-8 h-8 rounded-lg ${meta.tone}`}><Icon name={meta.icon} className="w-[18px] h-[18px]" /></span>
+                                    <div className="flex items-center justify-between gap-1 text-xs sm:text-sm leading-tight text-muted">
+                                        <span><span className="sm:hidden">{t.short ?? t.label}</span><span className="hidden sm:inline">{t.label}</span></span>
+                                        <span className={`hidden sm:grid place-items-center w-8 h-8 shrink-0 rounded-lg ${meta.tone}`}><Icon name={meta.icon} className="w-[18px] h-[18px]" /></span>
                                     </div>
-                                    <div className="mt-2 flex items-baseline gap-2">
-                                        <span className="text-2xl font-semibold text-primary-dark">{counts[t.key] ?? 0}</span>
-                                        <span className="text-xs text-muted">รายการ</span>
+                                    <div className="mt-1 sm:mt-2 flex items-baseline gap-2">
+                                        <span className="text-xl sm:text-2xl font-semibold text-primary-dark">{counts[t.key] ?? 0}</span>
+                                        <span className="hidden sm:inline text-xs text-muted">รายการ</span>
                                     </div>
                                 </button>
                             )
@@ -817,7 +817,7 @@ function AdminRepairs({ adminId }) {
                     </div>
 
                     {/* กล่องรายการ */}
-                    <div className="bg-white rounded-2xl shadow-card p-5">
+                    <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
                         {/* หัวกล่อง: จำนวนรายการที่แสดง + ช่องค้นหา */}
                         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                             <h2 className="font-medium text-primary-dark">
@@ -825,12 +825,13 @@ function AdminRepairs({ adminId }) {
                                 <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
                             </h2>
                             {pinError && <p className="w-full text-sm text-red-600 order-last">{pinError}</p>}
-                            <div className="flex flex-wrap items-center gap-2">
+                            {/* ตัวกรอง: จอเล็กประเภทกับปุ่มเรียงอยู่แถวเดียวกันกว้างเท่ากัน ช่องค้นหาเต็มแถวล่าง (ทุกกล่องสูงเท่ากัน) */}
+                            <div className="w-full sm:w-auto grid grid-cols-2 gap-2 sm:flex sm:items-center">
                                 <select
                                     value={categoryFilter}
                                     onChange={(e) => setCategoryFilter(e.target.value)}
                                     aria-label="กรองตามประเภท"
-                                    className="border border-line bg-sand/50 rounded-xl px-3 py-1.5 text-sm outline-none focus:border-secondary focus:bg-white"
+                                    className="h-9 min-w-0 w-full sm:w-auto border border-line bg-sand/50 rounded-xl px-3 text-sm outline-none focus:border-secondary focus:bg-white"
                                 >
                                     <option value="all">ทุกประเภท</option>
                                     {Object.entries(repairCategories).map(([k, label]) => (
@@ -840,12 +841,12 @@ function AdminRepairs({ adminId }) {
                                 <button
                                     type="button"
                                     onClick={() => setOldestFirst((v) => !v)}
-                                    className="flex items-center gap-1.5 border border-line bg-sand/50 rounded-xl px-3 py-1.5 text-sm text-ink hover:bg-white"
+                                    className="h-9 min-w-0 flex items-center justify-center gap-1.5 whitespace-nowrap border border-line bg-sand/50 rounded-xl px-3 text-[16px] sm:text-sm text-ink hover:bg-white"
                                 >
                                     <Icon name="calendar" className="w-4 h-4 text-muted" />
                                     {oldestFirst ? 'เก่าสุด → ใหม่สุด' : 'ใหม่สุด → เก่าสุด'}
                                 </button>
-                                <div className="flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 py-1.5 w-48 max-w-full focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
+                                <div className="col-span-2 h-9 sm:w-48 flex items-center gap-2 border border-line bg-sand/50 rounded-xl px-3 focus-within:border-secondary focus-within:ring-4 focus-within:ring-secondary/15 focus-within:bg-white">
                                     <Icon name="search" className="w-4 h-4 text-muted" />
                                     <input
                                         type="search"

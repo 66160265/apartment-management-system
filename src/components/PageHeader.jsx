@@ -9,8 +9,8 @@ import Icon from './Icon'
 // relative z-[15]: เมนูบัญชี/แจ้งเตือนที่กางลงมาต้องอยู่เหนือเนื้อหาที่ตามหลัง รวมถึงหัวตารางที่เกาะติด (z-10) แต่ต่ำกว่าแถบบนมือถือ (z-20) ฉากมืดของเมนู (z-30) และหน้าต่างโมดัล (z-50)
 function PageHeader({ title, subtitle, actions, flush = false, onBack, backLabel = 'ย้อนกลับ' }) {
     return (
-        <header className={`relative z-[15] ${flush ? '' : 'px-4 sm:px-6 pt-4 sm:pt-6 pb-4 sm:pb-5'}`}>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-3 sm:gap-x-4 bg-white rounded-2xl border border-line border-l-4 border-l-primary shadow-card px-4 sm:px-6 py-4">
+        <header className={`relative z-[15] ${flush ? '' : 'px-4 sm:px-6 pt-3 sm:pt-6 pb-3 sm:pb-5'}`}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5 sm:gap-y-3 sm:gap-x-4 bg-white rounded-2xl border border-line border-l-4 border-l-primary shadow-card px-4 sm:px-6 py-3 sm:py-4">
                 {onBack && (
                     <button
                         type="button"
@@ -24,8 +24,9 @@ function PageHeader({ title, subtitle, actions, flush = false, onBack, backLabel
                 )}
                 {/* ชื่อหน้าและคำอธิบาย */}
                 <div className="min-w-0 flex-1 basis-0 sm:basis-auto">
-                    <h1 className="text-xl sm:text-2xl font-semibold text-primary-dark">{title}</h1>
-                    {subtitle && <p className="text-sm text-muted mt-1">{subtitle}</p>}
+                    <h1 className="text-lg sm:text-2xl font-semibold text-primary-dark">{title}</h1>
+                    {/* จอเล็กซ่อนคำอธิบาย ให้หัวหน้าเตี้ยลง เนื้อหาขึ้นมาอยู่ในจอแรก */}
+                    {subtitle && <p className="hidden sm:block text-sm text-muted mt-1">{subtitle}</p>}
                 </div>
                 {/* ปุ่ม/ตัวควบคุมเพิ่มเติมของแต่ละหน้า (บนจอเล็กขึ้นบรรทัดใหม่) */}
                 {actions && <div className="order-3 w-full flex flex-wrap items-center gap-3 sm:order-2 sm:w-auto">{actions}</div>}

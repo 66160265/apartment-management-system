@@ -312,7 +312,7 @@ function UserRepairsPage() {
     // ส่งสลิปค่าซ่อมแล้วรอผู้ดูแลตรวจ / ผู้ดูแลยืนยันรับเงินแล้ว
     const reviewIds = new Set(payments.filter((p) => p.status === 'review').map((p) => p.repair_id))
     const paidIds = new Set(payments.filter((p) => p.status === 'paid').map((p) => p.repair_id))
-    const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.filter((k) => k !== 'cancelled').map((k) => ({ key: k, label: repairStatuses[k].label }))]
+    const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.filter((k) => k !== 'cancelled').map((k) => ({ key: k, label: repairStatuses[k].label, short: repairStatuses[k].short }))]
     // นับจำนวนรายการตามแท็บสถานะ ('all' = ทั้งหมด)
     const countOf = (key) => (key === 'all' ? repairs.length : repairs.filter((r) => r.status === key).length)
     // กรองตามแท็บสถานะและประเภท แล้วเรียงตามวันที่แจ้ง (ใหม่สุดก่อน หรือเก่าสุดก่อน)
@@ -351,7 +351,7 @@ function UserRepairsPage() {
                 {!room ? (
                     <p className="text-center py-10 text-muted">บัญชีนี้ยังไม่ได้ผูกกับห้องพัก จึงยังไม่สามารถแจ้งซ่อมได้ กรุณาติดต่อผู้ดูแล</p>
                 ) : editing ? (
-                    <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-card p-5 sm:p-6 md:p-8 max-w-2xl w-full mx-auto border border-line flex flex-col gap-5">
+                    <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-card p-4 sm:p-6 md:p-8 max-w-2xl w-full mx-auto border border-line flex flex-col gap-5">
                         {/* ===== ฟอร์มแจ้งซ่อม: ปุ่มกลับ หัวข้อ (ใหม่/แก้ไข/ดูอย่างเดียว) และป้ายสถานะ ===== */}
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                             <button type="button" onClick={closeForm} disabled={saving} aria-label="กลับ" className="text-muted hover:text-primary-dark">
@@ -618,7 +618,7 @@ function UserRepairsPage() {
                         </div>
 
                         {/* แท็บสถานะพร้อมจำนวน (กดเพื่อกรอง) */}
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-4 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                             {tabs.map((t) => {
                                 const isActive = activeTab === t.key
                                 return (
@@ -626,12 +626,12 @@ function UserRepairsPage() {
                                         key={t.key}
                                         onClick={() => setActiveTab(t.key)}
                                         aria-pressed={isActive}
-                                        className={`text-left rounded-2xl p-4 bg-white shadow-card border-2 transition ${isActive ? 'border-primary' : 'border-transparent hover:border-mist'}`}
+                                        className={`text-left rounded-xl sm:rounded-2xl p-2.5 sm:p-4 bg-white shadow-card border-2 transition ${isActive ? 'border-primary' : 'border-transparent hover:border-mist'}`}
                                     >
-                                        <div className="text-sm text-muted">{t.label}</div>
+                                        <div className="text-xs sm:text-sm leading-tight text-muted"><span className="sm:hidden">{t.short ?? t.label}</span><span className="hidden sm:inline">{t.label}</span></div>
                                         <div className="mt-1 flex items-baseline gap-2">
-                                            <span className="text-2xl font-semibold text-primary-dark">{countOf(t.key)}</span>
-                                            <span className="text-xs text-muted">รายการ</span>
+                                            <span className="text-xl sm:text-2xl font-semibold text-primary-dark">{countOf(t.key)}</span>
+                                            <span className="hidden sm:inline text-xs text-muted">รายการ</span>
                                         </div>
                                     </button>
                                 )
@@ -652,12 +652,13 @@ function UserRepairsPage() {
                                         รายการแจ้งซ่อม
                                         <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
                                     </h2>
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    {/* จอเล็ก: ประเภทกับปุ่มเรียงอยู่แถวเดียวกัน กว้างและสูงเท่ากัน */}
+                                    <div className="w-full sm:w-auto grid grid-cols-2 gap-2 sm:flex sm:items-center">
                                         <select
                                             value={categoryFilter}
                                             onChange={(e) => setCategoryFilter(e.target.value)}
                                             aria-label="กรองตามประเภท"
-                                            className="border border-line bg-sand/50 rounded-xl px-3 py-1.5 text-sm outline-none focus:border-secondary focus:bg-white"
+                                            className="h-9 min-w-0 w-full sm:w-auto border border-line bg-sand/50 rounded-xl px-3 text-sm outline-none focus:border-secondary focus:bg-white"
                                         >
                                             <option value="all">ทุกประเภท</option>
                                             {Object.entries(repairCategories).map(([k, label]) => (
@@ -667,7 +668,7 @@ function UserRepairsPage() {
                                         <button
                                             type="button"
                                             onClick={() => setOldestFirst((v) => !v)}
-                                            className="flex items-center gap-1.5 border border-line bg-sand/50 rounded-xl px-3 py-1.5 text-sm text-ink hover:bg-white"
+                                            className="h-9 min-w-0 flex items-center justify-center gap-1.5 whitespace-nowrap border border-line bg-sand/50 rounded-xl px-3 text-[16px] sm:text-sm text-ink hover:bg-white"
                                         >
                                             <Icon name="calendar" className="w-4 h-4 text-muted" />
                                             {oldestFirst ? 'เก่าสุด → ใหม่สุด' : 'ใหม่สุด → เก่าสุด'}

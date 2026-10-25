@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import DatePicker from './DatePicker'
 import { baht, formatDateTime } from '../lib/billing'
-import { buildDeductions, firstYearEnd, forfeitDeduction, forfeitsDeposit, moveOutOutcome, reviewingInvoicesOf, settlement, unpaidInvoicesOf, validateCustoms } from '../lib/moveOut'
+import { buildDeductions, forfeitDeduction, forfeitsDeposit, moveOutOutcome, reviewingInvoicesOf, settlement, unpaidInvoicesOf, validateCustoms } from '../lib/moveOut'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { formatDate } from '../lib/tenants'
@@ -68,8 +68,8 @@ function MoveOutSection({ tenant }) {
     const reviewing = useMemo(() => reviewingInvoicesOf(invoices, { room: tenant.room, userId: tenant.userId }), [invoices, tenant.room, tenant.userId])
     const selected = unpaid.filter((i) => picked[i.id] ?? true)
     const baseDeductions = buildDeductions(selected, customs)
-    // ย้ายออกก่อนครบสัญญาปีแรก: ไม่คืนเงินประกัน (เพิ่มรายการหักส่วนที่เหลือให้อัตโนมัติ)
-    const forfeit = forfeitsDeposit(tenant.startDate, date)
+    // ย้ายออกก่อนวันสิ้นสุดสัญญา: ไม่คืนเงินประกัน (เพิ่มรายการหักส่วนที่เหลือให้อัตโนมัติ)
+    const forfeit = forfeitsDeposit(tenant.endDate, date)
     const forfeitRows = forfeit ? forfeitDeduction(tenant.deposit, baseDeductions) : []
     const deductions = [...baseDeductions, ...forfeitRows]
     const result = settlement(tenant.deposit, deductions)
@@ -109,7 +109,7 @@ function MoveOutSection({ tenant }) {
     const outcome = record ? moveOutOutcome(record) : null
 
     return (
-        <section className="bg-white rounded-2xl shadow-card p-5 flex flex-col gap-4">
+        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <h2 className="text-lg font-semibold text-primary-dark">เงินประกันและการย้ายออก</h2>
@@ -216,7 +216,7 @@ function MoveOutSection({ tenant }) {
 
                     {forfeit && (
                         <p className="text-sm font-medium text-amber-900 bg-amber-50 ring-1 ring-amber-200 rounded-lg px-3 py-2">
-                            ย้ายออกก่อนครบสัญญา 1 ปี (ครบวันที่ {formatDate(firstYearEnd(tenant.startDate))}) ไม่คืนเงินประกัน
+                            ย้ายออกก่อนวันสิ้นสุดสัญญา ({formatDate(tenant.endDate)}) ไม่คืนเงินประกัน
                         </p>
                     )}
 

@@ -170,7 +170,7 @@ function MyRenewals() {
     useRealtimeReload(['tenants'], async () => setRenewals(await loadRenewals()))
     if (!renewals?.length) return null
     return (
-        <section aria-label="ประวัติการต่อสัญญา" className="bg-white rounded-2xl shadow-card p-5">
+        <section aria-label="ประวัติการต่อสัญญา" className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
             <h2 className="font-medium text-primary-dark mb-3">ประวัติการต่อสัญญา</h2>
             <ul className="flex flex-col divide-y divide-line/70 border border-line rounded-xl">
                 {renewals.map((r) => (
@@ -195,11 +195,11 @@ function AccountPage() {
 
             {/* รอโหลดข้อมูลผู้ใช้ก่อน */}
             {!info ? (
-                <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6"><SkeletonCard lines={4} /><SkeletonCard lines={3} /></div>
+                <div className="px-4 sm:px-6 pb-10 flex flex-col gap-4 sm:gap-6"><SkeletonCard lines={4} /><SkeletonCard lines={3} /></div>
             ) : (
-                <div className="px-4 sm:px-6 pb-10 flex flex-col gap-6">
+                <div className="px-4 sm:px-6 pb-10 flex flex-col gap-4 sm:gap-6">
                     {/* การ์ดโปรไฟล์: รูปตัวอักษร ชื่อ ป้ายสิทธิ์ สถานะสัญญา และชื่อผู้ใช้ */}
-                    <div className="bg-white rounded-2xl shadow-card p-5 flex flex-wrap items-center gap-4">
+                    <div className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-wrap items-center gap-4">
                         <Avatar name={t?.name || 'A'} className="w-16 h-16 text-2xl" />
                         <div className="flex-1 min-w-48">
                             <div className="flex items-center gap-3 flex-wrap">
@@ -228,9 +228,9 @@ function AccountPage() {
                         </div>
                     )}
 
-                    <div className="grid gap-6 lg:grid-cols-2 items-start">
+                    <div className="grid gap-4 sm:gap-6 lg:grid-cols-2 items-start">
                         {/* การ์ดข้อมูลบัญชี (ผู้เช่าจะเห็นข้อมูลห้องและสัญญาเพิ่ม) */}
-                        <section className="bg-white rounded-2xl shadow-card p-5">
+                        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
                             <h2 className="font-medium text-primary-dark mb-4">ข้อมูลบัญชี</h2>
                             <dl className="grid gap-3 sm:grid-cols-2">
                                 <InfoRow icon="user" label="ชื่อผู้ใช้" value={info.username} />
@@ -248,7 +248,7 @@ function AccountPage() {
                         </section>
 
                         {/* การ์ดเปลี่ยนรหัสผ่าน */}
-                        <section className="bg-white rounded-2xl shadow-card p-5">
+                        <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5">
                             <h2 className="font-medium text-primary-dark">เปลี่ยนรหัสผ่าน</h2>
                             <p className="mt-1 mb-4 text-xs text-muted">
                                 {info.role === 'user'
