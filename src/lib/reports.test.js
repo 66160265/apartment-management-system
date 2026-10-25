@@ -5,6 +5,7 @@ vi.mock('./supabaseClient', () => ({ supabase: {} }))
 const {
     monthOf, recentMonths, monthlySummary, monthlyRows, outstandingRows, occupancy, toCsv, invoiceColumns, outstandingColumns, monthlyColumns, paymentColumns,
     owedFromMoveOuts, moveOutColumns, utilityStats, roomUsage, utilityColumns, vacancyRows, expiringContracts, repairStats,
+    yearlySummary, trendRows, reportYears, utilityMargin, billMonthOf, issueMonthOf, unpaidRepairSummary,
 } = await import('./reports')
 
 const now = new Date('2026-11-10T10:00:00+07:00')
@@ -25,6 +26,13 @@ describe('monthOf / recentMonths', () => {
         const m = recentMonths('2026-02', 4)
         expect(m).toEqual(['2026-02', '2026-01', '2025-12', '2025-11'])
         expect(recentMonths('2026-10')).toHaveLength(12)
+    })
+
+    it('เดือนของบิลที่ออก / เดือนที่ออกบิล ข้ามปีได้', () => {
+        expect(billMonthOf('2026-10')).toBe('2026-09')
+        expect(billMonthOf('2026-01')).toBe('2025-12')
+        expect(issueMonthOf('2026-09')).toBe('2026-10')
+        expect(issueMonthOf('2026-12')).toBe('2027-01')
     })
 })
 
@@ -76,22 +84,31 @@ describe('monthlySummary', () => {
         expect(nov.repairReceived).toBe(200)
     })
 
-    it('ยอดเรียกเก็บ ค่าปรับ และใบที่ออกในเดือน', () => {
+    it('ใบที่ออกในเดือน = บิลของเดือนก่อนหน้า (บิล ต.ค. ออกเดือน พ.ย.)', () => {
+        const nov = monthlySummary(data, '2026-11', now)
+        expect(nov.billMonth).toBe('2026-10')
+        expect(nov.issuedCount).toBe(3)
+        expect(nov.billed).toBe(6000)
+        expect(nov.lateFees).toBe(100)
+        // ตุลาคม = บิลเดือน ก.ย. (ใบ d)
         const oct = monthlySummary(data, '2026-10', now)
-        expect(oct.issuedCount).toBe(3)
-        expect(oct.billed).toBe(6000)
-        expect(oct.lateFees).toBe(100)
+        expect(oct.billMonth).toBe('2026-09')
+        expect(oct.issuedCount).toBe(1)
+        expect(oct.billed).toBe(999)
+        // ข้ามปี: มกราคม = บิลเดือน ธ.ค. ปีก่อน
+        expect(monthlySummary(data, '2026-01', now).billMonth).toBe('2025-12')
     })
 
-    it('ยอดค้างของเดือนนี้ นับเฉพาะใบที่ยังไม่ชำระ หักที่ได้รับแล้ว', () => {
-        const oct = monthlySummary(data, '2026-10', now)
-        expect(oct.unpaidCount).toBe(1)
-        expect(oct.outstanding).toBe(1500)
+    it('ยอดค้างของบิลที่ออกเดือนนี้ นับเฉพาะใบที่ยังไม่ชำระ หักที่ได้รับแล้ว', () => {
+        const nov = monthlySummary(data, '2026-11', now)
+        expect(nov.unpaidCount).toBe(1)
+        expect(nov.outstanding).toBe(1500)
+        expect(monthlySummary(data, '2026-10', now).outstanding).toBe(0)
     })
 
     it('ใบที่ยังไม่ชำระและมีค่าปรับ ยอดค้างรวมค่าปรับของวันนี้', () => {
         const late = inv({ id: 'x', total: 1000, due_date: '2026-11-05', late_fee_rate: 50, late_fee_grace: 0, late_fee_cap: null })
-        const s = monthlySummary({ invoices: [late], invoicePayments: [], repairPayments: [] }, '2026-10', now)
+        const s = monthlySummary({ invoices: [late], invoicePayments: [], repairPayments: [] }, '2026-11', now)
         expect(s.outstanding).toBe(1250)
     })
 
@@ -253,8 +270,8 @@ describe('คอลัมน์ส่งออก', () => {
     })
 
     it('รายเดือน', () => {
-        const row = monthlySummary({ invoices: [inv()], invoicePayments: [], repairPayments: [] }, '2026-10', now)
-        expect(toCsv([row], monthlyColumns).split('\r\n')[1]).toBe('2026-10,1,4200,0,0,0,0,0,0,1,4200')
+        const row = monthlySummary({ invoices: [inv()], invoicePayments: [], repairPayments: [] }, '2026-11', now)
+        expect(toCsv([row], monthlyColumns).split('\r\n')[1]).toBe('2026-11,2026-10,1,4200,0,0,0,0,0,0,0,1,4200')
     })
 
     it('การรับเงิน: ดึงห้อง/ผู้เช่าจากใบแจ้งหนี้ ใบที่ไม่พบเป็นช่องว่าง', () => {
@@ -360,5 +377,68 @@ describe('สถิติแจ้งซ่อม', () => {
         expect(s.byCategory[0]).toEqual({ key: 'aircon', count: 2 })
         expect(s.byRoom[0]).toEqual({ key: '101', count: 2 })
         expect(s.overdue).toEqual([{ id: 'c', room: '102', problem: 'ก๊อกรั่ว', status: 'pending', days: 16 }])
+    })
+})
+
+describe('ค่าใช้จ่ายของหอพัก สรุปรายปี และแนวโน้ม', () => {
+    const data = {
+        invoices: [inv(), inv({ id: 'i2', month: '2026-09' })],
+        invoicePayments: [
+            { invoice_id: 'i1', amount: 4200, confirmed_at: '2026-10-03T10:00:00+07:00' },
+            { invoice_id: 'i2', amount: 4200, confirmed_at: '2026-09-04T10:00:00+07:00' },
+        ],
+        repairPayments: [],
+        repairs: [{ status: 'done', cost: 500, cost_payer: 'owner', completed_at: '2026-10-15T10:00:00+07:00' }],
+        expenses: [
+            { month: '2026-10', category: 'electric', amount: 1000 },
+            { month: '2026-10', category: 'staff', amount: 2000 },
+        ],
+    }
+
+    it('คงเหลือของเดือน = รับเงินจริง − ค่าซ่อมหอพักจ่าย − ค่าใช้จ่ายหอ', () => {
+        const m = monthlySummary(data, '2026-10', now)
+        expect(m.expenseTotal).toBe(3000)
+        expect(m.spent).toBe(3500)
+        expect(m.net).toBe(700)
+    })
+
+    it('สรุปรายปี: แถวถึงเดือนปัจจุบัน และยอดรวมทั้งปี', () => {
+        const y = yearlySummary(data, '2026', now)
+        expect(y.rows.map((r) => r.month)).toHaveLength(11)
+        expect(y.rows.at(-1).month).toBe('2026-11')
+        expect(y.totals).toMatchObject({ receivedTotal: 8400, repairCost: 500, expenseTotal: 3000, spent: 3500, net: 4900 })
+    })
+
+    it('ปีที่มีข้อมูล รวมปีปัจจุบัน เรียงใหม่ไปเก่า', () => {
+        expect(reportYears({ ...data, invoices: [inv({ month: '2025-12' })] }, now)).toEqual(['2026', '2025'])
+    })
+
+    it('แนวโน้ม 12 เดือน เรียงเก่าไปใหม่ พร้อมรายรับ รายจ่าย และคงเหลือ', () => {
+        const rows = trendRows(data, '2026-11', 12, now)
+        expect(rows).toHaveLength(12)
+        expect(rows[0].month).toBe('2025-12')
+        expect(rows.find((r) => r.month === '2026-10')).toMatchObject({ income: 4200, expense: 3500, net: 700 })
+    })
+
+    it('ค่าน้ำไฟที่เก็บจากผู้เช่าเทียบกับบิลที่หอจ่ายจริง', () => {
+        const m = utilityMargin(data.invoices, data.expenses, '2026-10')
+        expect(m.electric.paid).toBe(1000)
+        expect(m.water.paid).toBeNull()
+    })
+})
+
+describe('unpaidRepairSummary', () => {
+    it('นับผู้เช่าที่ยังไม่ชำระค่าซ่อม (ไม่นับที่ส่งสลิปแล้ว รวมในใบแจ้งหนี้ หรือหอพักจ่าย)', () => {
+        const repairs = [
+            { id: 'r1', room: '101', user_id: 'u1', status: 'done', cost_payer: 'tenant', cost: 300 },
+            { id: 'r2', room: '101', user_id: 'u1', status: 'done', cost_payer: 'tenant', cost: 200 },
+            { id: 'r3', room: '102', user_id: 'u2', status: 'done', cost_payer: 'tenant', cost: 500 },
+            { id: 'r4', room: '103', user_id: 'u3', status: 'done', cost_payer: 'tenant', cost: 400, invoice_id: 'i1' },
+            { id: 'r5', room: '104', user_id: 'u4', status: 'done', cost_payer: 'owner', cost: 900 },
+            { id: 'r6', room: '105', user_id: 'u5', status: 'in_progress', cost_payer: 'tenant', cost: 100 },
+        ]
+        const payments = [{ repair_id: 'r3', status: 'review' }]
+        expect(unpaidRepairSummary(repairs, payments)).toEqual({ tenantCount: 1, repairCount: 2, total: 500 })
+        expect(unpaidRepairSummary([], [])).toEqual({ tenantCount: 0, repairCount: 0, total: 0 })
     })
 })

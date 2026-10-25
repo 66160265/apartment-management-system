@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom'
 import DownloadReceiptButton from './DownloadReceiptButton'
 import Icon from './Icon'
 import { PromptPayCard, SlipImage, VerifyBox } from './InvoiceParts'
-import { baht, formatDateTime } from '../lib/billing'
+import { baht, formatDateTime, thaiDateOf } from '../lib/billing'
 import { useRealtimeReload } from '../lib/realtime'
-import { owesRepairCost } from '../lib/repairPayments'
+import { REPAIR_LATE_FEE_PER_DAY, REPAIR_PAY_DAYS } from '../data/repairs'
+import { owesRepairCost, repairPayDueDate } from '../lib/repairPayments'
+import { formatThaiDay } from '../lib/repairs'
 import { buildRepairReceipt } from '../lib/receipts'
 import { refreshRepairCosts, useRepairCosts } from '../lib/useRepairCosts'
 import { requestSlipVerify } from '../lib/slipVerify'
@@ -141,6 +143,25 @@ function BilledNotice({ repair }) {
     )
 }
 
+// กำหนดชำระค่าซ่อมและค่าปรับ (ข้อความแจ้งเท่านั้น ยอดชำระในระบบไม่เปลี่ยน) เลยกำหนดแล้วเป็นสีแดงและบอกจำนวนวัน
+function RepairDueNotice({ repair }) {
+    const due = repairPayDueDate(repair, REPAIR_PAY_DAYS)
+    if (!due) return null
+    const today = thaiDateOf(new Date())
+    const lateDays = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${due}T00:00:00Z`)) / 86400000)
+    const late = lateDays > 0
+    return (
+        <p className={`text-sm rounded-xl px-4 py-2.5 flex items-start gap-2 ring-1 ${late ? 'text-red-800 bg-red-50 ring-red-200' : 'text-amber-900 bg-amber-50 ring-amber-200'}`}>
+            <Icon name={late ? 'alert' : 'clock'} className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>
+                {late
+                    ? `เกินกำหนดชำระ (${formatThaiDay(due)}) มาแล้ว ${lateDays} วัน มีค่าปรับวันละ ${baht(REPAIR_LATE_FEE_PER_DAY)} กรุณาชำระโดยเร็ว`
+                    : `กรุณาชำระภายใน${lateDays === 0 ? 'วันนี้ ' : lateDays === -1 ? 'วันพรุ่งนี้ ' : ''}(${formatThaiDay(due)}) หากเกินกำหนดจะคิดค่าปรับวันละ ${baht(REPAIR_LATE_FEE_PER_DAY)}`}
+            </span>
+        </p>
+    )
+}
+
 // ฝั่งผู้เช่า: ยอดค่าซ่อม QR พร้อมเพย์ แนบสลิป และสถานะการชำระ (แสดงเฉพาะเรื่องที่มีค่าซ่อมให้ผู้เช่าชำระ)
 export function TenantRepairPayment({ repair, userId }) {
     const settings = useSettings()
@@ -191,6 +212,7 @@ export function TenantRepairPayment({ repair, userId }) {
                 </>
             ) : (
                 <>
+                    <RepairDueNotice repair={repair} />
                     {lastRejected && (
                         <p className="text-sm text-red-700 bg-red-50 ring-1 ring-red-200 rounded-xl px-4 py-2.5">
                             สลิปก่อนหน้าถูกปฏิเสธ: {lastRejected.reject_reason} — กรุณาโอนและแนบสลิปใหม่

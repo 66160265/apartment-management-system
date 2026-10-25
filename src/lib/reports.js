@@ -1,4 +1,5 @@
 import { balanceOf, daysLate, thaiDateOf } from './billing'
+import { unpaidRepairCosts } from './repairPayments'
 
 // รายงานและส่งออก CSV (หน้า pages/ReportsPage.jsx) ตรรกะล้วน ๆ ไม่ต่อฐานข้อมูล ทดสอบได้
 // รายรับนับตามวันที่ "ได้รับเงินจริง" (วันที่ยืนยันสลิป เวลาไทย) ไม่ใช่เดือนของใบแจ้งหนี้
@@ -15,31 +16,45 @@ export function recentMonths(endMonth, count = 12) {
     })
 }
 
+// เดือนของบิลที่ออกในเดือน month: ใบแจ้งหนี้ของเดือนไหนออกต้นเดือนถัดไป (เช่น บิลเดือน ก.ย. ออกและครบกำหนดใน ต.ค.)
+export const billMonthOf = (month) => recentMonths(month, 2)[1]
+
+// เดือนที่ออกบิลของเดือน month (เดือนถัดไป) เช่น บิลเดือน ก.ย. ออกเดือน ต.ค.
+export const issueMonthOf = (month) => {
+    const [y, m] = month.split('-').map(Number)
+    const d = new Date(Date.UTC(y, m, 1))
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
 const sum = (list, pick) => Math.round(list.reduce((acc, x) => acc + Number(pick(x) || 0), 0) * 100) / 100
 
 // สรุปรายเดือน
-// data = { invoices, invoicePayments, repairPayments, repairs } (invoicePayments: invoice_payments, repairPayments: เฉพาะที่ชำระแล้วจาก repair_payments,
-//        repairs: เรื่องแจ้งซ่อม ใช้ทำสถิติยอดซ่อม ไม่ส่งมา = ไม่มี)
+// data = { invoices, invoicePayments, repairPayments, repairs, expenses } (invoicePayments: invoice_payments, repairPayments: repair_payments ที่ชำระแล้วหรือรอตรวจ (นับรายรับเฉพาะที่ชำระแล้ว),
+//        repairs: เรื่องแจ้งซ่อม ใช้ทำสถิติยอดซ่อม, expenses: ค่าใช้จ่ายของหอพัก ไม่ส่งมา = ไม่มี)
 export function monthlySummary(data, month, now = new Date()) {
     const base = summaryBase(data, month, now)
     // รับเงินรวม = ใบแจ้งหนี้ (ค่าห้อง ค่าน้ำไฟ ค่าปรับ และค่าซ่อมที่รวมในใบ) + สลิปค่าซ่อมที่เคยโอนแยกแบบเดิม
     const receivedTotal = Math.round((base.received + base.repairReceived) * 100) / 100
-    // คงเหลือ = เงินที่ได้รับจริงในเดือนนี้ − ค่าซ่อมที่หอพักจ่ายของเดือนนี้
-    return { ...base, receivedTotal, net: Math.round((receivedTotal - base.repairCost) * 100) / 100 }
+    // รายจ่าย = ค่าซ่อมที่หอพักจ่าย + ค่าใช้จ่ายของหอพักของเดือนนี้, คงเหลือ = เงินที่ได้รับจริง − รายจ่าย
+    const spent = Math.round((base.repairCost + base.expenseTotal) * 100) / 100
+    return { ...base, receivedTotal, spent, net: Math.round((receivedTotal - spent) * 100) / 100 }
 }
 
 function summaryBase(data, month, now) {
-    const issued = data.invoices.filter((i) => i.month === month)
+    // ใบแจ้งหนี้ที่ออกในเดือนนี้ = บิลของเดือนก่อนหน้า (ตรงกับเงินที่รับจริงในเดือนนี้)
+    const billMonth = billMonthOf(month)
+    const issued = data.invoices.filter((i) => i.month === billMonth)
     const unpaid = issued.filter((i) => i.status !== 'paid')
     // งานซ่อมที่หอพักรับผิดชอบค่าใช้จ่าย และเสร็จในเดือนนี้ (ตามวันที่ซ่อมเสร็จ เวลาไทย) ค่าซ่อมที่ผู้เช่าจ่ายไม่นับ
     const repairsDone = (data.repairs ?? []).filter((r) => r.status === 'done' && r.cost_payer !== 'tenant' && monthOf(r.completed_at) === month)
-    // งานซ่อมที่ผู้เช่าจ่าย และเสร็จในเดือนนี้ (ค่าซ่อมจะไปรวมในใบแจ้งหนี้ใบถัดไปของห้องนั้น)
+    // งานซ่อมที่ผู้เช่าจ่าย และเสร็จในเดือนนี้ (ผู้เช่าชำระแยกตอนซ่อมเสร็จ)
     const tenantRepairsDone = (data.repairs ?? []).filter((r) => r.status === 'done' && r.cost_payer === 'tenant' && monthOf(r.completed_at) === month)
     return {
         month,
+        billMonth,
         issuedCount: issued.length,
         billed: sum(issued, (i) => i.total),
-        // ค่าปรับที่คิดจริงของใบเดือนนี้ที่ชำระครบแล้ว
+        // ค่าปรับที่คิดจริงของใบที่ออกเดือนนี้ที่ชำระครบแล้ว
         lateFees: sum(issued.filter((i) => i.status === 'paid'), (i) => i.late_fee),
         // เงินที่ได้รับจริงในเดือนนี้ (ค่าห้อง รวมค่าปรับ) และค่าซ่อม
         received: sum(data.invoicePayments.filter((p) => monthOf(p.confirmed_at) === month), (p) => p.amount),
@@ -50,7 +65,9 @@ function summaryBase(data, month, now) {
         // ค่าซ่อมที่ผู้เช่าจ่าย ของงานที่เสร็จในเดือนนี้
         repairTenantCount: tenantRepairsDone.length,
         repairTenantCost: sum(tenantRepairsDone, (r) => r.cost),
-        // ยอดค้างของใบเดือนนี้ ณ ตอนนี้ (รวมค่าปรับของวันนี้)
+        // ค่าใช้จ่ายของหอพักที่บันทึกไว้ของเดือนนี้
+        expenseTotal: sum((data.expenses ?? []).filter((e) => e.month === month), (e) => e.amount),
+        // ยอดค้างของใบที่ออกเดือนนี้ ณ ตอนนี้ (รวมค่าปรับของวันนี้)
         outstanding: sum(unpaid, (i) => balanceOf(i, now)),
         unpaidCount: unpaid.length,
     }
@@ -58,6 +75,79 @@ function summaryBase(data, month, now) {
 
 // สรุปหลายเดือน (เรียงตามลำดับ months ที่ส่งมา)
 export const monthlyRows = (data, months, now = new Date()) => months.map((m) => monthlySummary(data, m, now))
+
+// ---- สรุปรายปี และแนวโน้ม ----
+
+// ปีที่มีข้อมูล (ใบแจ้งหนี้ การรับเงิน หรือค่าใช้จ่าย) รวมปีปัจจุบันเสมอ เรียงจากใหม่ไปเก่า (ปี ค.ศ. เป็นข้อความ)
+export function reportYears(data, now = new Date()) {
+    const years = new Set([thaiDateOf(now).slice(0, 4)])
+    for (const i of data.invoices) years.add(i.month.slice(0, 4))
+    for (const p of data.invoicePayments) if (p.confirmed_at) years.add(monthOf(p.confirmed_at).slice(0, 4))
+    for (const e of data.expenses ?? []) years.add(e.month.slice(0, 4))
+    return [...years].filter(Boolean).sort().reverse()
+}
+
+// สรุปรายปี: แถวละเดือน (ม.ค.-ธ.ค. ถึงเดือนปัจจุบันถ้าเป็นปีนี้) และยอดรวมทั้งปี
+export function yearlySummary(data, year, now = new Date()) {
+    const nowMonth = thaiDateOf(now).slice(0, 7)
+    const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`).filter((m) => m <= nowMonth)
+    const rows = monthlyRows(data, months, now)
+    const total = (key) => sum(rows, (r) => r[key])
+    return {
+        year,
+        rows,
+        totals: {
+            issuedCount: rows.reduce((acc, r) => acc + r.issuedCount, 0),
+            billed: total('billed'),
+            receivedTotal: total('receivedTotal'),
+            repairCost: total('repairCost'),
+            repairTenantCost: total('repairTenantCost'),
+            expenseTotal: total('expenseTotal'),
+            spent: total('spent'),
+            net: total('net'),
+            lateFees: total('lateFees'),
+        },
+    }
+}
+
+// แนวโน้ม count เดือนล่าสุดถึง endMonth เรียงจากเก่าไปใหม่: รายรับ (เงินที่ได้รับจริง) รายจ่าย (ค่าซ่อมหอพักจ่าย + ค่าใช้จ่ายหอ) คงเหลือ และยอดค้าง
+export function trendRows(data, endMonth, count = 12, now = new Date()) {
+    return monthlyRows(data, recentMonths(endMonth, count).reverse(), now).map((r) => ({
+        month: r.month,
+        income: r.receivedTotal,
+        expense: r.spent,
+        net: r.net,
+        outstanding: r.outstanding,
+    }))
+}
+
+// ---- ค่าใช้จ่ายของหอพัก (ตาราง expenses ใน supabase/migrations/20261025000000_repairs_reports_notifications.sql) ----
+
+// ประเภทค่าใช้จ่าย (ตรงกับ check ของตาราง expenses ในฐานข้อมูล)
+export const expenseCategories = {
+    electric: 'ค่าไฟ (การไฟฟ้า)',
+    water: 'ค่าน้ำ (การประปา)',
+    staff: 'ค่าแม่บ้าน / พนักงาน',
+    internet: 'ค่าอินเทอร์เน็ต',
+    maintenance: 'ค่าดูแลอาคาร / วัสดุ',
+    other: 'อื่น ๆ',
+}
+
+// ค่าน้ำ/ค่าไฟที่เก็บจากผู้เช่า (ตามใบแจ้งหนี้ของเดือน) เทียบกับบิลที่หอพักจ่ายจริงของเดือนเดียวกัน
+// paid = null คือยังไม่ได้บันทึกบิลของเดือนนั้น
+export function utilityMargin(invoices, expenses, month) {
+    const issued = invoices.filter((i) => i.month === month)
+    const billed = (unitsOf, rate) => sum(issued, (i) => unitsOf(i) * Number(i[rate] || 0))
+    const paidOf = (category) => {
+        const list = expenses.filter((e) => e.month === month && e.category === category)
+        return list.length ? sum(list, (e) => e.amount) : null
+    }
+    const row = (billedAmount, paid) => ({ billed: billedAmount, paid, diff: paid === null ? null : Math.round((billedAmount - paid) * 100) / 100 })
+    return {
+        water: row(billed((i) => Math.max(0, (i.water_curr || 0) - (i.water_prev || 0)), 'water_rate'), paidOf('water')),
+        electric: row(billed((i) => Math.max(0, (i.elec_curr || 0) - (i.elec_prev || 0)), 'elec_rate'), paidOf('electric')),
+    }
+}
 
 // ใบแจ้งหนี้ที่ยังต้องชำระ เรียงจากเกินกำหนดนานสุด แล้วเดือนเก่าสุด
 // dueDay = วันครบกำหนดจากหน้าตั้งค่า ใช้กับใบที่ไม่ได้บันทึก due_date (ดู daysLate)
@@ -191,16 +281,32 @@ export const outstandingColumns = [
 
 export const monthlyColumns = [
     { header: 'เดือน', value: (r) => r.month },
+    { header: 'บิลของเดือน', value: (r) => r.billMonth },
     { header: 'ใบที่ออก', value: (r) => r.issuedCount },
     { header: 'ยอดที่เรียกเก็บ', value: (r) => r.billed },
     { header: 'รับเงิน (ค่าห้อง ค่าน้ำไฟ ค่าปรับ และค่าซ่อม)', value: (r) => r.receivedTotal },
     { header: 'ค่าซ่อมที่ผู้เช่าจ่าย', value: (r) => r.repairTenantCost },
     { header: 'งานซ่อมที่หอพักจ่าย', value: (r) => r.repairCount },
     { header: 'ค่าซ่อมที่หอพักจ่าย', value: (r) => r.repairCost },
-    { header: 'คงเหลือ (รับเงินจริง − ค่าซ่อมที่หอพักจ่าย)', value: (r) => r.net },
-    { header: 'ค่าปรับของใบเดือนนี้ที่ชำระแล้ว', value: (r) => r.lateFees },
+    { header: 'ค่าใช้จ่ายของหอพัก', value: (r) => r.expenseTotal },
+    { header: 'คงเหลือ (รับเงินจริง − ค่าซ่อมที่หอพักจ่าย − ค่าใช้จ่ายของหอพัก)', value: (r) => r.net },
+    { header: 'ค่าปรับของใบที่ออกเดือนนี้ที่ชำระแล้ว', value: (r) => r.lateFees },
     { header: 'ใบที่ยังค้าง', value: (r) => r.unpaidCount },
     { header: 'ยอดค้าง ณ วันนี้', value: (r) => r.outstanding },
+]
+
+// สรุปรายปี (แถวรายเดือน + แถวรวม ใส่ month = 'รวม')
+export const yearlyColumns = [
+    { header: 'เดือน', value: (r) => r.month },
+    { header: 'ใบที่ออก', value: (r) => r.issuedCount },
+    { header: 'ยอดที่เรียกเก็บ', value: (r) => r.billed },
+    { header: 'รับเงินจริง', value: (r) => r.receivedTotal },
+    { header: 'ค่าซ่อมที่ผู้เช่าจ่าย', value: (r) => r.repairTenantCost },
+    { header: 'ค่าซ่อมที่หอพักจ่าย', value: (r) => r.repairCost },
+    { header: 'ค่าใช้จ่ายของหอพัก', value: (r) => r.expenseTotal },
+    { header: 'รายจ่ายรวม', value: (r) => r.spent },
+    { header: 'คงเหลือ', value: (r) => r.net },
+    { header: 'ค่าปรับที่เก็บได้', value: (r) => r.lateFees },
 ]
 
 // การรับเงิน: payments = invoice_payments, invoiceById = แผนที่ id -> ใบแจ้งหนี้ (ใช้ดึงห้อง/ผู้เช่า/เดือน)
@@ -278,6 +384,17 @@ export function expiringContracts(tenants, now = new Date(), withinDays = 90) {
 }
 
 // สถิติแจ้งซ่อม (ไม่นับเรื่องที่ยกเลิก): จำนวนตามประเภท ห้องที่แจ้งบ่อย เวลาซ่อมเฉลี่ย (วันที่แจ้ง -> วันที่เสร็จ) และงานที่ค้างเกิน overdueDays วัน
+// ผู้เช่าที่ยังไม่ชำระค่าซ่อม (งานที่ผู้เช่าจ่าย ซ่อมเสร็จแล้ว ยังไม่ได้ส่งสลิป) payments = repair_payments (repair_id, status)
+// คืน { tenantCount, repairCount, total } นับผู้เช่าตาม user_id (ไม่มี = นับตามห้อง)
+export function unpaidRepairSummary(repairs, payments) {
+    const list = unpaidRepairCosts(repairs, payments)
+    return {
+        tenantCount: new Set(list.map((r) => r.user_id ?? `room:${r.room}`)).size,
+        repairCount: list.length,
+        total: sum(list, (r) => r.cost),
+    }
+}
+
 export function repairStats(repairs, now = new Date(), overdueDays = 7) {
     const today = thaiDateOf(now)
     const list = repairs.filter((r) => r.status !== 'cancelled')

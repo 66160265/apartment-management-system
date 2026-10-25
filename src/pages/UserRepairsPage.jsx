@@ -3,10 +3,10 @@ import PageHeader from '../components/PageHeader'
 import Icon from '../components/Icon'
 import { RepairCostBanner, TenantRepairPayment } from '../components/RepairPayment'
 import { useRepairCosts } from '../lib/useRepairCosts'
-import { AppointmentBox, ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge, SlotList, SlotPicker, UrgencyBadge } from '../components/RepairParts'
+import { AppointmentBox, TechnicianInfo, ConfirmDialog, RepairImage, RepairImagePicker, RepairStatusBadge, SlotList, SlotPicker, UrgencyBadge } from '../components/RepairParts'
 import { repairCategories, repairProgressKeys, repairStatuses, repairStatusKeys } from '../data/repairs'
 import { baht, formatDateTime } from '../lib/billing'
-import { formatSlot, formatThaiDate, loadBookedTimes, removeRepairImage, upcomingSlots, uploadRepairImage, validateAvailability } from '../lib/repairs'
+import { formatSlot, formatThaiDate, removeRepairImage, upcomingSlots, uploadRepairImage, validateAvailability } from '../lib/repairs'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
@@ -17,7 +17,8 @@ const inputClass = 'w-full border border-line rounded-xl px-4 py-2 text-ink text
 const emptyForm = {
     problem: '',
     detail: '',
-    category: 'other',
+    // ยังไม่เลือก ผู้เช่าต้องเลือกประเภทเองก่อนส่ง
+    category: '',
     allow_entry: false,
     slots: [],
 }
@@ -108,9 +109,6 @@ function UserRepairsPage() {
     // การตอบกลับของผู้เช่าในหน้ารายละเอียด: null | 'reschedule' (ขอเปลี่ยนเวลา) | 'notFixed' (แจ้งว่ายังไม่หาย)
     const [action, setAction] = useState(null)
     const [actionForm, setActionForm] = useState({ slots: [], allow_entry: false, note: '' })
-    // เวลาที่มีนัดซ่อมของห้องอื่นแล้ว (เลือกในฟอร์มไม่ได้) โหลดใหม่ทุกครั้งที่เปิดฟอร์ม
-    const [booked, setBooked] = useState([])
-    const refreshBooked = (excludeId = null) => loadBookedTimes(excludeId).then(setBooked)
 
     // โหลดซ้ำหลังแจ้ง/แก้ไข/ยกเลิก
     const load = async () => setData(await fetchRepairs(userId))
@@ -146,7 +144,6 @@ function UserRepairsPage() {
         setFile(null)
         setRemoveExisting(false)
         setFormError('')
-        refreshBooked()
         setEditing('new')
     }
 
@@ -163,7 +160,6 @@ function UserRepairsPage() {
         setFile(null)
         setRemoveExisting(false)
         setFormError('')
-        refreshBooked(repair.id)
         setEditing(repair)
     }
 
@@ -184,9 +180,10 @@ function UserRepairsPage() {
         // ตรวจว่ากรอกปัญหาแล้ว
         const isNew = editing === 'new'
         const problem = form.problem.trim()
+        if (!form.category) return setFormError('กรุณาเลือกประเภทงานซ่อม')
         if (!problem) return setFormError('กรุณาระบุปัญหาที่พบ')
         // ต้องบอกว่าช่างเข้าได้เมื่อไร (ยกเว้นอนุญาตให้เข้าห้องได้แม้ไม่อยู่)
-        const slotError = validateAvailability({ slots: form.slots, allowEntry: form.allow_entry, urgency: 'normal', booked })
+        const slotError = validateAvailability({ slots: form.slots, allowEntry: form.allow_entry, urgency: 'normal' })
         if (slotError) return setFormError(slotError)
 
         setSaving(true)
@@ -258,7 +255,8 @@ function UserRepairsPage() {
     }
 
     // เรียกฟังก์ชันในฐานข้อมูลสำหรับการตอบกลับของผู้เช่า แล้วโหลดใหม่และปิดหน้ารายละเอียด
-    const runAction = async (fn, params, successText) => {
+    // stay = อยู่หน้ารายละเอียดเดิมต่อ (แสดงข้อมูลล่าสุดของเรื่องนี้) ไม่ต้องกลับไปหน้ารายการ
+    const runAction = async (fn, params, successText, { stay = false } = {}) => {
         setSaving(true)
         setFormError('')
         const { error } = await supabase.rpc(fn, params)
@@ -266,10 +264,11 @@ function UserRepairsPage() {
             setSaving(false)
             return setFormError(error.message)
         }
-        await load()
+        const fresh = await fetchRepairs(userId)
+        setData(fresh)
         setSaving(false)
         setAction(null)
-        setEditing(null)
+        setEditing(stay ? (fresh.repairs.find((r) => r.id === params.p_id) ?? null) : null)
         setNotice(successText)
     }
 
@@ -279,14 +278,13 @@ function UserRepairsPage() {
     // เปิดกล่องขอเปลี่ยนเวลา / แจ้งว่ายังไม่หาย
     const openAction = (type) => {
         setActionForm({ slots: upcomingSlots(editing.available_slots), allow_entry: editing.allow_entry, note: '' })
-        if (type === 'reschedule') refreshBooked(editing.id)
         setFormError('')
         setAction(type)
     }
 
     // ส่งช่วงเวลาใหม่ที่สะดวก (รายการจะกลับไปรอผู้ดูแลนัดใหม่)
     const submitReschedule = () => {
-        const err = validateAvailability({ slots: actionForm.slots, allowEntry: actionForm.allow_entry, urgency: 'normal', booked })
+        const err = validateAvailability({ slots: actionForm.slots, allowEntry: actionForm.allow_entry, urgency: 'normal' })
         if (err) return setFormError(err)
         runAction(
             'repair_request_new_time',
@@ -296,7 +294,7 @@ function UserRepairsPage() {
     }
 
     // ตรวจงานหลังซ่อม: เรียบร้อย / ยังไม่หาย (ต้องบอกเหตุผล)
-    const confirmFixed = () => runAction('repair_confirm_done', { p_id: editing.id, p_fixed: true, p_note: '' }, 'ขอบคุณที่ยืนยัน งานซ่อมนี้ปิดเรียบร้อยแล้ว')
+    const confirmFixed = () => runAction('repair_confirm_done', { p_id: editing.id, p_fixed: true, p_note: '' }, 'ขอบคุณที่ยืนยัน งานซ่อมนี้ปิดเรียบร้อยแล้ว', { stay: true })
     const submitNotFixed = () => {
         if (!actionForm.note.trim()) return setFormError('กรุณาอธิบายว่ายังมีปัญหาอะไร')
         runAction('repair_confirm_done', { p_id: editing.id, p_fixed: false, p_note: actionForm.note.trim() }, 'แจ้งผู้ดูแลแล้ว ผู้ดูแลจะนัดเข้าซ่อมอีกครั้ง')
@@ -398,12 +396,19 @@ function UserRepairsPage() {
                                 )}
                             </AppointmentBox>
                         )}
+                        {/* กำลังดำเนินการแต่ไม่มีวันนัด (เช่น อนุญาตให้ช่างเข้าห้องได้เลย): แสดงชื่อและเบอร์ช่าง */}
+                        {!isNew && editing.status === 'in_progress' && !editing.appointment_date && editing.technician && (
+                            <div className="rounded-xl border-l-4 border-violet-400 bg-violet-50 px-4 py-3">
+                                <div className="text-xs font-semibold text-violet-800">ช่างที่รับงาน</div>
+                                <TechnicianInfo repair={editing} className="mt-1" />
+                            </div>
+                        )}
 
                         {/* กล่องขอเปลี่ยนเวลา: เลือกช่วงที่สะดวกใหม่ + เหตุผล */}
                         {action === 'reschedule' && (
                             <div className="rounded-xl border border-line p-4 flex flex-col gap-3">
                                 <div className="font-medium text-primary-dark">เลือกช่วงเวลาที่สะดวกใหม่</div>
-                                <SlotPicker slots={actionForm.slots} onChange={(slots) => setActionForm((f) => ({ ...f, slots }))} booked={booked} disabled={saving} />
+                                <SlotPicker slots={actionForm.slots} onChange={(slots) => setActionForm((f) => ({ ...f, slots }))} disabled={saving} />
                                 <label className="flex items-center gap-2 text-sm text-ink">
                                     <input type="checkbox" checked={actionForm.allow_entry} onChange={(e) => setActionForm((f) => ({ ...f, allow_entry: e.target.checked }))} disabled={saving} />
                                     อนุญาตให้ช่างเข้าห้องได้แม้ฉันไม่อยู่
@@ -455,10 +460,11 @@ function UserRepairsPage() {
                             <input disabled value={room} className={inputClass} />
                         </div>
 
-                        {/* ประเภทงานซ่อม */}
+                        {/* ประเภทงานซ่อม (บังคับเลือก) */}
                         <div>
-                            <label className="block text-sm text-muted mb-1">ประเภท</label>
+                            <label className="block text-sm text-muted mb-1">ประเภท <span className="text-red-500">*</span></label>
                             <select value={form.category} onChange={set('category')} disabled={saving || readOnly} className={inputClass}>
+                                <option value="" disabled>-- เลือกประเภท --</option>
                                 {Object.entries(repairCategories).map(([k, label]) => (
                                     <option key={k} value={k}>{label}</option>
                                 ))}
@@ -477,7 +483,8 @@ function UserRepairsPage() {
                             <textarea rows={4} maxLength={2000} value={form.detail} onChange={set('detail')} disabled={saving || readOnly} placeholder="อธิบายอาการและตำแหน่ง เช่น ก๊อกอ่างล้างหน้าในห้องน้ำมีน้ำหยดตลอด" className={inputClass} />
                         </div>
 
-                        {/* วันเวลาที่สะดวกให้ช่างเข้า: แก้ได้เฉพาะตอนยังรอดำเนินการ, ดูอย่างเดียวแสดงเป็นรายการ */}
+                        {/* วันเวลาที่สะดวกให้ช่างเข้า: แก้ได้เฉพาะตอนยังรอดำเนินการ, ดูอย่างเดียวแสดงเป็นรายการ (มีวันนัดแล้วไม่ต้องแสดง ดูที่กล่องนัดเข้าซ่อมแทน) */}
+                        {!(readOnly && editing.appointment_date) && (
                         <div className="rounded-xl border border-line p-4 flex flex-col gap-3">
                             <div>
                                 <div className="text-sm font-medium text-primary-dark">วันเวลาที่สะดวกให้ช่างเข้าซ่อม</div>
@@ -486,7 +493,7 @@ function UserRepairsPage() {
                                 <SlotList slots={editing.available_slots} allowEntry={editing.allow_entry} note={editing.availability_note} />
                             ) : (
                                 <>
-                                    <SlotPicker slots={form.slots} onChange={(slots) => setForm((f) => ({ ...f, slots }))} booked={booked} disabled={saving} />
+                                    <SlotPicker slots={form.slots} onChange={(slots) => setForm((f) => ({ ...f, slots }))} disabled={saving} />
                                     <label className="flex items-start gap-2 text-sm text-ink">
                                         <input type="checkbox" className="mt-1" checked={form.allow_entry} onChange={(e) => setForm((f) => ({ ...f, allow_entry: e.target.checked }))} disabled={saving} />
                                         <span>
@@ -497,6 +504,7 @@ function UserRepairsPage() {
                                 </>
                             )}
                         </div>
+                        )}
 
                         {/* รูปภาพ: ดูอย่างเดียวแสดงรูปเดิม ไม่งั้นใช้ตัวเลือกรูป */}
                         <div>

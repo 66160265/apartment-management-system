@@ -7,7 +7,7 @@ import { repairCategories, repairStatuses, repairStatusKeys } from '../data/repa
 import { baht, formatDateTime } from '../lib/billing'
 import { AdminRepairPayment } from './RepairPayment'
 import { owesRepairCost } from '../lib/repairPayments'
-import { formatSlot, formatThaiDate, isBooked, isInSlots, isValidPeriod, normalizePeriod, removeRepairImage, todayIso, upcomingSlots, uploadRepairImage } from '../lib/repairs'
+import { countOverlaps, formatSlot, formatThaiDate, isInSlots, isValidPeriod, normalizePeriod, removeRepairImage, sortRepairs, todayIso, toSlotPeriod, upcomingSlots, uploadRepairImage, validateTechnician } from '../lib/repairs'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
 import { SkeletonTable } from './Skeleton.jsx'
@@ -28,7 +28,10 @@ const emptyForm = {
     appointment_date: '',
     appointment_period: '',
     technician: '',
+    technician_phone: '',
     confirmed: false,
+    // ปักหมุดอยู่ไหม (ปัก/เลิกปักด้วยปุ่มหมุดในหน้ารายการ ฟอร์มส่งค่าเดิมกลับไป)
+    pinned: false,
     // ค่าใช้จ่ายและผู้รับผิดชอบ
     cost: '',
     cost_payer: 'owner',
@@ -97,6 +100,23 @@ function RepairCost({ repair, inline = false }) {
     )
 }
 
+// ปุ่มปัก/เลิกปักหมุดในหน้ารายการ (เฉพาะเรื่องที่ยังไม่เสร็จ เรื่องเสร็จสิ้น/ยกเลิกไม่มีปุ่ม)
+function PinButton({ repair, onToggle }) {
+    if (!['pending', 'in_progress'].includes(repair.status)) return null
+    return (
+        <button
+            type="button"
+            onClick={() => onToggle(repair)}
+            aria-pressed={Boolean(repair.pinned)}
+            title={repair.pinned ? 'เลิกปักหมุด' : 'ปักหมุดเรื่องเร่งด่วน'}
+            aria-label={repair.pinned ? 'เลิกปักหมุด' : 'ปักหมุดเรื่องเร่งด่วน'}
+            className={`inline-grid place-items-center w-9 h-8 rounded-lg align-middle transition-colors ${repair.pinned ? 'bg-primary text-white hover:bg-primary-dark' : 'bg-sand text-muted hover:text-primary hover:bg-mist/60'}`}
+        >
+            <Icon name="pin" className="w-4 h-4" />
+        </button>
+    )
+}
+
 // ไอคอนและสีของการ์ดสรุปแต่ละสถานะ
 const summaryMeta = {
     all: { icon: 'wrench', tone: 'bg-slate-100 text-slate-600' },
@@ -132,6 +152,8 @@ function AdminRepairs({ adminId }) {
     const [saving, setSaving] = useState(false)
     const [formError, setFormError] = useState('')
     const [confirmDelete, setConfirmDelete] = useState(false)
+    // ข้อความ error ตอนกดปักหมุดจากหน้ารายการ
+    const [pinError, setPinError] = useState('')
 
     // โหลดซ้ำหลังบันทึก/ลบ
     const load = async () => setData(await fetchData())
@@ -177,11 +199,10 @@ function AdminRepairs({ adminId }) {
             .filter((r) => r.status === 'in_progress' && r.appointment_date >= today)
             .sort((a, b) => a.appointment_date.localeCompare(b.appointment_date) || normalizePeriod(a.appointment_period).localeCompare(normalizePeriod(b.appointment_period)))
     }, [repairs])
-    // เวลาที่ไม่ว่าง (ไม่นับรายการที่กำลังแก้ไข): นัดของห้องอื่น + วันเวลาที่ผู้เช่าห้องอื่นเลือกไว้ในเรื่องที่รอดำเนินการ
-    const booked = [
-        ...upcoming.filter((r) => r.id !== editing?.id).map((r) => ({ date: r.appointment_date, period: r.appointment_period })),
-        ...repairs.filter((r) => r.status === 'pending' && r.id !== editing?.id).flatMap((r) => (r.available_slots ?? []).filter((s) => s.date >= todayIso())),
-    ]
+    // นัดของห้องอื่น (ไม่นับรายการที่กำลังแก้ไข) ใช้บอกว่าช่วงที่จะนัดมีงานอื่นแล้วกี่งาน (นัดซ้อนกันได้ เช่น ส่งช่างคนอื่นไป)
+    const otherAppointments = upcoming.filter((r) => r.id !== editing?.id).map((r) => ({ date: r.appointment_date, period: r.appointment_period }))
+    // ช่วงเวลาที่ผู้เช่าสะดวกและยังไม่ผ่านไป (ผู้ดูแลเลือกหนึ่งช่วงเป็นวันนัด)
+    const slotChoices = editing && editing !== 'new' ? upcomingSlots(editing.available_slots) : []
 
     // รายการที่แสดง: กรองตามแท็บสถานะและประเภท แล้วค้นหาจากเลขห้อง
     const visible = repairs.filter((r) => {
@@ -190,8 +211,16 @@ function AdminRepairs({ adminId }) {
         const q = search.trim().toLowerCase()
         return !q || r.room?.toLowerCase().includes(q)
     })
-    // เรียงตามวันที่แจ้ง: ใหม่สุดก่อน (ค่าเริ่มต้น) หรือเก่าสุดก่อน
-    visible.sort((a, b) => (oldestFirst ? 1 : -1) * a.created_at.localeCompare(b.created_at))
+    // เรื่องที่ปักหมุดอยู่บนสุด ที่เหลือเรียงตามวันที่แจ้ง: ใหม่สุดก่อน (ค่าเริ่มต้น) หรือเก่าสุดก่อน
+    const sorted = sortRepairs(visible, oldestFirst)
+
+    // ปัก/เลิกปักหมุดจากหน้ารายการ (ไม่ต้องเปิดฟอร์ม)
+    const togglePin = async (r) => {
+        setPinError('')
+        const { error } = await supabase.from('repairs').update({ pinned: !r.pinned }).eq('id', r.id)
+        if (error) return setPinError(`ปักหมุดไม่สำเร็จ: ${error.message}`)
+        await load()
+    }
 
     // ล้างสถานะรูปที่เลือกในฟอร์ม
     const resetImageState = () => {
@@ -221,6 +250,8 @@ function AdminRepairs({ adminId }) {
             appointment_date: item.appointment_date ?? '',
             appointment_period: normalizePeriod(item.appointment_period),
             technician: item.technician ?? '',
+            technician_phone: item.technician_phone ?? '',
+            pinned: Boolean(item.pinned),
             confirmed: item.appointment_state === 'confirmed',
             cost: Number(item.cost) > 0 ? String(item.cost) : '',
             cost_payer: item.cost_payer ?? 'owner',
@@ -240,14 +271,10 @@ function AdminRepairs({ adminId }) {
     // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key
     const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
 
-    // เปลี่ยนสถานะ: เปลี่ยนเป็น "กำลังดำเนินการ" ครั้งแรก ให้ใช้วันเวลาที่ผู้เช่าเลือกไว้เป็นวันนัด (ถ้าเวลานั้นยังว่าง)
+    // เปลี่ยนสถานะ (วันนัดผู้ดูแลเลือกเองจากช่วงที่ผู้เช่าส่งมา)
     const changeStatus = (status) => {
         setAskNewTime(false)
-        setForm((f) => {
-            if (status !== 'in_progress' || f.appointment_date || editing === 'new') return { ...f, status }
-            const slot = upcomingSlots(editing.available_slots).find((s) => !isBooked(booked, s.date, s.period))
-            return slot ? { ...f, status, appointment_date: slot.date, appointment_period: slot.period } : { ...f, status }
-        })
+        setForm((f) => ({ ...f, status }))
     }
 
     // บันทึกรายการแจ้งซ่อม: ตรวจข้อมูล อัปโหลด/ลบรูป แล้วเพิ่มหรืออัปเดตในฐานข้อมูล
@@ -260,17 +287,25 @@ function AdminRepairs({ adminId }) {
         const problem = form.problem.trim()
         if (!form.room) return setFormError('กรุณาเลือกห้อง')
         if (!problem) return setFormError('กรุณาระบุปัญหา')
-        // กำลังดำเนินการ: วันนัด = เวลาที่ผู้เช่าเลือก (ใส่ให้ตอนเปลี่ยนสถานะ) ถ้าเวลานั้นไม่ว่างหรือผ่านไปแล้ว ให้ผู้เช่าเลือกใหม่
+        if (!isNew && editing.status === 'in_progress' && form.status === 'pending') return setFormError('เรื่องที่กำลังดำเนินการแล้ว เปลี่ยนกลับเป็นรอดำเนินการไม่ได้')
+        // กำลังดำเนินการ: ต้องเลือกวันนัดจากช่วงที่ผู้เช่าส่งมาก่อน ถ้าทุกช่วงผ่านไปแล้ว ให้ผู้เช่าเลือกใหม่
         // (ผู้เช่าไม่ได้เลือกเวลา เช่น อนุญาตให้เข้าห้องได้เลย หรือแอดมินแจ้งซ่อมเอง = ไม่มีวันนัด)
         const apptChanged = isNew || form.appointment_date !== (editing.appointment_date ?? '') || form.appointment_period !== normalizePeriod(editing.appointment_period)
         if (form.status === 'in_progress' && !isNew && editing.status !== 'in_progress' && !form.appointment_date && editing.available_slots?.length > 0)
-            return setFormError('เวลาที่ผู้เช่าเลือกไม่ว่างหรือผ่านไปแล้ว กรุณากด "ให้ผู้เช่าเลือกเวลาใหม่"')
+            return setFormError(slotChoices.length > 0
+                ? 'กรุณาเลือกวันเวลานัดจากที่ผู้เช่าส่งมาก่อนเปลี่ยนเป็น "กำลังดำเนินการ"'
+                : 'เวลาที่ผู้เช่าเลือกผ่านไปแล้ว กรุณากด "ให้ผู้เช่าเลือกเวลาใหม่"')
         if (form.status === 'in_progress' && form.appointment_date && apptChanged) {
-            if (form.appointment_date < todayIso() || !isValidPeriod(form.appointment_period) || isBooked(booked, form.appointment_date, form.appointment_period))
-                return setFormError(`${formatSlot(form.appointment_date, form.appointment_period)} ไม่ว่างหรือผ่านไปแล้ว กรุณากด "ให้ผู้เช่าเลือกเวลาใหม่"`)
+            if (form.appointment_date < todayIso() || !isValidPeriod(form.appointment_period))
+                return setFormError(`${formatSlot(form.appointment_date, form.appointment_period)} ผ่านไปแล้วหรือไม่ถูกต้อง กรุณากด "ให้ผู้เช่าเลือกเวลาใหม่"`)
         }
         // ยกเลิก/ไม่รับเรื่อง ต้องบอกเหตุผลให้ผู้เช่าทราบ
         if (form.status === 'cancelled' && !form.admin_note.trim()) return setFormError('กรุณาระบุเหตุผลที่ยกเลิกในช่องหมายเหตุถึงผู้เช่า')
+        // กำลังดำเนินการ: ต้องรู้ชื่อและเบอร์โทรช่าง (ผู้เช่าเห็นข้อมูลนี้ ฐานข้อมูลตรวจซ้ำอีกชั้น)
+        if (form.status === 'in_progress') {
+            const techError = validateTechnician(form.technician, form.technician_phone)
+            if (techError) return setFormError(techError)
+        }
         const cost = form.cost === '' ? 0 : Number(form.cost)
         if (!(cost >= 0)) return setFormError('ค่าใช้จ่ายต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป')
 
@@ -317,6 +352,9 @@ function AdminRepairs({ adminId }) {
             appointment_period: keepAppt && form.appointment_date ? form.appointment_period : null,
             appointment_state: keepAppt && form.appointment_date ? appointmentState : null,
             technician: form.technician.trim(),
+            technician_phone: form.technician_phone.trim(),
+            // เสร็จสิ้น/ยกเลิก ไม่ต้องปักหมุดอีก (ฐานข้อมูลเอาออกให้ด้วย)
+            pinned: ['done', 'cancelled'].includes(form.status) ? false : form.pinned,
             cost,
             // แอดมินแจ้งเอง (ห้องว่าง ไม่มีผู้เช่า) หอพักรับผิดชอบค่าใช้จ่ายเสมอ
             cost_payer: isNew || !editing.user_id ? 'owner' : form.cost_payer,
@@ -385,6 +423,23 @@ function AdminRepairs({ adminId }) {
     const fieldLocked = saving || locked
     // มีผู้เช่าเป็นเจ้าของเรื่องไหม (แอดมินแจ้งเองสำหรับห้องว่าง = ไม่มี) ใช้ซ่อนส่วนที่เกี่ยวกับผู้เช่า
     const hasTenant = Boolean(editing) && !isNew && Boolean(editing.user_id)
+    // ผู้เช่าส่งช่วงเวลามา: ผู้ดูแลเลือกหนึ่งช่วงเป็นวันนัด (เลือกได้เฉพาะตอนรอดำเนินการ บันทึกเป็นกำลังดำเนินการแล้วเปลี่ยนวันนัดไม่ได้)
+    const canPickSlot = hasTenant && editing.status === 'pending' && !askNewTime && slotChoices.length > 0
+    // บันทึกเป็นกำลังดำเนินการแล้ว: วันนัดล็อก และเปลี่ยนกลับเป็นรอดำเนินการไม่ได้
+    const startedWork = !isNew && Boolean(editing) && editing.status === 'in_progress'
+    // กำลังดำเนินการหรือเสร็จสิ้น: ช่วงที่ผู้เช่าส่งมา พร้อมบอกว่าช่วงไหนเป็นวันนัด (วันนัดไม่อยู่ในรายการ เช่น ข้อมูลเก่า = เพิ่มต่อท้าย)
+    const lockedSlots = !isNew && Boolean(editing) && ['in_progress', 'done'].includes(editing.status) && editing.appointment_date
+        ? (() => {
+            const apptPeriod = normalizePeriod(editing.appointment_period)
+            const list = (editing.available_slots ?? []).map((s) => ({
+                ...s,
+                chosen: s.date === editing.appointment_date && (normalizePeriod(s.period) === apptPeriod || toSlotPeriod(s.period) === apptPeriod),
+            }))
+            return list.some((s) => s.chosen) ? list : [...list, { date: editing.appointment_date, period: apptPeriod, chosen: true }]
+        })()
+        : null
+    // ยังไม่ได้เลือกวันนัด = เปลี่ยนเป็น "กำลังดำเนินการ" ไม่ได้
+    const needSlot = canPickSlot && !form.appointment_date
     // การ์ดสรุปด้านบน (ไม่แสดงสถานะยกเลิก แต่ยังนับรวมใน "ทั้งหมด")
     const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.filter((k) => k !== 'cancelled').map((k) => ({ key: k, label: repairStatuses[k].label }))]
     return (
@@ -410,10 +465,17 @@ function AdminRepairs({ adminId }) {
                         <h2 className="text-lg font-semibold text-primary-dark">{isNew ? 'แจ้งซ่อมใหม่' : 'จัดการรายการแจ้งซ่อม'}</h2>
                         {!isNew && <RepairStatusBadge status={editing.status} />}
                     </div>
+                    {/* ซ่อมเสร็จแล้ว (แก้ไขไม่ได้): บอกผลการยืนยันของผู้เช่า (ห้องที่ไม่มีผู้เช่า = บอกแค่ว่าเสร็จแล้ว) */}
                     {locked && (
-                        <p className="-mt-2 text-sm text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-xl px-4 py-2.5 flex items-center gap-2">
-                            <Icon name="checkCircle" className="w-4 h-4 shrink-0" />
-                            เรื่องนี้ซ่อมเสร็จสิ้นแล้ว ดูข้อมูลได้อย่างเดียว แก้ไขไม่ได้
+                        <p className={`-mt-2 text-sm rounded-xl px-4 py-2.5 flex items-center gap-2 ring-1 ${
+                            !hasTenant || editing.tenant_confirmed_at ? 'text-emerald-800 bg-emerald-50 ring-emerald-200' : 'text-amber-900 bg-amber-50 ring-amber-200'
+                        }`}>
+                            <Icon name={!hasTenant || editing.tenant_confirmed_at ? 'checkCircle' : 'clock'} className="w-4 h-4 shrink-0" />
+                            {!hasTenant
+                                ? 'เรื่องนี้ซ่อมเสร็จสิ้นแล้ว'
+                                : editing.tenant_confirmed_at
+                                  ? `ผู้เช่ายืนยันว่าใช้งานได้ปกติเมื่อ ${formatDateTime(editing.tenant_confirmed_at)}`
+                                  : 'ซ่อมเสร็จแล้ว รอผู้เช่าตรวจสอบและยืนยันผลการซ่อม'}
                         </p>
                     )}
 
@@ -461,13 +523,58 @@ function AdminRepairs({ adminId }) {
                     {hasTenant && (
                         <div className="rounded-xl bg-sand/60 border border-line p-4 flex flex-col gap-3">
                             <div className="text-sm font-medium text-primary-dark">เวลาที่ผู้เช่าสะดวกให้ช่างเข้า</div>
-                            <SlotList
-                                slots={editing.available_slots}
-                                allowEntry={editing.allow_entry}
-                                note={editing.availability_note}
-                            />
+                            {/* กำลังดำเนินการหรือเสร็จสิ้น: ช่วงที่เป็นวันนัดเด่นขึ้นมา ช่วงอื่นจางลง (เปลี่ยนวันนัดไม่ได้) */}
+                            {lockedSlots && (
+                                <div className="flex flex-col gap-1.5 text-sm">
+                                    {lockedSlots.map((s) => (
+                                        <div key={`${s.date}-${s.period}`} className={`flex items-center gap-2 ${s.chosen ? 'font-semibold text-primary-dark' : 'text-muted'}`}>
+                                            <Icon name={s.chosen ? 'checkCircle' : 'calendar'} className={`w-4 h-4 shrink-0 ${s.chosen ? 'text-primary' : 'text-muted'}`} />
+                                            <span>{formatSlot(s.date, s.period)}</span>
+                                            {s.chosen && <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-white">วันนัด</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {(!(canPickSlot || lockedSlots) || editing.allow_entry || editing.availability_note) && (
+                                <SlotList
+                                    slots={canPickSlot || lockedSlots ? [] : editing.available_slots}
+                                    allowEntry={editing.allow_entry}
+                                    note={editing.availability_note}
+                                />
+                            )}
+                            {/* เลือกวันนัดจากช่วงที่ผู้เช่าส่งมา (บอกจำนวนนัดของห้องอื่นที่ทับช่วงนั้น แต่ไม่ห้าม) */}
+                            {canPickSlot && (
+                                <div role="radiogroup" aria-label="ช่วงเวลานัดเข้าซ่อม" className="flex flex-col gap-1.5">
+                                    <div className={`text-xs font-medium ${needSlot ? 'text-amber-800' : 'text-muted'}`}>
+                                        {needSlot ? 'เลือกวันเวลานัด 1 ช่วง ก่อนเปลี่ยนเป็น "กำลังดำเนินการ"' : 'วันเวลานัด'}
+                                    </div>
+                                    {slotChoices.map((s) => {
+                                        const selected = form.appointment_date === s.date && form.appointment_period === s.period
+                                        const overlaps = countOverlaps(otherAppointments, s.date, s.period)
+                                        return (
+                                            <button
+                                                key={`${s.date}-${s.period}`}
+                                                type="button"
+                                                role="radio"
+                                                aria-checked={selected}
+                                                onClick={() => setForm((f) => ({ ...f, appointment_date: s.date, appointment_period: s.period }))}
+                                                disabled={saving}
+                                                className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border px-3 py-2 text-sm text-left transition-colors ${
+                                                    selected ? 'border-primary bg-mist/50 text-primary-dark font-medium' : 'border-line bg-white text-ink hover:bg-mist/30'
+                                                }`}
+                                            >
+                                                <span className={`grid place-items-center w-4 h-4 rounded-full border-2 shrink-0 ${selected ? 'border-primary' : 'border-line'}`}>
+                                                    {selected && <span className="w-2 h-2 rounded-full bg-primary" />}
+                                                </span>
+                                                <span className="flex-1">{formatSlot(s.date, s.period)}</span>
+                                                {overlaps > 0 && <span className="text-xs font-normal text-amber-700">มีนัดห้องอื่นในช่วงนี้ {overlaps} งาน</span>}
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            )}
                             {/* ช่างไม่ว่างตามเวลาที่ผู้เช่าเลือก: กดแล้วบันทึก = ล้างเวลาเดิมและแจ้งเตือนให้ผู้เช่าเลือกเวลาใหม่ */}
-                            {(editing.available_slots?.length > 0 || editing.allow_entry) && ['pending', 'in_progress'].includes(editing.status) &&
+                            {(editing.available_slots?.length > 0 || editing.allow_entry) && editing.status === 'pending' &&
                                 (askNewTime ? (
                                     <div className="self-start flex flex-wrap items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-amber-50 border border-amber-200 text-amber-900">
                                         <Icon name="alert" className="w-4 h-4 shrink-0" />
@@ -509,11 +616,6 @@ function AdminRepairs({ adminId }) {
                                 </div>
                             )}
                             {editing.reopen_count > 0 && <p className="text-xs text-red-600">ผู้เช่าแจ้งว่ายังไม่หาย {editing.reopen_count} ครั้ง</p>}
-                            {editing.status === 'done' && (
-                                <p className={`text-xs ${editing.tenant_confirmed_at ? 'text-emerald-700' : 'text-muted'}`}>
-                                    {editing.tenant_confirmed_at ? `ผู้เช่ายืนยันว่าใช้งานได้ปกติเมื่อ ${formatDateTime(editing.tenant_confirmed_at)}` : 'รอผู้เช่าตรวจสอบและยืนยันผลการซ่อม'}
-                                </p>
-                            )}
                         </div>
                     )}
 
@@ -537,14 +639,34 @@ function AdminRepairs({ adminId }) {
                             {repairStatusKeys.map((k) => {
                                 const blocked = k === 'cancelled'
                                 if (blocked && form.status !== k) return null
+                                // ยังไม่ได้เลือกวันนัดจากช่วงที่ผู้เช่าส่งมา
+                                const waitSlot = k === 'in_progress' && needSlot && form.status !== k
+                                // กำลังดำเนินการแล้ว ย้อนกลับเป็นรอดำเนินการไม่ได้
+                                const noBack = k === 'pending' && startedWork
                                 return (
-                                    <option key={k} value={k} disabled={blocked} hidden={blocked}>{repairStatuses[k].label}</option>
+                                    <option key={k} value={k} disabled={blocked || waitSlot || noBack} hidden={blocked}>
+                                        {repairStatuses[k].label}{waitSlot ? ' (เลือกวันเวลานัดก่อน)' : ''}
+                                    </option>
                                 )
                             })}
                         </select>
                     </div>
 
-                    {/* เสร็จสิ้น: ค่าใช้จ่าย ผู้รับผิดชอบค่าใช้จ่าย และชื่อช่าง */}
+                    {/* ช่าง: บังคับกรอกตอนกำลังดำเนินการ (ผู้เช่าเห็นชื่อและเบอร์โทรช่าง) */}
+                    {(form.status === 'in_progress' || form.status === 'done') && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-sm text-muted mb-1">ชื่อช่าง{form.status === 'in_progress' && <span className="text-red-600"> *</span>}</label>
+                                <input maxLength={100} value={form.technician} onChange={set('technician')} disabled={fieldLocked} placeholder="เช่น ช่างสมชาย" className={inputClass} />
+                            </div>
+                            <div>
+                                <label className="block text-sm text-muted mb-1">เบอร์โทรช่าง{form.status === 'in_progress' && <span className="text-red-600"> *</span>}</label>
+                                <input maxLength={20} inputMode="tel" value={form.technician_phone} onChange={set('technician_phone')} disabled={fieldLocked} placeholder="เช่น 081-234-5678" className={inputClass} />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* เสร็จสิ้น: ค่าใช้จ่าย และผู้รับผิดชอบค่าใช้จ่าย */}
                     {form.status === 'done' && (
                         <div className="flex flex-col gap-3">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -565,7 +687,6 @@ function AdminRepairs({ adminId }) {
                                     )}
                                 </div>
                             </div>
-                            <input maxLength={100} value={form.technician} onChange={set('technician')} disabled={fieldLocked} placeholder="ชื่อช่าง (ถ้ามี)" className={inputClass} />
                         </div>
                     )}
 
@@ -661,6 +782,7 @@ function AdminRepairs({ adminId }) {
                                             </span>
                                             <span className="inline-block px-2 py-0.5 rounded-lg bg-mist/60 text-primary-dark text-sm font-semibold">{r.room}</span>
                                             <span className="text-sm text-ink flex-1 min-w-32">{r.problem}</span>
+                                            {r.technician && <span className="text-xs text-muted">ช่าง{r.technician}{r.technician_phone && ` ${r.technician_phone}`}</span>}
                                             {r.allow_entry && <span className="text-xs text-emerald-700">เข้าห้องได้</span>}
                                             {r.appointment_state === 'proposed' && <span className="text-xs font-medium text-amber-700">รอผู้เช่ายืนยัน</span>}
                                         </button>
@@ -702,6 +824,7 @@ function AdminRepairs({ adminId }) {
                                 รายการแจ้งซ่อม
                                 <span className="ml-2 text-sm font-normal text-muted">({visible.length})</span>
                             </h2>
+                            {pinError && <p className="w-full text-sm text-red-600 order-last">{pinError}</p>}
                             <div className="flex flex-wrap items-center gap-2">
                                 <select
                                     value={categoryFilter}
@@ -755,11 +878,11 @@ function AdminRepairs({ adminId }) {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {visible.map((r, index) => (
+                                        {sorted.map((r, index) => (
                                             <tr
                                                 key={r.id}
                                                 onClick={() => openEdit(r)}
-                                                className={`cursor-pointer border-b border-line transition-colors hover:bg-mist/30 ${r.status === 'pending' ? 'bg-sky-50/50' : index % 2 ? 'bg-sand/40' : 'bg-white'}`}
+                                                className={`cursor-pointer border-b border-line transition-colors hover:bg-mist/30 ${r.pinned ? 'bg-red-50' : r.status === 'pending' ? 'bg-sky-50/50' : index % 2 ? 'bg-sand/40' : 'bg-white'}`}
                                             >
                                                 <td className="px-3 py-3 border-x border-line/60 text-center text-xs text-muted tabular-nums">{index + 1}</td>
                                                 <td className="px-3 py-3 border-x border-line/60 text-center">
@@ -778,8 +901,9 @@ function AdminRepairs({ adminId }) {
                                                 </td>
                                                 <td className="px-3 py-3 border-x border-line/60 text-center text-muted whitespace-nowrap"><RepairCost repair={r} /></td>
                                                 <td className="px-3 py-3 border-x border-line/60 text-center"><RepairStatusBadge status={r.status} /><PayState state={payState(r)} /></td>
-                                                <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                                                    <button onClick={() => openEdit(r)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist">จัดการ</button>
+                                                <td className="border-x border-line/60 px-2 py-2 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                                    <PinButton repair={r} onToggle={togglePin} />
+                                                    <button onClick={() => openEdit(r)} className="ml-1.5 px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist">จัดการ</button>
                                                 </td>
                                             </tr>
                                         ))}
@@ -787,15 +911,17 @@ function AdminRepairs({ adminId }) {
                                 </table>
                                 {/* จอเล็ก/กลาง: แสดงเป็นการ์ดแทนตาราง */}
                                 <div className="xl:hidden grid gap-3 md:grid-cols-2">
-                                    {visible.map((r) => (
+                                    {sorted.map((r) => (
                                         <div
                                             key={r.id}
-                                            className={`rounded-2xl border border-line p-4 flex flex-col gap-3 ${r.status === 'pending' ? 'bg-sky-50/60' : 'bg-white'}`}
+                                            className={`rounded-2xl p-4 flex flex-col gap-3 border border-line ${r.pinned ? 'bg-red-50' : r.status === 'pending' ? 'bg-sky-50/60' : 'bg-white'}`}
                                         >
                                             <div className="flex items-start gap-3">
                                                 <span className="inline-block min-w-12 px-2.5 py-1 rounded-lg bg-mist/60 text-primary-dark font-semibold text-center">{r.room}</span>
                                                 <div className="min-w-0 flex-1">
-                                                    <div className="font-medium text-ink">{r.problem}</div>
+                                                    <div className="font-medium text-ink flex items-center gap-1.5">
+                                                        {r.problem}
+                                                    </div>
                                                     <div className="text-xs text-muted">แจ้ง {formatThaiDate(r.created_at)}</div>
                                                     {r.status === 'done' && r.completed_at && (
                                                         <div className="text-xs text-emerald-700">เสร็จสิ้น {formatThaiDate(r.completed_at)}</div>
@@ -808,7 +934,10 @@ function AdminRepairs({ adminId }) {
                                                     <UrgencyBadge urgency={r.urgency} />
                                                 </div>
                                             </div>
-                                            <button onClick={() => openEdit(r)} className="py-2 rounded-xl text-sm bg-mist/60 text-primary-dark hover:bg-mist">จัดการเรื่องนี้</button>
+                                            <div className="flex gap-2">
+                                                <PinButton repair={r} onToggle={togglePin} />
+                                                <button onClick={() => openEdit(r)} className="flex-1 py-2 rounded-xl text-sm bg-mist/60 text-primary-dark hover:bg-mist">จัดการเรื่องนี้</button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
