@@ -1,10 +1,14 @@
-import { balanceOf, daysLate, dueDateIso, thaiDateOf } from './billing'
+import { balanceOf, daysLate, dueDateIso, formatMonth, thaiDateOf } from './billing'
 
 // ตรรกะของหน้าภาพรวมแอดมิน (pages/AdminDashboardPage.jsx) แยกไว้ให้ทดสอบได้
+
+// วันผ่อนผันที่จำไว้ในใบ (ใบที่ไม่ได้เปิดค่าปรับ = 0)
+const graceOf = (invoice) => Math.max(0, Number(invoice.late_fee_grace ?? 0))
 
 // ใบแจ้งหนี้ที่ "เกินกำหนดชำระ" และผู้เช่ายังต้องจ่าย: สถานะรอชำระ (pending) และเลยวันครบกำหนดแล้ว
 // ไม่รวมใบที่ผู้เช่าส่งสลิปแล้วรอแอดมินตรวจ (review) เพราะผู้เช่าจ่ายแล้ว งานค้างอยู่ที่แอดมิน ไม่ใช่ที่ผู้เช่า (ไปอยู่ในแถบ "ต้องจัดการ")
 // dueDay = วันครบกำหนดในหน้าตั้งค่า ใช้คำนวณวันครบกำหนดของใบที่ไม่ได้บันทึก due_date ไว้ (ใบที่ออกตอนไม่ได้เปิดค่าปรับ)
+// ใบที่เลยวันครบกำหนดแต่ยังอยู่ในช่วงผ่อนผันของใบ (ยังไม่มีค่าปรับ) ไม่นับว่าเกินกำหนด นับเป็น "ยังไม่ถึงกำหนด" แทน
 // เรียงเกินกำหนดนานสุดก่อน แล้วเลขห้อง
 export function overdueInvoices(invoices, now = new Date(), dueDay) {
     return invoices
@@ -16,14 +20,15 @@ export function overdueInvoices(invoices, now = new Date(), dueDay) {
             month: i.month,
             balance: balanceOf(i, now),
             daysLate: daysLate(i, now, dueDay),
+            grace: graceOf(i),
         }))
-        .filter((r) => r.balance > 0 && r.daysLate > 0)
+        .filter((r) => r.balance > 0 && r.daysLate > r.grace)
         .sort((a, b) => b.daysLate - a.daysLate || a.room.localeCompare(b.room, undefined, { numeric: true }))
 }
 
-// ใบที่ยังรอชำระแต่ยังไม่ถึงวันครบกำหนด (ไม่ใช่ปัญหา แค่บอกให้รู้ว่ามี)
+// ใบที่ยังรอชำระแต่ยังไม่ถึงวันครบกำหนด หรือยังอยู่ในช่วงผ่อนผัน (ไม่ใช่ปัญหา แค่บอกให้รู้ว่ามี)
 export function notYetDueCount(invoices, now = new Date(), dueDay) {
-    return invoices.filter((i) => i.status === 'pending' && balanceOf(i, now) > 0 && daysLate(i, now, dueDay) === 0).length
+    return invoices.filter((i) => i.status === 'pending' && balanceOf(i, now) > 0 && daysLate(i, now, dueDay) <= graceOf(i)).length
 }
 
 // จำนวนห้องที่ไม่ซ้ำ
@@ -39,20 +44,23 @@ export function expiringContracts(tenants, now = new Date(), days = 30) {
         .sort((a, b) => a.daysLeft - b.daysLeft)
 }
 
-// ห้องที่มีผู้เช่าแต่ยังไม่มีใบแจ้งหนี้ของเดือนนี้ (month 'ปปปป-ดด')
-export function uninvoicedRooms(rooms, invoices, month) {
+// ห้องที่มีผู้เช่าแต่ยังไม่มีใบแจ้งหนี้ของเดือน month ('ปปปป-ดด' เดือนของบิล)
+// tenants = [{ room, start_date }] (ไม่ส่ง = ไม่ตรวจ) ผู้เช่าที่เริ่มสัญญาหลังเดือนนั้นยังไม่มีบิลของเดือนนั้น ไม่นับ
+export function uninvoicedRooms(rooms, invoices, month, tenants = []) {
     const invoiced = new Set(invoices.filter((i) => i.month === month).map((i) => i.room))
-    return rooms.filter((r) => r.status === 'occupied' && !invoiced.has(r.number))
+    const movedInLater = new Set(tenants.filter((t) => t.start_date && t.start_date.slice(0, 7) > month).map((t) => t.room))
+    return rooms.filter((r) => r.status === 'occupied' && !invoiced.has(r.number) && !movedInLater.has(r.number))
 }
 
 // รายการ "ต้องจัดการตอนนี้" เรียงตามความเร่งด่วน ตัดรายการที่เป็นศูนย์ออก
-// input = { reviewInvoices, repairReviews, pendingRepairs, expiringContracts, uninvoicedRooms, slipQuota: { level, used, quota, remaining } }
+// input = { reviewInvoices, repairReviews, pendingRepairs, expiringContracts, uninvoicedRooms, uninvoicedMonth, slipQuota: { level, used, quota, remaining } }
+// uninvoicedMonth = เดือนของบิลที่ตรวจว่ายังไม่ออก (ไม่ส่ง = "เดือนนี้")
 export function attentionItems(input) {
     return [
         { key: 'invoice-slips', label: 'สลิปค่าห้องรอตรวจสอบ', count: input.reviewInvoices ?? 0, to: '/invoices', tone: 'sky' },
         { key: 'repair-slips', label: 'สลิปค่าซ่อมรอตรวจสอบ', count: input.repairReviews ?? 0, to: '/repairs', tone: 'sky' },
         { key: 'repairs', label: 'เรื่องแจ้งซ่อมรอดำเนินการ', count: input.pendingRepairs ?? 0, to: '/repairs', tone: 'amber' },
-        { key: 'uninvoiced', label: 'ห้องที่ยังไม่ออกบิลเดือนนี้', count: input.uninvoicedRooms ?? 0, to: '/invoices', tone: 'amber' },
+        { key: 'uninvoiced', label: `ห้องที่ยังไม่ออกบิลเดือน${input.uninvoicedMonth ? ` ${formatMonth(input.uninvoicedMonth)}` : 'นี้'}`, count: input.uninvoicedRooms ?? 0, to: '/invoices', tone: 'amber' },
         { key: 'contracts', label: 'สัญญาใกล้หมด (ภายใน 30 วัน)', count: input.expiringContracts ?? 0, to: '/tenants', tone: 'amber' },
         slipQuotaItem(input.slipQuota),
     ].filter((item) => item && (item.count > 0 || item.keep))

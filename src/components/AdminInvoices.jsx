@@ -205,8 +205,7 @@ function AdminInvoices() {
             elec_curr: numbers.elecCurr,
             elec_rate: numbers.elecRate,
             common_fee: numbers.commonFee,
-            // ใบเก่าที่เคยรวมค่าซ่อมไว้ (repair_fee) ยอดรวมต้องรวมค่าซ่อมนั้นด้วย
-            total: calc.total + Number(editing?.repair_fee ?? 0),
+            total: calc.total,
         }
         setSaving(true)
         // แก้ไขได้ทุกสถานะ (สถานะและสลิปคงเดิม) ค่าเช่าใช้ค่าที่บันทึกไว้เดิม
@@ -454,8 +453,7 @@ function AdminInvoices() {
                                 elec_curr: form.elecCurr === '' ? numbers.elecPrev : numbers.elecCurr,
                                 elec_rate: numbers.elecRate || 0,
                                 common_fee: numbers.commonFee || 0,
-                                repair_fee: Number(editing?.repair_fee ?? 0),
-                                total: (calc.total || 0) + Number(editing?.repair_fee ?? 0),
+                                total: calc.total || 0,
                             }}
                         />
                         {/* เตือนเมื่อแก้ใบที่ส่งสลิปหรือจ่ายแล้ว */}
@@ -636,7 +634,7 @@ function AdminInvoices() {
                                             </div>
                                         </button>
                                         <div className="text-xs text-muted tabular-nums">
-                                            ค่าเช่า {baht(i.rent)} · น้ำ {baht(c.water)} · ไฟ {baht(c.elec)}{Number(i.common_fee) > 0 ? ` · ส่วนกลาง ${baht(i.common_fee)}` : ''}{Number(i.repair_fee) > 0 ? ` · ค่าซ่อม ${baht(i.repair_fee)}` : ''}
+                                            ค่าเช่า {baht(i.rent)} · น้ำ {baht(c.water)} · ไฟ {baht(c.elec)}{Number(i.common_fee) > 0 ? ` · ส่วนกลาง ${baht(i.common_fee)}` : ''}
                                         </div>
                                         <div className="flex gap-2">
                                             <button

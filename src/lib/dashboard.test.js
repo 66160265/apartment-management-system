@@ -35,6 +35,16 @@ describe('overdueInvoices', () => {
         expect(overdueInvoices([late], now)[0].balance).toBe(850)
     })
 
+    it('อยู่ในช่วงผ่อนผันของใบ ไม่นับว่าเกินกำหนด นับเป็นยังไม่ถึงกำหนด พ้นช่วงแล้วนับว่าเกินกำหนด', () => {
+        const grace = (over) => inv({ due_date: '2026-11-05', late_fee_rate: 50, late_fee_grace: 5, ...over })
+        // วันนี้ 11-10 เลยมา 5 วัน = ยังอยู่ในช่วงผ่อนผัน 5 วัน
+        expect(overdueInvoices([grace()], now)).toEqual([])
+        expect(notYetDueCount([grace()], now)).toBe(1)
+        // ผ่อนผัน 4 วัน = พ้นแล้ว เริ่มโดนค่าปรับ
+        expect(overdueInvoices([grace({ late_fee_grace: 4 })], now)).toHaveLength(1)
+        expect(notYetDueCount([grace({ late_fee_grace: 4 })], now)).toBe(0)
+    })
+
     it('ใบที่ค้าง 0 ไม่แสดง', () => {
         expect(overdueInvoices([inv({ due_date: '2026-11-05', paid_amount: 1000 })], now)).toEqual([])
     })
@@ -133,6 +143,17 @@ describe('expiringContracts / uninvoicedRooms', () => {
         ]
         const rows = uninvoicedRooms(rooms, [inv({ room: '101', month: '2026-11' }), inv({ room: '102', month: '2026-10' })], '2026-11')
         expect(rows.map((r) => r.number)).toEqual(['102'])
+    })
+
+    it('ไม่นับผู้เช่าที่เริ่มสัญญาหลังเดือนของบิล (เข้าอยู่ ธ.ค. ยังไม่มีบิลเดือน พ.ย.)', () => {
+        const rooms = [{ number: '101', status: 'occupied' }, { number: '102', status: 'occupied' }]
+        const tenants = [{ room: '101', start_date: '2026-12-03' }, { room: '102', start_date: '2026-11-15' }]
+        expect(uninvoicedRooms(rooms, [], '2026-11', tenants).map((r) => r.number)).toEqual(['102'])
+    })
+
+    it('ป้ายบอกเดือนของบิลที่ตรวจ', () => {
+        expect(attentionItems({ uninvoicedRooms: 1, uninvoicedMonth: '2026-09' })[0].label).toBe('ห้องที่ยังไม่ออกบิลเดือน ก.ย. 69')
+        expect(attentionItems({ uninvoicedRooms: 1 })[0].label).toBe('ห้องที่ยังไม่ออกบิลเดือนนี้')
     })
 
     it('attentionItems รวมสองรายการใหม่ และตัดออกถ้าเป็นศูนย์', () => {

@@ -4,6 +4,7 @@ import Switch from './Switch'
 import MonthPicker from './MonthPicker'
 import { baht, currentMonth, formatMonth } from '../lib/billing'
 import { buildBulkRows, evaluateRow, summarize, validateRates } from '../lib/bulkInvoices'
+import { billMonthOf } from '../lib/reports'
 import { supabase } from '../lib/supabaseClient'
 
 // กรอกมิเตอร์น้ำ/ไฟของทุกห้องในตารางเดียว แล้วสร้างใบแจ้งหนี้ทั้งเดือนในครั้งเดียว (ตรรกะอยู่ที่ lib/bulkInvoices.js)
@@ -15,7 +16,8 @@ const prevInput = 'w-16 border border-transparent bg-transparent rounded px-1 py
 const rateInput = 'w-full min-w-0 h-9 sm:h-10 border border-line bg-sand/50 rounded-xl px-3 mt-1 text-ink outline-none focus:border-secondary focus:bg-white'
 
 function BulkInvoiceForm({ tenants, rents, invoices, settings, onDone }) {
-    const [month, setMonth] = useState(currentMonth())
+    // บิลของเดือนไหนออกในเดือนถัดไป (เช่น 1 ต.ค. ออกบิลเดือน ก.ย.) จึงเริ่มที่เดือนที่แล้ว เปลี่ยนเดือนเองได้
+    const [month, setMonth] = useState(() => billMonthOf(currentMonth()))
     // อัตราที่ใช้กับทุกห้องในรอบนี้ (ค่าเริ่มต้นจากหน้าตั้งค่า แก้ได้)
     const [rates, setRates] = useState({ waterRate: String(settings.rateWater), elecRate: String(settings.rateElectric), commonFee: String(settings.commonFee) })
     // ค่าที่กรอก: { ห้อง: { waterPrev, waterCurr, elecPrev, elecCurr } }

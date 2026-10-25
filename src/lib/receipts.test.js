@@ -93,7 +93,15 @@ describe('buildRepairReceipt', () => {
             payment: { amount: '350.00', reviewed_at: '2026-10-20T10:00:00+07:00', receipt_no: 4, trans_ref: 'R1', auto_approved: false },
             repair: { room: '102', tenant_name: 'สมหญิง', problem: 'ก๊อกน้ำรั่ว' },
         })
-        expect(r).toMatchObject({ kind: 'repair', code: 'RC-2026-000004', room: '102', amount: 350, billTotal: 350, status: 'paid', description: 'ค่าซ่อม: ก๊อกน้ำรั่ว' })
+        expect(r).toMatchObject({ kind: 'repair', code: 'RC-2026-000004', room: '102', amount: 350, billTotal: 350, lateFee: 0, status: 'paid', description: 'ค่าซ่อม: ก๊อกน้ำรั่ว' })
+    })
+
+    it('จ่ายเกินกำหนด: แยกค่าซ่อมกับค่าปรับ (amount รวมค่าปรับแล้ว)', () => {
+        const r = buildRepairReceipt({
+            payment: { amount: '450.00', late_fee: '100.00', reviewed_at: '2026-10-20T10:00:00+07:00', receipt_no: 5 },
+            repair: { room: '102', tenant_name: 'สมหญิง', problem: 'ก๊อกน้ำรั่ว' },
+        })
+        expect(r).toMatchObject({ amount: 450, billTotal: 350, lateFee: 100, dueTotal: 450 })
     })
 })
 

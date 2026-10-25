@@ -49,10 +49,5 @@ export const legacyPeriods = {
     evening: '17:00-20:00',
 }
 
-// ค่าซ่อมที่ผู้เช่าจ่าย: ต้องชำระภายในกี่วันหลังซ่อมเสร็จ และค่าปรับต่อวันที่แจ้งผู้เช่า
-// (แสดงข้อความเท่านั้น ระบบไม่ได้บวกค่าปรับเข้ายอดชำระ ผู้ดูแลเรียกเก็บเอง)
-export const REPAIR_PAY_DAYS = 1
-export const REPAIR_LATE_FEE_PER_DAY = 50
-
 // จำนวนวันเวลาที่ผู้เช่าเลือกได้ (ตรงกับ repairs_slots_check ในฐานข้อมูล)
 export const MAX_SLOTS = 3

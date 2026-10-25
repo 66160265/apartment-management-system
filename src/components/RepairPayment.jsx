@@ -3,10 +3,9 @@ import { Link } from 'react-router-dom'
 import DownloadReceiptButton from './DownloadReceiptButton'
 import Icon from './Icon'
 import { PromptPayCard, SlipImage, VerifyBox } from './InvoiceParts'
-import { baht, formatDateTime, thaiDateOf } from '../lib/billing'
+import { baht, formatDateTime } from '../lib/billing'
 import { useRealtimeReload } from '../lib/realtime'
-import { REPAIR_LATE_FEE_PER_DAY, REPAIR_PAY_DAYS } from '../data/repairs'
-import { owesRepairCost, repairPayDueDate } from '../lib/repairPayments'
+import { owesRepairCost, repairAmountDue, repairDaysLate, repairLateFee } from '../lib/repairPayments'
 import { formatThaiDay } from '../lib/repairs'
 import { buildRepairReceipt } from '../lib/receipts'
 import { refreshRepairCosts, useRepairCosts } from '../lib/useRepairCosts'
@@ -15,6 +14,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useSettings } from '../lib/useSettings'
 
 // การจ่ายค่าซ่อมในระบบ (supabase/migrations/20261022000000_initial_schema.sql (ส่วน repair-payments)): ผู้เช่าโอนตามยอดค่าซ่อมแล้วแนบสลิป ผู้ดูแลตรวจและยืนยัน
+// เกินกำหนดชำระ (วันถัดจากวันที่ซ่อมเสร็จ) ยอดรวมค่าปรับตามหน้าตั้งค่า (supabase/migrations/20261026000000_repair_late_fee.sql)
 // เงื่อนไข: ซ่อมเสร็จแล้ว (done) ผู้ดูแลระบุให้ผู้เช่าเป็นผู้ชำระ (cost_payer = tenant) และมียอด (cost > 0)
 
 const MAX_SIZE = 5 * 1024 * 1024
@@ -103,7 +103,7 @@ function SlipPicker({ label, onSubmit }) {
 export function RepairCostBanner({ onOpen }) {
     const items = useRepairCosts()
     if (items.length === 0) return null
-    const total = items.reduce((sum, r) => sum + Number(r.cost), 0)
+    const total = items.reduce((sum, r) => sum + repairAmountDue(r), 0)
     return (
         <div role="alert" className="rounded-2xl bg-amber-100 ring-1 ring-amber-400 text-amber-950 p-4 flex flex-col gap-2">
             <div className="flex items-center gap-2 font-medium">
@@ -115,7 +115,7 @@ export function RepairCostBanner({ onOpen }) {
                     const label = (
                         <>
                             <span className="truncate">ห้อง {r.room} · {r.problem}</span>
-                            <span className="shrink-0 font-semibold tabular-nums text-amber-900">{baht(r.cost)} · ชำระ</span>
+                            <span className="shrink-0 font-semibold tabular-nums text-amber-900">{baht(repairAmountDue(r))}{repairLateFee(r) > 0 && ' (รวมค่าปรับ)'} · ชำระ</span>
                         </>
                     )
                     const cls = 'w-full flex items-center justify-between gap-3 text-left text-sm bg-white hover:bg-amber-50 text-ink border border-amber-300 shadow-sm rounded-xl px-3 py-2'
@@ -134,29 +134,22 @@ export function RepairCostBanner({ onOpen }) {
     )
 }
 
-// ค่าซ่อมของเรื่องเก่าที่รวมในใบแจ้งหนี้ค่าห้องไปแล้ว (ช่วงที่ระบบเก็บค่าซ่อมในใบแจ้งหนี้) แจ้งให้รู้ว่าไม่ต้องจ่ายแยก
-function BilledNotice({ repair }) {
-    return (
-        <p className="text-sm text-sky-900 bg-sky-50 ring-1 ring-sky-200 rounded-xl px-4 py-2.5">
-            ค่าซ่อม {baht(repair.cost)} รวมในใบแจ้งหนี้ค่าห้องแล้ว ไม่ต้องชำระแยก
-        </p>
-    )
-}
-
-// กำหนดชำระค่าซ่อมและค่าปรับ (ข้อความแจ้งเท่านั้น ยอดชำระในระบบไม่เปลี่ยน) เลยกำหนดแล้วเป็นสีแดงและบอกจำนวนวัน
+// กำหนดชำระค่าซ่อมและค่าปรับ เลยกำหนดแล้วเป็นสีแดง บอกจำนวนวันและค่าปรับที่รวมในยอดแล้ว (เรื่องที่ไม่มีวันครบกำหนดไม่แสดง)
 function RepairDueNotice({ repair }) {
-    const due = repairPayDueDate(repair, REPAIR_PAY_DAYS)
-    if (!due) return null
-    const today = thaiDateOf(new Date())
-    const lateDays = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${due}T00:00:00Z`)) / 86400000)
+    const due = repair.pay_due_date
+    const lateDays = repairDaysLate(repair)
+    if (!due || lateDays === null) return null
     const late = lateDays > 0
+    const rate = Number(repair.late_fee_rate ?? 0)
+    const fee = repairLateFee(repair)
+    const grace = Number(repair.late_fee_grace ?? 0)
     return (
         <p className={`text-sm rounded-xl px-4 py-2.5 flex items-start gap-2 ring-1 ${late ? 'text-red-800 bg-red-50 ring-red-200' : 'text-amber-900 bg-amber-50 ring-amber-200'}`}>
             <Icon name={late ? 'alert' : 'clock'} className="w-4 h-4 mt-0.5 shrink-0" />
             <span>
                 {late
-                    ? `เกินกำหนดชำระ (${formatThaiDay(due)}) มาแล้ว ${lateDays} วัน มีค่าปรับวันละ ${baht(REPAIR_LATE_FEE_PER_DAY)} กรุณาชำระโดยเร็ว`
-                    : `กรุณาชำระภายใน${lateDays === 0 ? 'วันนี้ ' : lateDays === -1 ? 'วันพรุ่งนี้ ' : ''}(${formatThaiDay(due)}) หากเกินกำหนดจะคิดค่าปรับวันละ ${baht(REPAIR_LATE_FEE_PER_DAY)}`}
+                    ? `เกินกำหนดชำระ (${formatThaiDay(due)}) มาแล้ว ${lateDays} วัน${fee > 0 ? ` ค่าปรับ ${baht(fee)} (วันละ ${baht(rate)}) รวมในยอดที่ต้องชำระแล้ว และเพิ่มขึ้นทุกวันจนกว่าจะชำระ` : ' กรุณาชำระโดยเร็ว'}`
+                    : `กรุณาชำระภายใน${lateDays === 0 ? 'วันนี้ ' : lateDays === -1 ? 'วันพรุ่งนี้ ' : ''}(${formatThaiDay(due)})${rate > 0 ? ` หากเกินกำหนดจะคิดค่าปรับวันละ ${baht(rate)}${grace > 0 ? ` (ผ่อนผัน ${grace} วัน)` : ''}` : ''}`}
             </span>
         </p>
     )
@@ -166,14 +159,16 @@ function RepairDueNotice({ repair }) {
 export function TenantRepairPayment({ repair, userId }) {
     const settings = useSettings()
     const [payments, refresh] = useRepairPayments(repair.id)
-    if (payments === null) return null
-    // เรื่องเก่าที่ค่าซ่อมเคยรวมในใบแจ้งหนี้ค่าห้องแล้ว ไม่ต้องจ่ายแยก
-    if (repair.invoice_id && payments.length === 0) return <BilledNotice repair={repair} />
+    if (payments === null) return null
     if (!owesRepairCost(repair) && payments.length === 0) return null
 
     const paid = payments.find((p) => p.status === 'paid')
     const reviewing = payments.find((p) => p.status === 'review')
     const lastRejected = [...payments].reverse().find((p) => p.status === 'rejected')
+    // ยอดที่ต้องโอนวันนี้ (ค่าซ่อม + ค่าปรับถ้าเกินกำหนด) ส่งสลิปแล้วใช้ยอดที่ระบบบันทึกไว้ตอนส่ง
+    const fee = repairLateFee(repair)
+    const due = repairAmountDue(repair)
+    const shown = paid ?? reviewing
 
     // ส่งสลิป: อัปโหลดรูปลงถัง slips (โฟลเดอร์ของตัวเอง) แล้วเรียก submit_repair_slip ส่งไม่สำเร็จให้ลบรูปทิ้ง
     const submitSlip = async (file) => {
@@ -194,7 +189,10 @@ export function TenantRepairPayment({ repair, userId }) {
 
     return (
         <div className="rounded-2xl border border-line bg-white p-4 flex flex-col gap-3">
-            <h3 className="font-medium text-primary-dark">ชำระค่าซ่อม {baht(repair.cost)}</h3>
+            <h3 className="font-medium text-primary-dark">ชำระค่าซ่อม {baht(shown ? shown.amount : due)}</h3>
+            {(shown ? Number(shown.late_fee) : fee) > 0 && (
+                <p className="text-xs text-muted -mt-2 tabular-nums">ค่าซ่อม {baht(repair.cost)} + ค่าปรับล่าช้า {baht(shown ? shown.late_fee : fee)}</p>
+            )}
 
             {paid ? (
                 <div className="text-sm text-emerald-800 bg-emerald-50 ring-1 ring-emerald-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
@@ -218,13 +216,13 @@ export function TenantRepairPayment({ repair, userId }) {
                             สลิปก่อนหน้าถูกปฏิเสธ: {lastRejected.reject_reason} — กรุณาโอนและแนบสลิปใหม่
                         </p>
                     )}
-                    <PromptPayCard invoice={{ total: repair.cost, paid_amount: 0 }} />
+                    <PromptPayCard invoice={{ total: due, paid_amount: 0 }} />
                     {settings.bankAccount && (
                         <p className="text-xs text-muted text-center">
                             หรือโอนเข้าบัญชี {settings.bankName} {settings.bankAccount} {settings.bankHolder && `· ${settings.bankHolder}`}
                         </p>
                     )}
-                    <SlipPicker label={`ส่งสลิปให้ตรวจสอบ · ${baht(repair.cost)}`} onSubmit={submitSlip} />
+                    <SlipPicker label={`ส่งสลิปให้ตรวจสอบ · ${baht(due)}`} onSubmit={submitSlip} />
                 </>
             )}
         </div>
@@ -240,14 +238,16 @@ export function AdminRepairPayment({ repair }) {
     const [rejecting, setRejecting] = useState(false)
     const [reason, setReason] = useState('')
 
-    if (payments === null) return null
-    // เรื่องเก่าที่ค่าซ่อมเคยรวมในใบแจ้งหนี้ค่าห้องแล้ว ไม่ต้องจ่ายแยก
-    if (repair.invoice_id && payments.length === 0) return <BilledNotice repair={repair} />
+    if (payments === null) return null
     if (!owesRepairCost(repair) && payments.length === 0) return null
 
     const paid = payments.find((p) => p.status === 'paid')
     const reviewing = payments.find((p) => p.status === 'review')
     const rejected = payments.filter((p) => p.status === 'rejected')
+    // ค่าปรับ: ส่งสลิปแล้วใช้ค่าที่บันทึกตอนส่ง ยังไม่ส่งคำนวณ ณ วันนี้
+    const shown = paid ?? reviewing
+    const fee = shown ? Number(shown.late_fee ?? 0) : repairLateFee(repair)
+    const lateDays = repairDaysLate(repair)
 
     const run = async (fn, params) => {
         setBusy(true)
@@ -268,6 +268,12 @@ export function AdminRepairPayment({ repair }) {
                     {paid ? 'ชำระแล้ว' : reviewing ? 'รอตรวจสลิป' : 'ยังไม่ชำระ'}
                 </span>
             </div>
+
+            {fee > 0 && (
+                <p className="text-sm text-red-800 bg-red-50 ring-1 ring-red-200 rounded-xl px-3 py-2 tabular-nums">
+                    {shown ? 'ยอดที่ผู้เช่าต้องโอนรวมค่าปรับล่าช้า' : `เกินกำหนดชำระ ${lateDays} วัน · ค่าปรับวันนี้`} {baht(fee)} · รวม {baht(shown ? shown.amount : repairAmountDue(repair))}
+                </p>
+            )}
 
             {paid && (
                 <div className="text-sm text-emerald-800 flex flex-wrap items-center justify-between gap-2">
@@ -321,7 +327,7 @@ export function AdminRepairPayment({ repair }) {
                             </>
                         )}
                     </div>
-                    <p className="text-xs text-muted">ยืนยันเมื่อยอดในสลิปเท่ากับยอดค่าซ่อมเท่านั้น ถ้ายอดไม่ตรง ให้ปฏิเสธพร้อมเหตุผล ผู้เช่าจะโอนและส่งสลิปใหม่</p>
+                    <p className="text-xs text-muted">ยืนยันเมื่อยอดในสลิปเท่ากับยอดที่ต้องชำระ ({baht(reviewing.amount)}) ถ้ายอดไม่ตรง ให้ปฏิเสธพร้อมเหตุผล ผู้เช่าจะโอนและส่งสลิปใหม่</p>
                 </>
             )}
 

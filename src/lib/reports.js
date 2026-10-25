@@ -1,5 +1,5 @@
 import { balanceOf, daysLate, thaiDateOf } from './billing'
-import { unpaidRepairCosts } from './repairPayments'
+import { repairAmountDue, unpaidRepairCosts } from './repairPayments'
 
 // รายงานและส่งออก CSV (หน้า pages/ReportsPage.jsx) ตรรกะล้วน ๆ ไม่ต่อฐานข้อมูล ทดสอบได้
 // รายรับนับตามวันที่ "ได้รับเงินจริง" (วันที่ยืนยันสลิป เวลาไทย) ไม่ใช่เดือนของใบแจ้งหนี้
@@ -262,7 +262,6 @@ export const invoiceColumns = [
     { header: 'ไฟ (หน่วย)', value: (i) => Math.max(0, i.elec_curr - i.elec_prev) },
     { header: 'ค่าไฟ', value: (i) => Math.max(0, i.elec_curr - i.elec_prev) * Number(i.elec_rate) },
     { header: 'ค่าส่วนกลาง', value: (i) => Number(i.common_fee) },
-    { header: 'ค่าซ่อม', value: (i) => Number(i.repair_fee ?? 0) },
     { header: 'ยอดบิล', value: (i) => Number(i.total) },
     { header: 'ค่าปรับ', value: (i) => (i.status === 'paid' ? Number(i.late_fee ?? 0) : '') },
     { header: 'รับแล้ว', value: (i) => Number(i.paid_amount ?? 0) },
@@ -290,7 +289,7 @@ export const monthlyColumns = [
     { header: 'ค่าซ่อมที่หอพักจ่าย', value: (r) => r.repairCost },
     { header: 'ค่าใช้จ่ายของหอพัก', value: (r) => r.expenseTotal },
     { header: 'คงเหลือ (รับเงินจริง − ค่าซ่อมที่หอพักจ่าย − ค่าใช้จ่ายของหอพัก)', value: (r) => r.net },
-    { header: 'ค่าปรับของใบที่ออกเดือนนี้ที่ชำระแล้ว', value: (r) => r.lateFees },
+    { header: 'ค่าปรับที่ชำระแล้ว (ของบิลเดือนนั้น)', value: (r) => r.lateFees },
     { header: 'ใบที่ยังค้าง', value: (r) => r.unpaidCount },
     { header: 'ยอดค้าง ณ วันนี้', value: (r) => r.outstanding },
 ]
@@ -385,13 +384,13 @@ export function expiringContracts(tenants, now = new Date(), withinDays = 90) {
 
 // สถิติแจ้งซ่อม (ไม่นับเรื่องที่ยกเลิก): จำนวนตามประเภท ห้องที่แจ้งบ่อย เวลาซ่อมเฉลี่ย (วันที่แจ้ง -> วันที่เสร็จ) และงานที่ค้างเกิน overdueDays วัน
 // ผู้เช่าที่ยังไม่ชำระค่าซ่อม (งานที่ผู้เช่าจ่าย ซ่อมเสร็จแล้ว ยังไม่ได้ส่งสลิป) payments = repair_payments (repair_id, status)
-// คืน { tenantCount, repairCount, total } นับผู้เช่าตาม user_id (ไม่มี = นับตามห้อง)
-export function unpaidRepairSummary(repairs, payments) {
+// คืน { tenantCount, repairCount, total } นับผู้เช่าตาม user_id (ไม่มี = นับตามห้อง) total รวมค่าปรับล่าช้า ณ วันนี้
+export function unpaidRepairSummary(repairs, payments, now = new Date()) {
     const list = unpaidRepairCosts(repairs, payments)
     return {
         tenantCount: new Set(list.map((r) => r.user_id ?? `room:${r.room}`)).size,
         repairCount: list.length,
-        total: sum(list, (r) => r.cost),
+        total: sum(list, (r) => repairAmountDue(r, now)),
     }
 }
 

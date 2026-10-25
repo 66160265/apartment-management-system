@@ -42,8 +42,8 @@ describe('unpaidRepairCosts', () => {
         expect(unpaidRepairCosts([owed('a')], [{ repair_id: 'a', status: 'rejected' }])).toHaveLength(1)
     })
 
-    it('เรื่องที่ไม่ต้องชำระ (หอพักรับผิดชอบ ยังไม่เสร็จ ไม่มียอด เคยรวมในใบแจ้งหนี้แล้ว) ไม่นับ', () => {
-        const repairs = [owed('a', { cost_payer: 'owner' }), owed('b', { status: 'in_progress' }), owed('c', { cost: 0 }), owed('d', { invoice_id: 'inv-1' })]
+    it('เรื่องที่ไม่ต้องชำระ (หอพักรับผิดชอบ ยังไม่เสร็จ ไม่มียอด) ไม่นับ', () => {
+        const repairs = [owed('a', { cost_payer: 'owner' }), owed('b', { status: 'in_progress' }), owed('c', { cost: 0 })]
         expect(unpaidRepairCosts(repairs, [])).toEqual([])
     })
 })
