@@ -228,7 +228,7 @@ function AnnouncementsPage() {
                 {items === null ? (
                     <SkeletonCards count={3} lines={3} />
                 ) : items === 'unavailable' ? (
-                    <p className="text-sm text-muted bg-white rounded-2xl shadow-card p-4 sm:p-5">ยังใช้ระบบประกาศไม่ได้ (ฐานข้อมูลยังไม่ได้เพิ่มส่วนประกาศ) กรุณาติดต่อผู้ดูแลระบบ</p>
+                    <p className="text-sm text-muted bg-white rounded-2xl shadow-card p-4 sm:p-5">ยังใช้ระบบประกาศไม่ได้ เพราะยังไม่ได้ติดตั้งฟีเจอร์นี้ในระบบหลังบ้าน กรุณาแจ้งผู้พัฒนาระบบ</p>
                 ) : items.length === 0 ? (
                     <div className="bg-white rounded-2xl shadow-card border border-line p-10 text-center text-muted flex flex-col items-center gap-2">
                         <Icon name="megaphone" className="w-8 h-8" />
