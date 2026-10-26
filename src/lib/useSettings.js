@@ -16,6 +16,7 @@ const columns = {
     bankAccount: 'bank_account',
     bankHolder: 'bank_holder',
     promptpayId: 'promptpay_id',
+    billingDay: 'billing_day',
     dueDay: 'due_day',
     rateWater: 'rate_water',
     rateElectric: 'rate_electric',
@@ -27,7 +28,7 @@ const columns = {
     slipQuota: 'slip_quota',
 }
 // ค่าที่เป็นตัวเลข (ต้องแปลงเป็น Number ทั้งตอนอ่านและบันทึก)
-const numeric = new Set(['dueDay', 'rateWater', 'rateElectric', 'commonFee', 'lateFeePerDay', 'lateFeeGraceDays'])
+const numeric = new Set(['billingDay', 'dueDay', 'rateWater', 'rateElectric', 'commonFee', 'lateFeePerDay', 'lateFeeGraceDays'])
 
 // ช่องตัวเลขที่เว้นว่างได้ ('' ในฟอร์ม / null ในฐานข้อมูล): เพดานค่าปรับ (ว่าง = ไม่จำกัด) และโควตาตรวจสลิป (ว่าง = ไม่ตั้ง)
 const nullableNumber = new Set(['lateFeeCap', 'slipQuota'])
@@ -83,6 +84,7 @@ export function loadSettings(force = false) {
 
 // คอลัมน์ของ app_settings ที่มาจากไฟล์ SQL รุ่นหลัง: ค่าเริ่มต้น (ใช้ตัดสินว่าข้ามได้ไหม) และไฟล์ที่ต้องรัน
 const optionalColumns = {
+    billing_day: { isDefault: (v) => v === undefined || Number(v) === 1, sql: 'supabase/migrations/20261027000000_billing_day.sql' },
     slip_verify_mode: { isDefault: (v) => v === undefined || v === 'off', sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-verify)' },
     late_fee_per_day: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
     late_fee_grace_days: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },

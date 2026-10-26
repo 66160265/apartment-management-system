@@ -252,7 +252,7 @@ function AdminDashboardPage() {
                     hintClassName="hidden sm:block"
                     title={`การเงินเดือน ${formatMonth(selectedMonth)}`}
                     action={<MonthPicker value={selectedMonth} onChange={setSelectedMonth} marked={monthsWithInvoices} />}
-                    hint={`เรียกเก็บและยังค้าง = บิลเดือน ${formatMonth(summary.billMonth)} (ออกเดือน ${formatMonth(selectedMonth)}) · ได้รับ = เงินที่รับจริงในเดือนนี้ (ค่าห้อง+ค่าซ่อม รวมค่าปรับ)`}
+                    hint={`เรียกเก็บและยังค้าง = ใบแจ้งหนี้ค่าเช่า น้ำ ไฟ ของเดือน ${formatMonth(summary.billMonth)} ที่ออกในเดือน ${formatMonth(selectedMonth)} · ได้รับแล้ว = เงินที่รับจริงในเดือน ${formatMonth(selectedMonth)} (ค่าห้อง ค่าซ่อม และค่าปรับ)`}
                 >
                     <dl className="flex flex-col gap-1.5 sm:gap-2">
                         <div className="flex items-baseline justify-between gap-3">

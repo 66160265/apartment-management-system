@@ -214,7 +214,7 @@ function ReportsPage() {
                             </div>
                             <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-5">
                                 <Stat label={`ใบแจ้งหนี้ บิลเดือน ${formatMonth(summary.billMonth)}`} value={`${summary.issuedCount} ใบ`} hint={`ออกเดือน ${formatMonth(month)} · เรียกเก็บ ${baht(summary.billed)}`} mobileHint={`เรียกเก็บ ${baht(summary.billed)}`} />
-                                <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.receivedTotal)} hint="ค่าห้อง ค่าน้ำไฟ และค่าซ่อมที่รวมในใบแจ้งหนี้" mobileHint={null} tone="text-emerald-700" />
+                                <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.receivedTotal)} hint="เงินที่ได้รับจริงในเดือนนี้: ค่าห้อง ค่าน้ำ-ไฟ ค่าซ่อมที่ผู้เช่าจ่าย และค่าปรับ" mobileHint={null} tone="text-emerald-700" />
                                 <Stat label={`ค้างของบิล ${formatMonth(summary.billMonth)}`} value={baht(summary.outstanding)} hint={`${summary.unpaidCount} ใบ ณ วันนี้`} tone={summary.outstanding > 0 ? 'text-amber-700' : 'text-primary-dark'} />
                                 <Stat label="รายจ่ายเดือนนี้" value={baht(summary.spent)} hint={<><span className="block">ค่าซ่อมที่หอพักจ่าย {baht(summary.repairCost)}</span><span className="block">ค่าใช้จ่ายของหอ {baht(summary.expenseTotal)}</span></>} mobileHint={`ซ่อม ${baht(summary.repairCost)} · หอ ${baht(summary.expenseTotal)}`} />
                                 <Stat className="col-span-2 lg:col-span-1" label="คงเหลือเดือนนี้" value={baht(summary.net)} hint="รับเงินจริง − รายจ่ายเดือนนี้" tone={summary.net < 0 ? 'text-red-700' : 'text-emerald-700'} />
@@ -232,7 +232,7 @@ function ReportsPage() {
                         <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-3">
                             <h2 className="font-medium text-primary-dark">แนวโน้ม 12 เดือนล่าสุด (ถึง {formatMonth(month)})</h2>
                             <TrendChart title="รายรับและรายจ่ายรายเดือน" rows={trend} />
-                            <p className="text-xs text-muted">รายรับ = เงินที่ได้รับจริงในเดือนนั้น · รายจ่าย = ค่าซ่อมที่หอพักจ่าย + ค่าใช้จ่ายของหอพักที่บันทึกไว้</p>
+                            <p className="text-xs text-muted">รายรับ = เงินที่ได้รับจริงในเดือนนั้น · รายจ่าย = ค่าซ่อมที่หอพักเป็นคนจ่าย + ค่าใช้จ่ายอื่นของหอพักที่บันทึกไว้ (ค่าไฟ ค่าน้ำ ฯลฯ)</p>
                         </section>
 
                         {/* ยอดค้างชำระ */}
@@ -406,7 +406,7 @@ function ReportsPage() {
                                 <h2 className="font-medium text-primary-dark">รายเดือนย้อนหลัง 12 เดือน</h2>
                                 <ExportButton onClick={exportMonthly}>สรุปรายเดือน (CSV)</ExportButton>
                             </div>
-                            <p className="-mt-1 text-xs text-muted">ใบที่ออก เรียกเก็บ และยังค้าง นับจากบิลของเดือนก่อนหน้า (บิลเดือนไหนออกในเดือนถัดไป เช่น แถว ต.ค. = บิลเดือน ก.ย.)</p>
+                            <p className="-mt-1 text-xs text-muted">คอลัมน์ "ใบที่ออก / เรียกเก็บ / ยังค้าง" นับตามเดือนที่ออกบิล: แถวเดือน ต.ค. คือใบแจ้งหนี้ค่าเช่า น้ำ ไฟ ของเดือน ก.ย. ที่ออกในเดือน ต.ค. ส่วน "รับเงิน" นับตามเดือนที่ได้รับเงินจริง</p>
                             <ul className="md:hidden flex flex-col gap-2">
                                 {rows12.map((r) => (
                                     <MobileCard
@@ -462,7 +462,7 @@ function ReportsPage() {
                                     </tbody>
                                 </table>
                             </div>
-                            <p className="text-xs text-muted">รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ใบเดือนก่อนที่เพิ่งได้รับเงินจะไปอยู่ในเดือนที่รับ ส่วนยอดค้างคือยอดของใบเดือนนั้นที่ยังไม่ชำระ ณ วันนี้</p>
+                            <p className="text-xs text-muted">"รับเงิน" นับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) เช่น ใบเดือน ก.ย. ที่ผู้เช่าจ่ายในเดือน ต.ค. จะนับเป็นรายรับของเดือน ต.ค. ส่วน "ยังค้าง" คือยอดของใบเดือนนั้นที่ยังไม่ได้จ่าย ณ วันนี้</p>
                         </section>
 
                         {/* สรุปรายปี */}
@@ -546,7 +546,7 @@ function ReportsPage() {
                                     </tfoot>
                                 </table>
                             </div>
-                            <p className="text-xs text-muted">นับถึงเดือนปัจจุบัน รายรับนับตามวันที่ได้รับเงินจริง ค่าปรับที่เก็บได้ทั้งปี {baht(yearly.totals.lateFees)}</p>
+                            <p className="text-xs text-muted">นับตั้งแต่ต้นปีถึงเดือนปัจจุบัน รายรับนับตามวันที่ได้รับเงินจริง · ค่าปรับที่เก็บได้ทั้งปี {baht(yearly.totals.lateFees)}</p>
                         </section>
 
                         {/* แนวโน้มการใช้น้ำ-ไฟย้อนหลัง (แยกสองกราฟ เพราะคนละหน่วยและคนละสเกล) */}

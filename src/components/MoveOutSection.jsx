@@ -184,7 +184,7 @@ function MoveOutSection({ tenant }) {
                     )}
 
                     <div className="flex flex-col gap-2">
-                        <h3 className="text-sm font-medium text-primary-dark">ใบแจ้งหนี้ที่ค้างชำระ (หักจากเงินประกันและบันทึกเป็นชำระแล้ว)</h3>
+                        <h3 className="text-sm font-medium text-primary-dark">ใบแจ้งหนี้ที่ยังค้าง (ติ๊กใบที่จะหักจากเงินประกัน ใบที่หักแล้วจะถือว่าชำระแล้ว)</h3>
                         {unpaid.length === 0 ? (
                             <p className="text-sm text-muted">ไม่มียอดค้างชำระ</p>
                         ) : (

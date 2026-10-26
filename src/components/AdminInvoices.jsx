@@ -256,7 +256,7 @@ function AdminInvoices() {
     if (bulk) {
         return (
             <>
-                <PageHeader title="สร้างใบแจ้งหนี้" subtitle="กรอกเลขมิเตอร์ปัจจุบันของห้องที่ต้องการ (ห้องเดียวหรือทุกห้องก็ได้) แล้วสร้างใบแจ้งหนี้พร้อมกัน" onBack={() => setBulk(false)} backLabel="กลับไปรายการใบแจ้งหนี้" />
+                <PageHeader title="สร้างใบแจ้งหนี้" subtitle="เลือกเดือนของบิล กรอกเลขมิเตอร์น้ำ-ไฟล่าสุดของแต่ละห้อง แล้วสร้างใบแจ้งหนี้ได้ทีเดียว (ห้องเดียวหรือทุกห้องก็ได้)" onBack={() => setBulk(false)} backLabel="กลับไปรายการใบแจ้งหนี้" />
                 <BulkInvoiceForm
                     tenants={tenants}
                     rents={rents}
