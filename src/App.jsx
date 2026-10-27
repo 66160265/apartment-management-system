@@ -17,7 +17,6 @@ const AdminUsersPage = lazy(pageLoaders.adminUsers)
 const AuditLogPage = lazy(pageLoaders.audit)
 const ReportsPage = lazy(pageLoaders.reports)
 const NotificationsPage = lazy(pageLoaders.notifications)
-const AnnouncementsPage = lazy(pageLoaders.announcements)
 const SettingsPage = lazy(pageLoaders.settings)
 
 // กำหนดเส้นทาง (route) ทั้งหมดของแอป: หน้า login, หน้าของแอดมิน, หน้าของผู้เช่า และหน้าที่ใช้ร่วมกัน
@@ -48,7 +47,6 @@ function App() {
           <Route path="/repairs" element={<RepairsPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
-          <Route path="/announcements" element={<AnnouncementsPage />} />
         </Route>
 
         {/* ที่อยู่ที่ไม่มีในระบบ กลับไปหน้า login (ถ้า login อยู่จะถูกส่งต่อไปหน้าแรกของสิทธิ์) */}

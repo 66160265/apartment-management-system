@@ -6,7 +6,6 @@ import { invoiceStatuses } from '../data/billing'
 import { balanceOf, baht, daysLate, formatDateTime, formatMonth, formatShortDate, isPartiallyPaid, lateFeeOf, paidOf } from '../lib/billing'
 import { invoiceDueDate, tenantUnpaid } from '../lib/dashboard'
 import { generatePromptPayQR } from '../lib/promptpay'
-import AnnouncementBanner from '../components/AnnouncementBanner'
 import { RepairCostBanner } from '../components/RepairPayment'
 import { useRealtimeReload } from '../lib/realtime'
 import { requestSlipVerify } from '../lib/slipVerify'
@@ -476,9 +475,6 @@ function UserDashboardPage() {
                             </p>
                         </div>
                     )}
-
-                    {/* ประกาศล่าสุดจากหอพัก (ภายใน 14 วัน) */}
-                    <AnnouncementBanner />
 
                     {/* การ์ดสรุปตัวเลข */}
                     {/* จอเล็กก็วาง 2 ใบคู่กัน (ตัวเลขเล็กลงและขอบในแคบลง) */}
