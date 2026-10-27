@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import { homeFor } from '../lib/auth'
 import { supabase } from '../lib/supabaseClient'
 import { useCurrentUser } from '../lib/useCurrentUser'
-import { SkeletonApp } from './Skeleton'
+import { SkeletonApp, SkeletonPage } from './Skeleton'
 
 // หน้าจอกำลังโหลดระหว่างตรวจสอบการเข้าสู่ระบบ
 function Loading() {
@@ -67,7 +67,8 @@ export function RequireAuth({ children }) {
 export function RequireRole({ role, children }) {
     const me = useCurrentUser()
 
-    if (!me) return <Loading />
+    // อยู่ใต้ Layout ที่มีเมนูข้างจริงแล้ว: แสดง skeleton เฉพาะเนื้อหา (ไม่ใช้ Loading ที่มีแถบเมนูข้างปลอมซ้อนอีกชั้น)
+    if (!me) return <SkeletonPage />
     // อ่านสิทธิ์ไม่ได้ (ไม่มีแถวใน profiles) ส่งกลับหน้า login กันวนไปมา
     if (!me.role) return <Navigate to="/" replace />
     if (me.role !== role) return <Navigate to={homeFor(me.role)} replace />
