@@ -93,11 +93,7 @@ drop policy if exists "tenants read own" on public.tenants;
 create policy "tenants read own" on public.tenants for select to authenticated
   using (user_id = auth.uid());
 
--- ข้อมูลห้องเริ่มต้น 20 ห้อง (ชั้น 1-4 ชั้นละ 5 ห้อง) ลบส่วนนี้ได้ถ้าไม่ต้องการ
-insert into public.rooms (number, floor, status, rent)
-select f || '0' || n, f, 'vacant', 4500
-from generate_series(1, 4) f, generate_series(1, 5) n
-on conflict (number) do nothing;
+-- ไม่ใส่ห้องเริ่มต้น: แอดมินตั้งจำนวนชั้นและห้องต่อชั้นเองที่หน้า "ห้องพัก" ตอนเปิดระบบครั้งแรก (components/RoomsSetup.jsx)
 
 -- ============================================================
 -- invoices
