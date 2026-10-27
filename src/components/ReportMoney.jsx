@@ -68,7 +68,7 @@ export function MonthlyHistory({ rows, onExport }) {
                 <h2 className="font-medium text-primary-dark">รายเดือนย้อนหลัง 12 เดือน</h2>
                 <ExportButton onClick={onExport}>สรุปรายเดือน (CSV)</ExportButton>
             </div>
-            <p className="-mt-1 text-xs text-muted">ใบที่ออก เรียกเก็บ และยังค้าง นับจากบิลของเดือนก่อนหน้า (บิลเดือนไหนออกในเดือนถัดไป เช่น แถว ต.ค. = บิลเดือน ก.ย.)</p>
+            <p className="-mt-1 text-xs text-muted">คอลัมน์ "ใบที่ออก / เรียกเก็บ / ยังค้าง" นับตามเดือนที่ออกบิล: แถวเดือน ต.ค. คือใบแจ้งหนี้ค่าเช่า น้ำ ไฟ ของเดือน ก.ย. ที่ออกในเดือน ต.ค. ส่วน "รับเงิน" นับตามเดือนที่ได้รับเงินจริง</p>
             <ul className="md:hidden flex flex-col gap-2">
                 {rows.map((r) => (
                     <MobileCard
@@ -124,7 +124,7 @@ export function MonthlyHistory({ rows, onExport }) {
                     </tbody>
                 </table>
             </div>
-            <p className="text-xs text-muted">รายรับนับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) ใบเดือนก่อนที่เพิ่งได้รับเงินจะไปอยู่ในเดือนที่รับ ส่วนยอดค้างคือยอดของใบเดือนนั้นที่ยังไม่ชำระ ณ วันนี้</p>
+            <p className="text-xs text-muted">"รับเงิน" นับตามวันที่ได้รับเงินจริง (วันที่ยืนยันสลิป) เช่น ใบเดือน ก.ย. ที่ผู้เช่าจ่ายในเดือน ต.ค. จะนับเป็นรายรับของเดือน ต.ค. ส่วน "ยังค้าง" คือยอดของใบเดือนนั้นที่ยังไม่ได้จ่าย ณ วันนี้</p>
         </section>
     )
 }
@@ -212,7 +212,7 @@ export function YearlySummary({ year, onYearChange, years, yearly, onExport }) {
                     </tfoot>
                 </table>
             </div>
-            <p className="text-xs text-muted">นับถึงเดือนปัจจุบัน รายรับนับตามวันที่ได้รับเงินจริง ค่าปรับที่เก็บได้ทั้งปี {baht(yearly.totals.lateFees)}</p>
+            <p className="text-xs text-muted">นับตั้งแต่ต้นปีถึงเดือนปัจจุบัน รายรับนับตามวันที่ได้รับเงินจริง · ค่าปรับที่เก็บได้ทั้งปี {baht(yearly.totals.lateFees)}</p>
         </section>
     )
 }

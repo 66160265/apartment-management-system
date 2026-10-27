@@ -55,6 +55,13 @@ describe('settingsToRow', () => {
         expect(settingsToRow({ lateFeeCap: 0 }).late_fee_cap).toBe(0)
     })
 
+    it('วันออกบิลเป็นตัวเลข ค่าเริ่มต้นวันที่ 1', () => {
+        expect(DEFAULT_SETTINGS.billingDay).toBe(1)
+        expect(settingsToRow({ billingDay: '10' })).toEqual({ billing_day: 10 })
+        expect(settingsFromRow({ billing_day: 25 }).billingDay).toBe(25)
+        expect(settingsFromRow(null).billingDay).toBe(1)
+    })
+
     it('ข้อความตัดช่องว่างหัวท้าย และข้ามฟิลด์ที่ไม่ได้ส่งมา', () => {
         expect(settingsToRow({ bankName: '  กสิกรไทย ' })).toEqual({ bank_name: 'กสิกรไทย' })
     })
@@ -89,6 +96,15 @@ describe('saveSettings เมื่อฐานข้อมูลยังไม
     it('เปิดโหมดตรวจสลิปแต่ยังไม่รัน SQL: แจ้งให้รัน ส่วน slip-verify ของไฟล์ migration', async () => {
         upsert.mockResolvedValueOnce({ error: missing('slip_verify_mode') })
         expect(await saveSettings({ ...DEFAULT_SETTINGS, slipVerifyMode: 'suggest' })).toContain('supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-verify)')
+    })
+
+    it('ยังไม่รัน SQL วันออกบิล: ค่าเริ่มต้น (วันที่ 1) ข้ามคอลัมน์แล้วบันทึกต่อได้ แต่ตั้งวันอื่นต้องแจ้งให้รัน SQL', async () => {
+        upsert.mockResolvedValueOnce({ error: missing('billing_day') }).mockResolvedValueOnce({ error: null })
+        expect(await saveSettings({ ...DEFAULT_SETTINGS, billingDay: 1 })).toBeNull()
+        expect(upsert.mock.calls.at(-1)[0]).not.toHaveProperty('billing_day')
+        upsert.mockReset()
+        upsert.mockResolvedValueOnce({ error: missing('billing_day') })
+        expect(await saveSettings({ ...DEFAULT_SETTINGS, billingDay: 10 })).toContain('20261027000000_billing_day.sql')
     })
 
     it('error อื่นที่ไม่เกี่ยวกับคอลัมน์ ส่งข้อความกลับตามจริง ไม่วนซ้ำ', async () => {

@@ -90,7 +90,7 @@ function ReportsPage() {
                         <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-3">
                             <h2 className="font-medium text-primary-dark">แนวโน้ม 12 เดือนล่าสุด (ถึง {formatMonth(month)})</h2>
                             <TrendChart title="รายรับและรายจ่ายรายเดือน" rows={trend} />
-                            <p className="text-xs text-muted">รายรับ = เงินที่ได้รับจริงในเดือนนั้น · รายจ่าย = ค่าซ่อมที่หอพักจ่าย + ค่าใช้จ่ายของหอพักที่บันทึกไว้</p>
+                            <p className="text-xs text-muted">รายรับ = เงินที่ได้รับจริงในเดือนนั้น · รายจ่าย = ค่าซ่อมที่หอพักเป็นคนจ่าย + ค่าใช้จ่ายอื่นของหอพักที่บันทึกไว้ (ค่าไฟ ค่าน้ำ ฯลฯ)</p>
                         </section>
 
                         <OutstandingSection outstanding={outstanding} onExport={exportOutstanding} />

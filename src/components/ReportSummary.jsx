@@ -28,7 +28,7 @@ export function MonthSummary({ month, onMonthChange, summary, onExportInvoices, 
             </div>
             <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 2xl:grid-cols-5">
                 <Stat label={`ใบแจ้งหนี้ บิลเดือน ${formatMonth(summary.billMonth)}`} value={`${summary.issuedCount} ใบ`} hint={`ออกเดือน ${formatMonth(month)} · เรียกเก็บ ${baht(summary.billed)}`} mobileHint={`เรียกเก็บ ${baht(summary.billed)}`} />
-                <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.receivedTotal)} hint="ค่าห้อง ค่าน้ำไฟ และค่าซ่อมที่รวมในใบแจ้งหนี้" mobileHint={null} tone="text-emerald-700" />
+                <Stat label="รับเงินจริงในเดือนนี้" value={baht(summary.receivedTotal)} hint="เงินที่ได้รับจริงในเดือนนี้: ค่าห้อง ค่าน้ำ-ไฟ ค่าซ่อมที่ผู้เช่าจ่าย และค่าปรับ" mobileHint={null} tone="text-emerald-700" />
                 <Stat label={`ค้างของบิล ${formatMonth(summary.billMonth)}`} value={baht(summary.outstanding)} hint={`${summary.unpaidCount} ใบ ณ วันนี้`} tone={summary.outstanding > 0 ? 'text-amber-700' : 'text-primary-dark'} />
                 <Stat label="รายจ่ายเดือนนี้" value={baht(summary.spent)} hint={<><span className="block">ค่าซ่อมที่หอพักจ่าย {baht(summary.repairCost)}</span><span className="block">ค่าใช้จ่ายของหอ {baht(summary.expenseTotal)}</span></>} mobileHint={`ซ่อม ${baht(summary.repairCost)} · หอ ${baht(summary.expenseTotal)}`} />
                 <Stat className="col-span-2 lg:col-span-1" label="คงเหลือเดือนนี้" value={baht(summary.net)} hint="รับเงินจริง − รายจ่ายเดือนนี้" tone={summary.net < 0 ? 'text-red-700' : 'text-emerald-700'} />

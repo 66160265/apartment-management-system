@@ -63,7 +63,7 @@ function ContractSection({ tenant, endDate, onRenewed }) {
             <div>
                 <h3 className="text-sm font-medium text-primary-dark mb-2">ประวัติการต่อสัญญา</h3>
                 {unavailable ? (
-                    <p className="text-sm text-muted">ยังดูประวัติไม่ได้ (ฐานข้อมูลยังไม่ได้เพิ่มส่วนต่อสัญญา)</p>
+                    <p className="text-sm text-muted">ยังดูประวัติไม่ได้ เพราะยังไม่ได้ติดตั้งฟีเจอร์ต่อสัญญาในระบบหลังบ้าน กรุณาแจ้งผู้พัฒนาระบบ</p>
                 ) : renewals === null ? (
                     <SkeletonList rows={2} avatar={false} className="-mx-4" />
                 ) : renewals.length === 0 ? (
