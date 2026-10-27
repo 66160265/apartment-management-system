@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import PageHeader from '../components/PageHeader'
+import RoomsSetup from '../components/RoomsSetup.jsx'
 import { baht } from '../lib/billing'
 import { useRealtimeReload } from '../lib/realtime'
+import { coolingTypes, roomFeatures } from '../lib/rooms'
 import { supabase } from '../lib/supabaseClient'
 import { SkeletonCardGrid } from '../components/Skeleton.jsx'
 
@@ -24,7 +26,7 @@ const summaryCards = [
     { value: 'maintenance', label: 'ปรับปรุง', icon: 'wrench', tone: 'bg-amber-50 text-amber-700' },
 ]
 
-// หน้าต่างแก้ไขห้องเดิม (ไม่มีเพิ่ม/ลบห้องในหน้าเว็บ)
+// หน้าต่างแก้ไขห้องเดิม (เพิ่มห้องทำได้ครั้งเดียวตอนตั้งค่าครั้งแรก ไม่มีเพิ่ม/ลบรายห้อง)
 function RoomModal({ title, initial, onSave, onCancel }) {
     // ค่าในฟอร์ม, error, กำลังบันทึก
     const [form, setForm] = useState(initial)
@@ -70,7 +72,7 @@ function RoomModal({ title, initial, onSave, onCancel }) {
                         <input type="number" min="1" className={inputClass} value={form.floor} onChange={set('floor')} />
                     </label>
                 </div>
-                {/* สถานะ ค่าเช่า และหมายเหตุ */}
+                {/* สถานะ ค่าเช่า และรายละเอียดเพิ่มเติม (คอลัมน์ note) */}
                 <label className="text-sm text-muted">
                     สถานะ
                     <select className={inputClass} value={form.status} onChange={set('status')}>
@@ -79,13 +81,38 @@ function RoomModal({ title, initial, onSave, onCancel }) {
                         ))}
                     </select>
                 </label>
+                {/* รายละเอียดห้อง: ชนิดห้องและเครื่องทำน้ำอุ่น */}
+                <div className="grid grid-cols-2 gap-4">
+                    <label className="text-sm text-muted">
+                        ชนิดห้อง
+                        <select className={inputClass} value={form.cooling ?? 'fan'} onChange={set('cooling')}>
+                            {Object.entries(coolingTypes).map(([value, label]) => (
+                                <option key={value} value={value}>{label}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="text-sm text-muted">
+                        เครื่องทำน้ำอุ่น
+                        <select
+                            className={inputClass}
+                            value={form.water_heater ? 'yes' : 'no'}
+                            onChange={(e) => {
+                                setForm({ ...form, water_heater: e.target.value === 'yes' })
+                                setError('')
+                            }}
+                        >
+                            <option value="no">ไม่มี</option>
+                            <option value="yes">มี</option>
+                        </select>
+                    </label>
+                </div>
                 <label className="text-sm text-muted">
                     ค่าเช่า/เดือน (บาท)
                     <input type="number" min="0" className={inputClass} value={form.rent} onChange={set('rent')} />
                 </label>
                 <label className="text-sm text-muted">
-                    หมายเหตุ
-                    <textarea rows="3" className={inputClass} value={form.note} onChange={set('note')} />
+                    รายละเอียดเพิ่มเติม
+                    <textarea rows="3" className={inputClass} placeholder="เช่น มีตู้เย็น ไมโครเวฟ" value={form.note} onChange={set('note')} />
                 </label>
                 {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
                 <div className="flex justify-end gap-2">
@@ -166,6 +193,16 @@ function RoomsPage() {
         setModal(null)
     }
 
+    // ตั้งค่าห้องครั้งแรก: สร้างห้องทั้งหมดในครั้งเดียว (เลขห้องซ้ำกับที่มีอยู่จะถูกฐานข้อมูลปฏิเสธ)
+    const handleSetup = async (newRooms) => {
+        const { error } = await supabase.from('rooms').insert(newRooms)
+        if (error) return `สร้างห้องไม่สำเร็จ: ${error.message}`
+        await load()
+    }
+
+    // ยังไม่มีห้องเลย (ติดตั้งใหม่): แสดงฟอร์มตั้งค่าแทนรายการห้อง
+    const needsSetup = !loading && !loadError && rooms.length === 0
+
     return (
         <>
             <PageHeader
@@ -174,8 +211,10 @@ function RoomsPage() {
             />
 
             <div className="px-4 sm:px-6 pb-10 flex flex-col gap-4 sm:gap-6">
+                {needsSetup && <RoomsSetup onCreate={handleSetup} />}
+
                 {/* การ์ดสรุปจำนวนห้องตามสถานะ (ทำหน้าที่เป็นตัวกรอง) */}
-                <div className="grid grid-cols-4 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
+                {!needsSetup && <div className="grid grid-cols-4 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4">
                     {summaryCards.map((c) => {
                         const active = filter === c.value
                         return (
@@ -196,10 +235,10 @@ function RoomsPage() {
                             </button>
                         )
                     })}
-                </div>
+                </div>}
 
                 {/* ข้อความกำลังโหลด / error / ไม่มีห้อง */}
-                {(loading || loadError || visible.length === 0) && (
+                {!needsSetup && (loading || loadError || visible.length === 0) && (
                     <div className={`bg-white rounded-2xl shadow-card py-14 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>
                         {loading ? <SkeletonCardGrid count={8} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 p-4 text-left" /> : loadError || 'ไม่พบห้องในหมวดนี้'}
                     </div>
@@ -235,6 +274,11 @@ function RoomsPage() {
                                             {tenant || <span className="text-muted">{room.status === 'maintenance' ? 'กำลังปรับปรุง' : 'ยังไม่มีผู้เช่า'}</span>}
                                         </div>
                                         <div className="mt-1 text-xs text-muted tabular-nums">{baht(room.rent)} / เดือน</div>
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {roomFeatures(room).map((f) => (
+                                                <span key={f} className="px-2 py-0.5 rounded-md bg-sand text-[11px] text-muted">{f}</span>
+                                            ))}
+                                        </div>
                                     </button>
                                 )
                             })}
