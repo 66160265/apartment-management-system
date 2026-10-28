@@ -67,6 +67,8 @@ function summaryBase(data, month, now) {
         repairTenantCost: sum(tenantRepairsDone, (r) => r.cost),
         // ค่าใช้จ่ายของหอพักที่บันทึกไว้ของเดือนนี้
         expenseTotal: sum((data.expenses ?? []).filter((e) => e.month === month), (e) => e.amount),
+        // โอนคืนยอดที่ผู้เช่าชำระเกิน ที่โอนคืนจริงในเดือนนี้
+        refunded: sum(data.invoices.filter((i) => i.refund_status === 'done' && monthOf(i.refunded_at) === month), (i) => i.refund_amount),
         // ยอดค้างของใบที่ออกเดือนนี้ ณ ตอนนี้ (รวมค่าปรับของวันนี้)
         outstanding: sum(unpaid, (i) => balanceOf(i, now)),
         unpaidCount: unpaid.length,
@@ -289,6 +291,7 @@ export const monthlyColumns = [
     { header: 'ค่าซ่อมที่หอพักจ่าย', value: (r) => r.repairCost },
     { header: 'ค่าใช้จ่ายของหอพัก', value: (r) => r.expenseTotal },
     { header: 'คงเหลือ (รับเงินจริง − ค่าซ่อมที่หอพักจ่าย − ค่าใช้จ่ายของหอพัก)', value: (r) => r.net },
+    { header: 'โอนคืนยอดเกิน', value: (r) => r.refunded },
     { header: 'ค่าปรับที่ชำระแล้ว (ของบิลเดือนนั้น)', value: (r) => r.lateFees },
     { header: 'ใบที่ยังค้าง', value: (r) => r.unpaidCount },
     { header: 'ยอดค้าง ณ วันนี้', value: (r) => r.outstanding },
@@ -322,6 +325,12 @@ export const paymentColumns = (invoiceById) => [
 // ---- การย้ายออกและเงินประกัน (supabase/migrations/20261022000000_initial_schema.sql (ส่วน move-out)) ----
 
 const refundLabels = { pending: 'รอคืนเงิน', done: 'คืนแล้ว', none: 'ไม่มียอดคืน' }
+
+// ยอดที่ผู้เช่าโอนเกินและยังรอโอนคืน (ใบแจ้งหนี้ที่สถานะโอนคืนเป็นรอโอนคืน)
+export const pendingOverpayRefund = (invoices) => sum(invoices.filter((i) => i.refund_status === 'pending'), (i) => i.refund_amount)
+
+// เงินประกันที่ยังต้องคืนผู้เช่า (บันทึกย้ายออกที่สถานะรอคืน)
+export const pendingDepositRefund = (moveOuts) => sum(moveOuts.filter((m) => m.refund_status === 'pending'), (m) => m.refund_amount)
 
 // ยอดที่ผู้เช่าต้องจ่ายเพิ่มเพราะหักเกินเงินประกัน (ระบบไม่ติดตามต่อ ใช้เตือนให้เรียกเก็บนอกระบบ)
 export const owedFromMoveOuts = (moveOuts) => sum(moveOuts, (m) => m.owed_amount)
