@@ -157,9 +157,6 @@ function ReceiptDocument({ receipt, tenant, floor, settings }) {
                         )}
                         {receipt.kind === 'repair' && (
                             <>
-                                {/* จ่ายเกินกำหนด: แยกค่าซ่อมกับค่าปรับ */}
-                                {receipt.lateFee > 0 && <SummaryRow label="ค่าซ่อม" value={baht(receipt.billTotal)} />}
-                                {receipt.lateFee > 0 && <SummaryRow label="ค่าปรับชำระล่าช้า" value={baht(receipt.lateFee)} />}
                                 <SummaryRow label="รวมรับชำระ" value={baht(receipt.amount)} strong color={C.green} />
                             </>
                         )}

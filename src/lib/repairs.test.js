@@ -214,37 +214,3 @@ describe('ข้อมูลช่างและการเรียงรา�
     })
 })
 
-describe('ค่าปรับชำระค่าซ่อมล่าช้า', () => {
-    // ครบกำหนด 26 ต.ค. ปรับวันละ 50
-    const repair = { cost: 800, pay_due_date: '2026-10-26', late_fee_rate: 50, late_fee_grace: 0, late_fee_cap: null }
-    // เที่ยงวันเวลาไทยของวันที่ d
-    const at = (d) => new Date(`${d}T12:00:00+07:00`)
-
-    it('ยังไม่เกินกำหนด = ไม่มีค่าปรับ ยอดเท่าค่าซ่อม', async () => {
-        const { repairLateFee, repairAmountDue, repairDaysLate } = await import('./repairPayments')
-        expect(repairLateFee(repair, at('2026-10-26'))).toBe(0)
-        expect(repairAmountDue(repair, at('2026-10-26'))).toBe(800)
-        expect(repairDaysLate(repair, at('2026-10-25'))).toBe(-1)
-        expect(repairDaysLate(repair, at('2026-10-26'))).toBe(0)
-    })
-
-    it('เกินกำหนด 3 วัน = ปรับ 150 ยอดรวม 950', async () => {
-        const { repairLateFee, repairAmountDue, repairDaysLate } = await import('./repairPayments')
-        expect(repairDaysLate(repair, at('2026-10-29'))).toBe(3)
-        expect(repairLateFee(repair, at('2026-10-29'))).toBe(150)
-        expect(repairAmountDue(repair, at('2026-10-29'))).toBe(950)
-    })
-
-    it('ใช้วันผ่อนผันและเพดานเหมือนใบแจ้งหนี้', async () => {
-        const { repairLateFee } = await import('./repairPayments')
-        expect(repairLateFee({ ...repair, late_fee_grace: 2 }, at('2026-10-29'))).toBe(50)
-        expect(repairLateFee({ ...repair, late_fee_cap: 100 }, at('2026-11-10'))).toBe(100)
-    })
-
-    it('เรื่องเก่าที่ไม่มีค่าปรับ (อัตรา 0 หรือไม่มีวันครบกำหนด) = 0', async () => {
-        const { repairLateFee, repairDaysLate } = await import('./repairPayments')
-        expect(repairLateFee({ ...repair, late_fee_rate: 0 }, at('2026-11-10'))).toBe(0)
-        expect(repairLateFee({ cost: 800 }, at('2026-11-10'))).toBe(0)
-        expect(repairDaysLate({ cost: 800 }, at('2026-11-10'))).toBe(null)
-    })
-})

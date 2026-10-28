@@ -1,5 +1,5 @@
 import { balanceOf, daysLate, thaiDateOf } from './billing'
-import { repairAmountDue, unpaidRepairCosts } from './repairPayments'
+import { unpaidRepairCosts } from './repairPayments'
 
 // รายงานและส่งออก CSV (หน้า pages/ReportsPage.jsx) ตรรกะล้วน ๆ ไม่ต่อฐานข้อมูล ทดสอบได้
 // รายรับนับตามวันที่ "ได้รับเงินจริง" (วันที่ยืนยันสลิป เวลาไทย) ไม่ใช่เดือนของใบแจ้งหนี้
@@ -33,7 +33,7 @@ const sum = (list, pick) => Math.round(list.reduce((acc, x) => acc + Number(pick
 //        repairs: เรื่องแจ้งซ่อม ใช้ทำสถิติยอดซ่อม, expenses: ค่าใช้จ่ายของหอพัก ไม่ส่งมา = ไม่มี)
 export function monthlySummary(data, month, now = new Date()) {
     const base = summaryBase(data, month, now)
-    // รับเงินรวม = ใบแจ้งหนี้ (ค่าห้อง ค่าน้ำไฟ ค่าปรับ และค่าซ่อมที่รวมในใบ) + สลิปค่าซ่อมที่เคยโอนแยกแบบเดิม
+    // รับเงินรวม = ใบแจ้งหนี้ (ค่าห้อง ค่าน้ำไฟ ค่าปรับ) + ค่าซ่อมที่ผู้เช่าโอนแยก
     const receivedTotal = Math.round((base.received + base.repairReceived) * 100) / 100
     // รายจ่าย = ค่าซ่อมที่หอพักจ่าย + ค่าใช้จ่ายของหอพักของเดือนนี้, คงเหลือ = เงินที่ได้รับจริง − รายจ่าย
     const spent = Math.round((base.repairCost + base.expenseTotal) * 100) / 100
@@ -384,13 +384,13 @@ export function expiringContracts(tenants, now = new Date(), withinDays = 90) {
 
 // สถิติแจ้งซ่อม (ไม่นับเรื่องที่ยกเลิก): จำนวนตามประเภท ห้องที่แจ้งบ่อย เวลาซ่อมเฉลี่ย (วันที่แจ้ง -> วันที่เสร็จ) และงานที่ค้างเกิน overdueDays วัน
 // ผู้เช่าที่ยังไม่ชำระค่าซ่อม (งานที่ผู้เช่าจ่าย ซ่อมเสร็จแล้ว ยังไม่ได้ส่งสลิป) payments = repair_payments (repair_id, status)
-// คืน { tenantCount, repairCount, total } นับผู้เช่าตาม user_id (ไม่มี = นับตามห้อง) total รวมค่าปรับล่าช้า ณ วันนี้
-export function unpaidRepairSummary(repairs, payments, now = new Date()) {
+// คืน { tenantCount, repairCount, total } นับผู้เช่าตาม user_id (ไม่มี = นับตามห้อง)
+export function unpaidRepairSummary(repairs, payments) {
     const list = unpaidRepairCosts(repairs, payments)
     return {
         tenantCount: new Set(list.map((r) => r.user_id ?? `room:${r.room}`)).size,
         repairCount: list.length,
-        total: sum(list, (r) => repairAmountDue(r, now)),
+        total: sum(list, (r) => r.cost),
     }
 }
 
