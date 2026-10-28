@@ -19,7 +19,7 @@ const fetchAll = () =>
         // ตารางนี้มีเมื่อรัน ส่วน move-out ของไฟล์ migration แล้ว
         selectAll(() => supabase.from('move_outs').select('*').order('move_out_date', { ascending: false }).order('id')),
         // เรื่องแจ้งซ่อม (ใช้ทำสถิติยอดซ่อม)
-        selectAll(() => supabase.from('repairs').select('id, room, user_id, problem, category, status, cost, cost_payer, created_at, completed_at, pay_due_date, late_fee_rate, late_fee_grace, late_fee_cap').order('id')),
+        selectAll(() => supabase.from('repairs').select('id, room, user_id, problem, category, status, cost, cost_payer, created_at, completed_at').order('id')),
         // ผู้เช่าปัจจุบัน (ใช้ดูสัญญาที่ใกล้หมด)
         supabase.from('tenants').select('room, name, end_date'),
         // ค่าใช้จ่ายของหอพัก (ตารางมีเมื่อรัน migration 20261025000000 แล้ว ยังไม่มี = ไม่มีค่าใช้จ่าย)

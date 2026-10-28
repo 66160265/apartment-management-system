@@ -61,9 +61,8 @@ export function buildRepairReceipt({ payment, repair }) {
         reference: '',
         amount: round2(payment.amount),
         cumulative: round2(payment.amount),
-        // ยอดที่ชำระ = ค่าซ่อม + ค่าปรับล่าช้า (ถ้ามี)
-        billTotal: round2(Number(payment.amount) - Number(payment.late_fee ?? 0)),
-        lateFee: round2(payment.late_fee ?? 0),
+        billTotal: round2(payment.amount),
+        lateFee: 0,
         dueTotal: round2(payment.amount),
         installment: null,
         status: 'paid',
