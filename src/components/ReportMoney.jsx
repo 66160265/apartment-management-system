@@ -82,17 +82,18 @@ export function MonthlyHistory({ rows, onExport }) {
                             ['ยังค้าง', baht(r.outstanding), r.outstanding > 0 ? 'text-amber-700 font-medium' : 'text-ink'],
                             ['ซ่อม (หอจ่าย)', baht(r.repairCost)],
                             ['ค่าใช้จ่ายหอ', baht(r.expenseTotal)],
+                            ['โอนคืน', baht(r.refunded)],
                         ]}
                     />
                 ))}
             </ul>
             <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-sm min-w-[960px] table-fixed">
-                    {/* ความกว้างคอลัมน์คงที่: เดือนและจำนวนใบแคบ ช่องเงิน 7 ช่องกว้างเท่ากัน */}
+                <table className="w-full text-sm min-w-[1040px] table-fixed">
+                    {/* ความกว้างคอลัมน์คงที่: เดือนและจำนวนใบแคบ ช่องเงิน 8 ช่องกว้างเท่ากัน */}
                     <colgroup>
                         <col className="w-[10%]" />
                         <col className="w-[7%]" />
-                        {Array.from({ length: 7 }, (_, i) => <col key={i} className="w-[11.86%]" />)}
+                        {Array.from({ length: 8 }, (_, i) => <col key={i} className="w-[10.375%]" />)}
                     </colgroup>
                     <thead>
                         <tr className="text-left text-muted border-b border-line">
@@ -103,6 +104,7 @@ export function MonthlyHistory({ rows, onExport }) {
                             <th className="py-2 px-3 text-right">ค่าซ่อม (ผู้เช่าจ่าย)</th>
                             <th className="py-2 px-3 text-right">ค่าซ่อม (หอพักจ่าย)</th>
                             <th className="py-2 px-3 text-right">ค่าใช้จ่ายหอ</th>
+                            <th className="py-2 px-3 text-right">โอนคืน</th>
                             <th className="py-2 px-3 text-right">คงเหลือ</th>
                             <th className="py-2 pl-3 text-right">ยังค้าง</th>
                         </tr>
@@ -117,6 +119,7 @@ export function MonthlyHistory({ rows, onExport }) {
                                 <td className="py-2 px-3 text-right tabular-nums">{baht(r.repairTenantCost)}</td>
                                 <td className="py-2 px-3 text-right tabular-nums">{baht(r.repairCost)}</td>
                                 <td className="py-2 px-3 text-right tabular-nums">{baht(r.expenseTotal)}</td>
+                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.refunded)}</td>
                                 <td className={`py-2 px-3 text-right tabular-nums font-medium ${r.net < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{baht(r.net)}</td>
                                 <td className={`py-2 pl-3 text-right tabular-nums ${r.outstanding > 0 ? 'text-amber-700 font-medium' : ''}`}>{baht(r.outstanding)}</td>
                             </tr>
@@ -159,6 +162,7 @@ export function YearlySummary({ year, onYearChange, years, yearly, onExport }) {
                             ['รายจ่ายรวม', baht(r.spent)],
                             ['ซ่อม (หอจ่าย)', baht(r.repairCost)],
                             ['ค่าใช้จ่ายหอ', baht(r.expenseTotal)],
+                            ['โอนคืน', baht(r.refunded)],
                         ]}
                     />
                 ))}
@@ -195,6 +199,7 @@ export function YearlySummary({ year, onYearChange, years, yearly, onExport }) {
                                 <td className="py-2 px-3 text-right tabular-nums text-emerald-700">{baht(r.receivedTotal)}</td>
                                 <td className="py-2 px-3 text-right tabular-nums">{baht(r.repairCost)}</td>
                                 <td className="py-2 px-3 text-right tabular-nums">{baht(r.expenseTotal)}</td>
+                                <td className="py-2 px-3 text-right tabular-nums">{baht(r.refunded)}</td>
                                 <td className="py-2 px-3 text-right tabular-nums">{baht(r.spent)}</td>
                                 <td className={`py-2 pl-3 text-right tabular-nums font-medium ${r.net < 0 ? 'text-red-700' : 'text-emerald-700'}`}>{baht(r.net)}</td>
                             </tr>

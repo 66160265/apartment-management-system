@@ -4,7 +4,7 @@ import { currentMonth, formatMonth, thaiDateOf } from '../lib/billing'
 import { downloadCsv } from '../lib/downloadCsv'
 import {
     csvFileName, expiringContracts, invoiceColumns, monthlyColumns, monthlyRows, monthlySummary, monthOf, moveOutColumns, occupancy, outstandingColumns, outstandingRows,
-    owedFromMoveOuts, paymentColumns, recentMonths, repairStats, reportYears, roomUsage, toCsv, trendRows, unpaidRepairSummary, utilityColumns, utilityHistory, utilityStats, vacancyRows,
+    owedFromMoveOuts, paymentColumns, pendingDepositRefund, pendingOverpayRefund, recentMonths, repairStats, reportYears, roomUsage, toCsv, trendRows, unpaidRepairSummary, utilityColumns, utilityHistory, utilityStats, vacancyRows,
     yearlyColumns, yearlySummary,
 } from '../lib/reports'
 import { useReportData } from '../lib/useReportData'
@@ -34,6 +34,9 @@ function ReportsPage() {
     const outstanding = useMemo(() => outstandingRows(data.invoices, now, dueDay), [data.invoices, now, dueDay])
     const outstandingTotal = outstanding.reduce((acc, r) => acc + r.balance, 0)
     const owedAfterMoveOut = owedFromMoveOuts(data.moveOuts)
+    // ยอดรอโอนคืนผู้เช่า: โอนค่าห้องเกิน และเงินประกันตอนย้ายออก
+    const pendingRefund = pendingOverpayRefund(data.invoices)
+    const depositToRefund = pendingDepositRefund(data.moveOuts)
     // ห้องว่าง (ว่างมากี่วัน) สัญญาที่หมดใน 90 วัน และสถิติแจ้งซ่อม
     const vacancies = useMemo(() => vacancyRows(data.rooms, data.moveOuts, now), [data.rooms, data.moveOuts, now])
     const expiring = useMemo(() => expiringContracts(data.tenants, now, 90), [data.tenants, now])
@@ -80,7 +83,7 @@ function ReportsPage() {
                     <div className="flex flex-col gap-4 sm:gap-6"><SkeletonCardGrid count={4} /><SkeletonTable rows={5} cols={5} /></div>
                 ) : (
                     <>
-                        <OccupancyStats occ={occ} outstandingCount={outstanding.length} outstandingTotal={outstandingTotal} />
+                        <OccupancyStats occ={occ} outstandingCount={outstanding.length} outstandingTotal={outstandingTotal} pendingRefund={pendingRefund} depositToRefund={depositToRefund} />
                         <MonthSummary month={month} onMonthChange={setMonth} summary={summary} onExportInvoices={exportInvoices} onExportPayments={exportPayments} />
 
                         {/* ค่าใช้จ่ายของหอพักของเดือนที่เลือก */}
