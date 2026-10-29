@@ -3,7 +3,7 @@ import { DEFAULT_SETTINGS } from '../data/billing'
 import { useRealtimeReload } from './realtime'
 import { supabase } from './supabaseClient'
 
-// ตั้งค่าหอพักจากตาราง app_settings แถวเดียว (id = 1) ใช้ค่าเริ่มต้นถ้ายังไม่มีตาราง/ยังไม่ได้ตั้งค่า
+// ตั้งค่าหอพักจากตาราง app_settings แถวเดียว (id = 1) ใช้ค่าเริ่มต้นถ้ายังไม่ได้ตั้งค่า
 // เก็บไว้ระดับโมดูลให้ทุกหน้าใช้ร่วมกัน ไม่ต้องดึงซ้ำทุกครั้งที่เปลี่ยนหน้า
 
 const columns = {
@@ -82,30 +82,10 @@ export function loadSettings(force = false) {
     return pending
 }
 
-// คอลัมน์ของ app_settings ที่มาจากไฟล์ SQL รุ่นหลัง: ค่าเริ่มต้น (ใช้ตัดสินว่าข้ามได้ไหม) และไฟล์ที่ต้องรัน
-const optionalColumns = {
-    billing_day: { isDefault: (v) => v === undefined || Number(v) === 1, sql: 'supabase/migrations/20261027000000_billing_day.sql' },
-    slip_verify_mode: { isDefault: (v) => v === undefined || v === 'off', sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-verify)' },
-    late_fee_per_day: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
-    late_fee_grace_days: { isDefault: (v) => v === undefined || Number(v) === 0, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
-    late_fee_cap: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)' },
-    slip_quota: { isDefault: (v) => v === undefined || v === null, sql: 'supabase/migrations/20261022000000_initial_schema.sql (ส่วน slip-quota)' },
-}
-
 // บันทึกการตั้งค่า (เฉพาะแอดมิน) คืนค่า null เมื่อสำเร็จ หรือข้อความ error
 export async function saveSettings(values) {
     const row = { id: 1, ...settingsToRow(values), updated_at: new Date().toISOString() }
-    let { error } = await supabase.from('app_settings').upsert(row)
-    // คอลัมน์ที่เพิ่มทีหลัง (ต้องรัน SQL ก่อน) ถ้ายังไม่มีในฐานข้อมูลและค่าที่บันทึกเป็นค่าเริ่มต้น ให้ข้ามคอลัมน์นั้นแล้วบันทึกที่เหลือต่อ
-    // ถ้าผู้ใช้ตั้งค่าที่ไม่ใช่ค่าเริ่มต้น (เช่น เปิดโหมดตรวจสลิป ตั้งค่าปรับ) ให้แจ้งว่าต้องรัน SQL ก่อน ไม่บันทึกแบบเงียบ ๆ
-    for (let attempt = 0; error && attempt < 5; attempt++) {
-        const column = Object.keys(optionalColumns).find((c) => error.message.includes(c))
-        if (!column) break
-        const { isDefault, sql } = optionalColumns[column]
-        if (!isDefault(row[column])) return `บันทึกไม่ได้ เพราะฐานข้อมูลยังไม่มีคอลัมน์ ${column} กรุณารัน ${sql} ใน SQL Editor ก่อน`
-        delete row[column]
-        ;({ error } = await supabase.from('app_settings').upsert(row))
-    }
+    const { error } = await supabase.from('app_settings').upsert(row)
     if (error) return `บันทึกไม่สำเร็จ: ${error.message}`
     // บันทึกสำเร็จ: อัปเดตแคชและแจ้งทุกหน้าที่ใช้ useSettings ให้แสดงค่าใหม่ทันที
     cached = { ...DEFAULT_SETTINGS, ...values }

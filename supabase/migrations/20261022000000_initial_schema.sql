@@ -13,8 +13,6 @@
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  email text,
-  full_name text,
   role text not null default 'user' check (role in ('admin', 'user')),
   created_at timestamptz default now()
 );
@@ -212,15 +210,12 @@ alter table public.repairs add constraint repairs_status_check
   check (status in ('pending', 'in_progress', 'done'));
 
 alter table public.repairs
-  -- ประเภทงาน และความเร่งด่วน (ฉุกเฉิน = ช่างเข้าได้ทันทีโดยไม่ต้องรอนัด เช่น น้ำรั่วหนัก ไฟช็อต)
+  -- ประเภทงาน
   add column if not exists category text not null default 'other',
-  add column if not exists urgency text not null default 'normal',
-  -- เบอร์ที่ช่างโทรหาได้ และอนุญาตให้เข้าห้องตอนผู้เช่าไม่อยู่หรือไม่
-  add column if not exists contact_phone text not null default '',
+  -- อนุญาตให้เข้าห้องตอนผู้เช่าไม่อยู่หรือไม่
   add column if not exists allow_entry boolean not null default false,
   -- ช่วงเวลาที่ผู้เช่าสะดวก: [{"date": "2026-10-20", "period": "13:00-15:30"}, ...] ไม่เกิน 3 ช่วง
   add column if not exists available_slots jsonb not null default '[]'::jsonb,
-  add column if not exists availability_note text not null default '',
   -- นัดหมาย: วัน + ช่วงเวลา, proposed = แอดมินเสนอ รอผู้เช่ายืนยัน, confirmed = ยืนยันแล้ว
   add column if not exists appointment_date date,
   add column if not exists appointment_period text,
@@ -238,15 +233,9 @@ alter table public.repairs
 alter table public.repairs drop constraint if exists repairs_category_check;
 alter table public.repairs add constraint repairs_category_check
   check (category in ('electric', 'plumbing', 'aircon', 'appliance', 'furniture', 'door', 'other'));
-alter table public.repairs drop constraint if exists repairs_urgency_check;
-alter table public.repairs add constraint repairs_urgency_check check (urgency in ('normal', 'urgent', 'emergency'));
-alter table public.repairs drop constraint if exists repairs_contact_phone_check;
-alter table public.repairs add constraint repairs_contact_phone_check check (char_length(contact_phone) <= 20);
 alter table public.repairs drop constraint if exists repairs_slots_check;
 alter table public.repairs add constraint repairs_slots_check
   check (jsonb_typeof(available_slots) = 'array' and jsonb_array_length(available_slots) <= 3);
-alter table public.repairs drop constraint if exists repairs_availability_note_check;
-alter table public.repairs add constraint repairs_availability_note_check check (char_length(availability_note) <= 500);
 -- ช่วงเวลาเข้าซ่อม "HH:MM-HH:MM" ระหว่าง 09:00-20:00 (เริ่มก่อนสิ้นสุด)
 create or replace function public.repair_valid_period(p text)
 returns boolean
@@ -2137,15 +2126,14 @@ as $$
 $$;
 
 -- ข้อความช่วงเวลาที่ผู้เช่าสะดวก (บรรทัดละช่วง)
-create or replace function public.repair_slots_text(p_slots jsonb, p_allow_entry boolean, p_note text)
+create or replace function public.repair_slots_text(p_slots jsonb, p_allow_entry boolean)
 returns text
 language sql
 immutable
 as $$
   select concat_ws(E'\n',
     nullif(string_agg('• ' || public.repair_appointment_text((e->>'date')::date, e->>'period'), E'\n'), ''),
-    case when p_allow_entry then '• เข้าห้องได้แม้ผู้เช่าไม่อยู่' end,
-    case when coalesce(p_note, '') <> '' then '• หมายเหตุ: ' || p_note end)
+    case when p_allow_entry then '• เข้าห้องได้แม้ผู้เช่าไม่อยู่' end)
   from jsonb_array_elements(coalesce(p_slots, '[]'::jsonb)) e;
 $$;
 
@@ -2188,14 +2176,13 @@ begin
     else
       perform public.notify_admins(
         'repair',
-        case new.urgency when 'emergency' then 'แจ้งซ่อมฉุกเฉิน!' when 'urgent' then 'แจ้งซ่อมด่วน' else 'แจ้งซ่อมใหม่' end,
+        'แจ้งซ่อมใหม่',
         'ห้อง ' || new.room || ' · ' || new.problem,
         'ผู้เช่า' || case when new.tenant_name <> '' then ' ' || new.tenant_name else '' end
           || ' ห้อง ' || new.room || ' แจ้งซ่อม: ' || new.problem
           || case when new.detail <> '' then E'\n\n' || new.detail else '' end
           || E'\n\nช่วงเวลาที่สะดวกให้ช่างเข้า:\n'
-          || coalesce(nullif(public.repair_slots_text(new.available_slots, new.allow_entry, new.availability_note), ''), '• ไม่ได้ระบุ')
-          || case when new.contact_phone <> '' then E'\nเบอร์ติดต่อ: ' || new.contact_phone else '' end,
+          || coalesce(nullif(public.repair_slots_text(new.available_slots, new.allow_entry), ''), '• ไม่ได้ระบุ'),
         '/repairs', 'ไปที่ระบบแจ้งซ่อม');
     end if;
 
@@ -2226,7 +2213,7 @@ begin
         v_title := 'กรุณาเลือกวันเวลาเข้าซ่อมใหม่';
         v_text := 'รายการ: ' || new.problem
           || E'\nช่างไม่สะดวกตามเวลาที่คุณเลือกไว้'
-          || coalesce(E'\n' || nullif(public.repair_slots_text(old.available_slots, false, ''), ''), '')
+          || coalesce(E'\n' || nullif(public.repair_slots_text(old.available_slots, false), ''), '')
           || case when new.admin_note <> '' then E'\nสาเหตุ: ' || new.admin_note else '' end
           || E'\n\nกรุณากด "แก้ไข" ในหน้าแจ้งซ่อมเพื่อเลือกวันและเวลาที่สะดวกใหม่';
       elsif new.status = 'in_progress' and new.appointment_date is not null and new.appointment_state = 'proposed'
@@ -2267,7 +2254,7 @@ begin
         'ผู้เช่าห้อง ' || new.room || ' ไม่สะดวกวันนัด ' || public.repair_appointment_text(old.appointment_date, old.appointment_period)
           || case when new.tenant_message <> '' then E'\nเหตุผล: ' || new.tenant_message else '' end
           || E'\n\nช่วงเวลาที่สะดวกใหม่:\n'
-          || coalesce(nullif(public.repair_slots_text(new.available_slots, new.allow_entry, new.availability_note), ''), '• ไม่ได้ระบุ'),
+          || coalesce(nullif(public.repair_slots_text(new.available_slots, new.allow_entry), ''), '• ไม่ได้ระบุ'),
         '/repairs', 'นัดวันใหม่');
     elsif old.status = 'done' and new.status = 'pending' then
       perform public.notify_admins(
@@ -2284,14 +2271,13 @@ begin
        or new.detail is distinct from old.detail
        or new.image_path is distinct from old.image_path
        or new.available_slots is distinct from old.available_slots
-       or new.allow_entry is distinct from old.allow_entry
-       or new.urgency is distinct from old.urgency then
+       or new.allow_entry is distinct from old.allow_entry then
       perform public.notify_admins(
         'repair', 'ผู้เช่าแก้ไขเรื่องแจ้งซ่อม', v_head,
         'ผู้เช่าห้อง ' || new.room || ' แก้ไขรายละเอียดเรื่องแจ้งซ่อม: ' || new.problem
           || case when new.detail <> '' then E'\n\n' || new.detail else '' end
           || E'\n\nช่วงเวลาที่สะดวก:\n'
-          || coalesce(nullif(public.repair_slots_text(new.available_slots, new.allow_entry, new.availability_note), ''), '• ไม่ได้ระบุ'),
+          || coalesce(nullif(public.repair_slots_text(new.available_slots, new.allow_entry), ''), '• ไม่ได้ระบุ'),
         '/repairs', 'ไปที่ระบบแจ้งซ่อม');
     end if;
 
@@ -2340,8 +2326,7 @@ begin
       public.repair_period_label(r.appointment_period) || ' · ' || r.problem,
       'นัดซ่อมห้อง ' || r.room || ' ' || public.repair_appointment_text(r.appointment_date, r.appointment_period)
         || E'\nรายการ: ' || r.problem
-        || case when r.technician <> '' then E'\nช่าง: ' || r.technician else '' end
-        || case when r.contact_phone <> '' then E'\nเบอร์ผู้เช่า: ' || r.contact_phone else '' end,
+        || case when r.technician <> '' then E'\nช่าง: ' || r.technician else '' end,
       '/repairs', 'ไปที่ระบบแจ้งซ่อม');
   end loop;
 
@@ -2667,10 +2652,10 @@ begin
     return new;
   end if;
   if old.status = 'done'
-     and (new.status, new.problem, new.detail, new.image_path, new.category, new.urgency, new.admin_note, new.technician,
+     and (new.status, new.problem, new.detail, new.image_path, new.category, new.admin_note, new.technician,
           new.cost, new.cost_payer, new.appointment_date, new.appointment_period, new.available_slots, new.allow_entry)
          is distinct from
-         (old.status, old.problem, old.detail, old.image_path, old.category, old.urgency, old.admin_note, old.technician,
+         (old.status, old.problem, old.detail, old.image_path, old.category, old.admin_note, old.technician,
           old.cost, old.cost_payer, old.appointment_date, old.appointment_period, old.available_slots, old.allow_entry) then
     raise exception 'เรื่องนี้ซ่อมเสร็จสิ้นแล้ว แก้ไขไม่ได้';
   end if;

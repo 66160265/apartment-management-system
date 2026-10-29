@@ -142,10 +142,10 @@ describe('ContractSection', () => {
         expect(container.querySelectorAll('li')).toHaveLength(1)
     })
 
-    it('ฐานข้อมูลยังไม่มีส่วนต่อสัญญา (โหลดประวัติไม่ได้): บอกผู้ใช้ ไม่ error และยังกดต่อสัญญาได้', async () => {
+    it('โหลดประวัติไม่สำเร็จ: บอกผู้ใช้ และยังกดต่อสัญญาได้', async () => {
         renewalsResult = null
         await mount()
-        expect(container.textContent).toContain('ยังดูประวัติไม่ได้')
+        expect(container.textContent).toContain('โหลดประวัติการต่อสัญญาไม่สำเร็จ')
         expect(buttonWith('ต่อสัญญา')).toBeTruthy()
     })
 

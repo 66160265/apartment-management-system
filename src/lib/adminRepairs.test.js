@@ -64,7 +64,7 @@ describe('costOf', () => {
 describe('formFromRepair', () => {
     it('เติมค่าเดิม และใช้ค่าเริ่มต้นเมื่อไม่มีค่า', () => {
         const f = formFromRepair({ room: '101', problem: 'ก๊อกน้ำ', detail: '', status: 'pending', admin_note: '', cost: 0, appointment_state: 'confirmed' })
-        expect(f).toMatchObject({ room: '101', category: 'other', urgency: 'normal', cost: '', cost_payer: 'owner', confirmed: true, pinned: false })
+        expect(f).toMatchObject({ room: '101', category: 'other', cost: '', cost_payer: 'owner', confirmed: true, pinned: false })
     })
 })
 

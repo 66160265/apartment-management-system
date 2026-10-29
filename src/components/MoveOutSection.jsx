@@ -17,10 +17,10 @@ const today = () => {
 }
 
 function MoveOutSection({ tenant }) {
-    // record: undefined = ยังโหลด, null = ยังไม่ได้บันทึกย้ายออก, ออบเจ็กต์ = บันทึกแล้ว  unavailable = ยังไม่ได้รัน ส่วน move-out ของไฟล์ migration
+    // record: undefined = ยังโหลด, null = ยังไม่ได้บันทึกย้ายออก, ออบเจ็กต์ = บันทึกแล้ว  loadError = โหลดไม่สำเร็จ
     const [record, setRecord] = useState(undefined)
     const [invoices, setInvoices] = useState([])
-    const [unavailable, setUnavailable] = useState(false)
+    const [loadError, setLoadError] = useState('')
     const [open, setOpen] = useState(false)
     const [date, setDate] = useState(today())
     const [picked, setPicked] = useState({})
@@ -41,11 +41,13 @@ function MoveOutSection({ tenant }) {
             ).maybeSingle(),
             supabase.from('invoices').select('*').eq('room', tenant.room),
         ])
-        // ตารางยังไม่มี = ยังไม่ได้รัน ส่วน move-out ของไฟล์ migration ซ่อนส่วนนี้ (ไม่ให้แอดมินกดแล้วพัง)
-        if (rec.error) {
-            setUnavailable(true)
+        // โหลดไม่สำเร็จ: แสดงข้อความแทนฟอร์ม (ไม่ให้แอดมินบันทึกย้ายออกซ้ำโดยไม่รู้ว่ามีบันทึกเดิมอยู่แล้ว)
+        const err = rec.error || inv.error
+        if (err) {
+            setLoadError(`โหลดข้อมูลการย้ายออกไม่สำเร็จ: ${err.message}`)
             return
         }
+        setLoadError('')
         setRecord(rec.data)
         setInvoices(inv.data ?? [])
     }
@@ -61,7 +63,7 @@ function MoveOutSection({ tenant }) {
     }, [tenant.room, tenant.startDate])
 
     // อัปเดตเองเมื่อบันทึกย้ายออกหรือใบแจ้งหนี้ของห้องเปลี่ยน (เช่น ผู้เช่าเพิ่งจ่าย)
-    useRealtimeReload(['move_outs', 'invoices'], load, { enabled: !unavailable })
+    useRealtimeReload(['move_outs', 'invoices'], load)
 
     // เฉพาะใบของผู้เช่าคนนี้ (ใบค้างของผู้เช่าคนก่อนในห้องเดียวกันไม่เกี่ยว)
     const unpaid = useMemo(() => unpaidInvoicesOf(invoices, { room: tenant.room, userId: tenant.userId }), [invoices, tenant.room, tenant.userId])
@@ -75,7 +77,15 @@ function MoveOutSection({ tenant }) {
     const result = settlement(tenant.deposit, deductions)
     const customError = validateCustoms(customs)
 
-    if (unavailable || record === undefined) return null
+    if (loadError) {
+        return (
+            <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-2">
+                <h2 className="text-lg font-semibold text-primary-dark">เงินประกันและการย้ายออก</h2>
+                <p className="text-sm text-red-800 bg-red-50 ring-1 ring-red-200 rounded-lg px-3 py-2">{loadError}</p>
+            </section>
+        )
+    }
+    if (record === undefined) return null
 
     const setCustom = (index, key, value) => {
         setCustoms((rows) => rows.map((r, i) => (i === index ? { ...r, [key]: value } : r)))

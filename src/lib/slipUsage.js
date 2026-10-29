@@ -9,7 +9,7 @@ export function monthStartIso(now = new Date()) {
     return new Date(`${thaiDateOf(now).slice(0, 7)}-01T00:00:00+07:00`).toISOString()
 }
 
-// จำนวนครั้งที่ตรวจในเดือนนี้ คืน null ถ้ายังไม่มีตาราง (ยังไม่ได้รัน migration) หรืออ่านไม่ได้ (ไม่ใช่แอดมิน)
+// จำนวนครั้งที่ตรวจในเดือนนี้ คืน null ถ้าโหลดไม่สำเร็จหรืออ่านไม่ได้ (ไม่ใช่แอดมิน)
 export async function fetchSlipUsage(now = new Date()) {
     try {
         const { count, error } = await supabase

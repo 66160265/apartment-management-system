@@ -22,12 +22,8 @@ function RepairTenantPanel({ editing, form, setForm, saving, askNewTime, setAskN
                     ))}
                 </div>
             )}
-            {(!(canPickSlot || lockedSlots) || editing.allow_entry || editing.availability_note) && (
-                <SlotList
-                    slots={canPickSlot || lockedSlots ? [] : editing.available_slots}
-                    allowEntry={editing.allow_entry}
-                    note={editing.availability_note}
-                />
+            {(!(canPickSlot || lockedSlots) || editing.allow_entry) && (
+                <SlotList slots={canPickSlot || lockedSlots ? [] : editing.available_slots} allowEntry={editing.allow_entry} />
             )}
             {/* เลือกวันนัดจากช่วงที่ผู้เช่าส่งมา (บอกจำนวนนัดของห้องอื่นที่ทับช่วงนั้น แต่ไม่ห้าม) */}
             {canPickSlot && (
@@ -90,12 +86,6 @@ function RepairTenantPanel({ editing, form, setForm, saving, askNewTime, setAskN
                         ให้ผู้เช่าเลือกเวลาใหม่
                     </button>
                 ))}
-            {editing.contact_phone && (
-                <a href={`tel:${editing.contact_phone}`} className="text-sm text-primary hover:underline flex items-center gap-1.5">
-                    <Icon name="phone" className="w-4 h-4" />
-                    โทรหาผู้เช่า {editing.contact_phone}
-                </a>
-            )}
             {editing.tenant_message && (
                 <div className="rounded-lg bg-amber-50 border-l-4 border-amber-400 px-3 py-2 text-sm">
                     <div className="text-xs font-semibold text-amber-800">ข้อความล่าสุดจากผู้เช่า</div>

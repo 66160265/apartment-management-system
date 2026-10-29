@@ -14,15 +14,15 @@ const fetchAll = () =>
         supabase.from('rooms').select('number, status, rent'),
         selectAll(() => supabase.from('invoices').select('*').order('id')),
         selectAll(() => supabase.from('invoice_payments').select('*').order('id')),
-        // ตารางนี้มีเมื่อรัน ส่วน repair-payments ของไฟล์ migration แล้ว ถ้ายังไม่มีให้ถือว่าไม่มีรายรับค่าซ่อม
+        // รายรับค่าซ่อม
         selectAll(() => supabase.from('repair_payments').select('*').in('status', ['review', 'paid']).order('id')),
-        // ตารางนี้มีเมื่อรัน ส่วน move-out ของไฟล์ migration แล้ว
+        // การย้ายออกและเงินประกัน
         selectAll(() => supabase.from('move_outs').select('*').order('move_out_date', { ascending: false }).order('id')),
         // เรื่องแจ้งซ่อม (ใช้ทำสถิติยอดซ่อม)
         selectAll(() => supabase.from('repairs').select('id, room, user_id, problem, category, status, cost, cost_payer, created_at, completed_at').order('id')),
         // ผู้เช่าปัจจุบัน (ใช้ดูสัญญาที่ใกล้หมด)
         supabase.from('tenants').select('room, name, end_date'),
-        // ค่าใช้จ่ายของหอพัก (ตารางมีเมื่อรัน migration 20261025000000 แล้ว ยังไม่มี = ไม่มีค่าใช้จ่าย)
+        // ค่าใช้จ่ายของหอพัก
         selectAll(() => supabase.from('expenses').select('*').order('id')),
     ])
 
@@ -40,7 +40,7 @@ export function useReportData() {
             setData({
                 rooms: rooms.data,
                 invoices: invoices.data,
-                // ตารางรับเงินยังไม่มี (ยังไม่ได้รัน ส่วน payments ของไฟล์ migration) ให้รายงานแสดงเท่าที่มี
+                // ห้องและใบแจ้งหนี้จำเป็น (พลาด = แสดง error) ส่วนอื่นโหลดไม่สำเร็จ ให้รายงานแสดงเท่าที่มี
                 invoicePayments: payments.error ? [] : payments.data,
                 repairPayments: repairPayments.error ? [] : repairPayments.data,
                 moveOuts: moveOuts.error ? [] : moveOuts.data,

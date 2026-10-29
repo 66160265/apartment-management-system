@@ -1,5 +1,5 @@
 import Icon from './Icon'
-import { RepairStatusBadge, UrgencyBadge } from './RepairParts'
+import { RepairStatusBadge } from './RepairParts'
 import { baht } from '../lib/billing'
 import { formatThaiDate } from '../lib/repairs'
 
@@ -81,7 +81,6 @@ export function RepairTable({ rows, payState, onOpen, onTogglePin }) {
                             <span className="inline-flex items-center gap-2">
                                 {r.problem}
                                 {r.image_path && <Icon name="image" className="w-4 h-4 text-secondary" />}
-                                <UrgencyBadge urgency={r.urgency} />
                             </span>
                         </td>
                         <td className="px-3 py-3 border-x border-line/60 text-center text-muted whitespace-nowrap">{formatThaiDate(r.created_at)}</td>
@@ -125,7 +124,6 @@ export function RepairCards({ rows, payState, onOpen, onTogglePin }) {
                         <div className="flex flex-col items-end gap-1">
                             <RepairStatusBadge status={r.status} />
                             <PayState state={payState(r)} />
-                            <UrgencyBadge urgency={r.urgency} />
                         </div>
                     </div>
                     <div className="flex gap-2">

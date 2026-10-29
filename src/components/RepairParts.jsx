@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Icon from './Icon'
 import DatePicker from './DatePicker'
-import { MAX_SLOTS, repairStatuses, repairUrgencies } from '../data/repairs'
+import { MAX_SLOTS, repairStatuses } from '../data/repairs'
 import { formatSize, formatSlot, getRepairImageUrl, isPastTime, parsePeriod, repairEndOptions, repairStartOptions, todayIso, validateImage } from '../lib/repairs'
 
 // ป้ายสถานะงานซ่อม (รอดำเนินการ / กำลังดำเนินการ / เสร็จสิ้น) สีตามสถานะ ถ้าไม่รู้จักสถานะจะแสดงเป็นสีเทา
@@ -144,18 +144,6 @@ export function ConfirmDialog({ title, children, confirmLabel, busy, onCancel, o
                 </div>
             </div>
         </div>
-    )
-}
-
-// ป้ายความเร่งด่วน (ไม่แสดงอะไรถ้าเป็นระดับปกติ เว้นแต่ showNormal)
-export function UrgencyBadge({ urgency, showNormal = false }) {
-    if (!urgency || (urgency === 'normal' && !showNormal)) return null
-    const u = repairUrgencies[urgency] ?? repairUrgencies.normal
-    return (
-        <span className={`inline-flex items-center gap-1 whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium ${u.color}`}>
-            {urgency === 'emergency' && <Icon name="alert" className="w-3.5 h-3.5" />}
-            {u.label}
-        </span>
     )
 }
 
@@ -308,7 +296,7 @@ export function SlotPicker({ slots, onChange, disabled = false }) {
 }
 
 // รายการช่วงเวลาที่ผู้เช่าสะดวก (อ่านอย่างเดียว ใช้ทั้งฝั่งผู้เช่าและแอดมิน) วันที่ผ่านไปแล้วขีดฆ่า
-export function SlotList({ slots, allowEntry, note }) {
+export function SlotList({ slots, allowEntry }) {
     const today = todayIso()
     return (
         <div className="flex flex-col gap-1.5 text-sm">
@@ -328,7 +316,6 @@ export function SlotList({ slots, allowEntry, note }) {
                     อนุญาตให้ช่างเข้าห้องได้แม้ผู้เช่าไม่อยู่
                 </div>
             )}
-            {note && <p className="text-muted whitespace-pre-line">หมายเหตุ: {note}</p>}
         </div>
     )
 }

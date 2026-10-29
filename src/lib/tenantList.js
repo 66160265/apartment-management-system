@@ -15,7 +15,7 @@ export const fromRow = (r) => ({
     startDate: r.start_date,
     endDate: r.end_date,
     userId: r.user_id,
-    // เงินประกัน (คอลัมน์มีเมื่อรัน supabase/migrations/20261022000000_initial_schema.sql (ส่วน move-out) แล้ว ยังไม่มี = 0)
+    // เงินประกัน
     deposit: Number(r.deposit ?? 0),
 })
 

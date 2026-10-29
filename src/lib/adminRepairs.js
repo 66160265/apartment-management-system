@@ -12,7 +12,6 @@ export const emptyForm = {
     status: 'pending',
     admin_note: '',
     category: 'other',
-    urgency: 'normal',
     // นัดหมาย: วัน ช่วงเวลา ช่าง และ confirmed = ตกลงกับผู้เช่าแล้ว (เช่น คุยทางโทรศัพท์) ไม่ต้องรอผู้เช่ากดยืนยัน
     appointment_date: '',
     appointment_period: '',
@@ -34,7 +33,6 @@ export const formFromRepair = (item) => ({
     status: item.status,
     admin_note: item.admin_note,
     category: item.category ?? 'other',
-    urgency: item.urgency ?? 'normal',
     appointment_date: item.appointment_date ?? '',
     appointment_period: normalizePeriod(item.appointment_period),
     technician: item.technician ?? '',
@@ -149,7 +147,6 @@ export function repairFields({ form, editing, tenant, imagePath, askNewTime }) {
         admin_note: form.admin_note.trim(),
         image_path: imagePath,
         category: form.category,
-        urgency: form.urgency,
         appointment_date: keepAppt && form.appointment_date ? form.appointment_date : null,
         appointment_period: keepAppt && form.appointment_date ? form.appointment_period : null,
         appointment_state: keepAppt && form.appointment_date ? appointmentState : null,

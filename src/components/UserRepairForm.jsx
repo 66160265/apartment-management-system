@@ -86,7 +86,7 @@ function UserRepairForm({
                         <div className="text-sm font-medium text-primary-dark">วันเวลาที่สะดวกให้ช่างเข้าซ่อม</div>
                     </div>
                     {readOnly ? (
-                        <SlotList slots={editing.available_slots} allowEntry={editing.allow_entry} note={editing.availability_note} />
+                        <SlotList slots={editing.available_slots} allowEntry={editing.allow_entry} />
                     ) : (
                         <>
                             <SlotPicker slots={form.slots} onChange={(slots) => setForm((f) => ({ ...f, slots }))} disabled={saving} />

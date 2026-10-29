@@ -28,7 +28,7 @@ function Section({ icon, title, hint, children }) {
 }
 
 // ช่องกรอกพร้อมหัวข้อและคำแนะนำใต้ช่อง
-// จำนวนครั้งที่ตรวจสลิปในเดือนนี้ เทียบกับโควตาที่กรอก (ไม่แสดงถ้ายังไม่มีตาราง slip_verify_log)
+// จำนวนครั้งที่ตรวจสลิปในเดือนนี้ เทียบกับโควตาที่กรอก (ไม่แสดงถ้าโหลดไม่สำเร็จ)
 function SlipUsage({ quota }) {
     const [used, setUsed] = useState(null)
     useEffect(() => {
@@ -38,7 +38,7 @@ function SlipUsage({ quota }) {
             active = false
         }
     }, [])
-    if (used === null) return <p className="text-xs text-muted self-end pb-2">ยังไม่มีข้อมูลจำนวนครั้งที่ตรวจในเดือนนี้ (ฟีเจอร์นี้ยังไม่ได้ติดตั้งในฐานข้อมูล ให้แจ้งผู้พัฒนาระบบ)</p>
+    if (used === null) return <p className="text-xs text-muted self-end pb-2">โหลดจำนวนครั้งที่ตรวจในเดือนนี้ไม่สำเร็จ</p>
     const { level, remaining } = quotaStatus(used, quota)
     const tone = level === 'out' ? 'text-red-700' : level === 'low' ? 'text-amber-700' : 'text-primary-dark'
     return (

@@ -3,7 +3,7 @@ import { formatMonth, invoiceCode, thaiDateOf } from './billing'
 // ใบเสร็จรับเงิน (PDF) ออกให้ทุกครั้งที่ยืนยันรับเงิน: ตรรกะประกอบข้อมูล แยกจากหน้าตาเอกสาร (components/ReceiptDocument.jsx) เพื่อทดสอบได้
 // เลขที่ใบเสร็จออกโดยฐานข้อมูลตอนยืนยันรับเงิน (receipt_no ดู supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)) ที่นี่แค่จัดรูปแบบ
 
-// RC-<ปี ค.ศ. ของวันที่รับเงิน (เวลาไทย)>-<เลข 6 หลัก> เช่น RC-2026-000012 ไม่มีเลข (ข้อมูลก่อนมีระบบ/ยังไม่ได้รัน SQL) = ว่าง
+// RC-<ปี ค.ศ. ของวันที่รับเงิน (เวลาไทย)>-<เลข 6 หลัก> เช่น RC-2026-000012 ไม่มีเลข (ยังไม่ได้ยืนยันรับเงิน) = ว่าง
 export function receiptCode(receiptNo, atIso) {
     if (receiptNo === null || receiptNo === undefined || !atIso) return ''
     return `RC-${thaiDateOf(new Date(atIso)).slice(0, 4)}-${String(receiptNo).padStart(6, '0')}`
