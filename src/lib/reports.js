@@ -391,7 +391,7 @@ export function expiringContracts(tenants, now = new Date(), withinDays = 90) {
         .sort((a, b) => a.daysLeft - b.daysLeft)
 }
 
-// สถิติแจ้งซ่อม (ไม่นับเรื่องที่ยกเลิก): จำนวนตามประเภท ห้องที่แจ้งบ่อย เวลาซ่อมเฉลี่ย (วันที่แจ้ง -> วันที่เสร็จ) และงานที่ค้างเกิน overdueDays วัน
+// สถิติแจ้งซ่อม: จำนวนตามประเภท ห้องที่แจ้งบ่อย เวลาซ่อมเฉลี่ย (วันที่แจ้ง -> วันที่เสร็จ) และงานที่ค้างเกิน overdueDays วัน
 // ผู้เช่าที่ยังไม่ชำระค่าซ่อม (งานที่ผู้เช่าจ่าย ซ่อมเสร็จแล้ว ยังไม่ได้ส่งสลิป) payments = repair_payments (repair_id, status)
 // คืน { tenantCount, repairCount, total } นับผู้เช่าตาม user_id (ไม่มี = นับตามห้อง)
 export function unpaidRepairSummary(repairs, payments) {
@@ -405,28 +405,27 @@ export function unpaidRepairSummary(repairs, payments) {
 
 export function repairStats(repairs, now = new Date(), overdueDays = 7) {
     const today = thaiDateOf(now)
-    const list = repairs.filter((r) => r.status !== 'cancelled')
     const count = (pick) => {
         const map = {}
-        for (const r of list) map[pick(r)] = (map[pick(r)] ?? 0) + 1
+        for (const r of repairs) map[pick(r)] = (map[pick(r)] ?? 0) + 1
         return Object.entries(map).map(([key, n]) => ({ key, count: n })).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key, undefined, { numeric: true }))
     }
-    const done = list.filter((r) => r.status === 'done' && r.completed_at && r.created_at)
+    const done = repairs.filter((r) => r.status === 'done' && r.completed_at && r.created_at)
     const durations = done.map((r) => Math.max(0, daysFrom(thaiDateOf(new Date(r.created_at)), thaiDateOf(new Date(r.completed_at)))))
-    const open = list.filter((r) => r.status === 'pending' || r.status === 'in_progress')
+    const open = repairs.filter((r) => r.status === 'pending' || r.status === 'in_progress')
     const overdue = open
         .map((r) => ({ id: r.id, room: r.room, problem: r.problem, status: r.status, days: daysFrom(thaiDateOf(new Date(r.created_at)), today) }))
         .filter((r) => r.days > overdueDays)
         .sort((a, b) => b.days - a.days)
     return {
-        total: list.length,
+        total: repairs.length,
         doneCount: done.length,
         openCount: open.length,
         avgDays: durations.length ? Math.round((durations.reduce((x, y) => x + y, 0) / durations.length) * 10) / 10 : null,
-        // ค่าซ่อมรวมของทุกเรื่อง (ไม่นับที่ยกเลิก) แยกผู้รับผิดชอบ
-        costTotal: sum(list, (r) => r.cost),
-        costOwner: sum(list.filter((r) => r.cost_payer !== 'tenant'), (r) => r.cost),
-        costTenant: sum(list.filter((r) => r.cost_payer === 'tenant'), (r) => r.cost),
+        // ค่าซ่อมรวมของทุกเรื่อง แยกผู้รับผิดชอบ
+        costTotal: sum(repairs, (r) => r.cost),
+        costOwner: sum(repairs.filter((r) => r.cost_payer !== 'tenant'), (r) => r.cost),
+        costTenant: sum(repairs.filter((r) => r.cost_payer === 'tenant'), (r) => r.cost),
         byCategory: count((r) => r.category ?? 'other'),
         byRoom: count((r) => r.room),
         overdue,

@@ -1,13 +1,13 @@
 import Icon from './Icon'
-import { repairProgressKeys, repairStatuses } from '../data/repairs'
+import { repairStatusKeys, repairStatuses } from '../data/repairs'
 
 // แถบความคืบหน้า 3 ขั้น: รอดำเนินการ -> กำลังดำเนินการ -> เสร็จสิ้น
 function RepairProgress({ status }) {
     // ลำดับของสถานะปัจจุบัน (0 = รอดำเนินการ, 1 = กำลังดำเนินการ, 2 = เสร็จ)
-    const current = repairProgressKeys.indexOf(status)
+    const current = repairStatusKeys.indexOf(status)
     return (
         <ol className="grid grid-cols-3">
-            {repairProgressKeys.map((k, i) => {
+            {repairStatusKeys.map((k, i) => {
                 // ขั้นที่ผ่านแล้ว (มีเครื่องหมายถูก), ขั้นปัจจุบัน (วงกลมเน้น), และขั้นที่ไปถึงแล้ว (เส้นเชื่อมเป็นสี)
                 const isDone = i < current || status === 'done'
                 const isCurrent = i === current && status !== 'done'

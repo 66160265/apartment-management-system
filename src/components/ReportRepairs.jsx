@@ -2,14 +2,14 @@ import { CountBar, Stat } from './ReportParts'
 import { repairCategories } from '../data/repairs'
 import { baht } from '../lib/billing'
 
-// สถิติแจ้งซ่อมของหน้ารายงาน (pages/ReportsPage.jsx) ทั้งหมดในระบบ ไม่นับเรื่องที่ยกเลิก
+// สถิติแจ้งซ่อมของหน้ารายงาน (pages/ReportsPage.jsx) ทั้งหมดในระบบ
 // stats = ผลของ repairStats(), unpaid = ผลของ unpaidRepairSummary()
 function RepairStatsSection({ stats, unpaid }) {
     return (
         <section className="bg-white rounded-2xl shadow-card p-4 sm:p-5 flex flex-col gap-4">
             <h2 className="font-medium text-primary-dark">สถิติแจ้งซ่อม</h2>
             <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
-                <Stat label="เรื่องแจ้งซ่อมทั้งหมด" value={stats.total} hint="ไม่นับเรื่องที่ยกเลิก" />
+                <Stat label="เรื่องแจ้งซ่อมทั้งหมด" value={stats.total} />
                 <Stat label="ซ่อมเสร็จแล้ว" value={stats.doneCount} tone="text-emerald-700" />
                 <Stat label="ยังไม่เสร็จ" value={stats.openCount} hint={stats.overdue.length > 0 ? `ค้างเกิน 7 วัน ${stats.overdue.length} เรื่อง` : undefined} tone={stats.overdue.length > 0 ? 'text-amber-700' : 'text-primary-dark'} />
                 <Stat

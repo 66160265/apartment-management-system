@@ -140,16 +140,13 @@ function AdminRepairForm({
             <div>
                 <label className="block text-sm text-muted mb-1">สถานะ</label>
                 <select value={form.status} onChange={(e) => changeStatus(e.target.value)} disabled={fieldLocked} className={inputClass}>
-                    {/* เลือก "ยกเลิก" ไม่ได้ (ถ้ารายการอยู่ในสถานะนั้น ยังแสดงค่าปัจจุบันไว้แต่กดเลือกไม่ได้) */}
                     {repairStatusKeys.map((k) => {
-                        const blocked = k === 'cancelled'
-                        if (blocked && form.status !== k) return null
                         // ยังไม่ได้เลือกวันนัดจากช่วงที่ผู้เช่าส่งมา
                         const waitSlot = k === 'in_progress' && needSlot && form.status !== k
                         // กำลังดำเนินการแล้ว ย้อนกลับเป็นรอดำเนินการไม่ได้
                         const noBack = k === 'pending' && startedWork
                         return (
-                            <option key={k} value={k} disabled={blocked || waitSlot || noBack} hidden={blocked}>
+                            <option key={k} value={k} disabled={waitSlot || noBack}>
                                 {repairStatuses[k].label}{waitSlot ? ' (เลือกวันเวลานัดก่อน)' : ''}
                             </option>
                         )
@@ -198,11 +195,10 @@ function AdminRepairForm({
             {/* ค่าซ่อมที่ผู้เช่าต้องชำระ: ตรวจสลิป ยืนยัน/ปฏิเสธ (มีสลิปรอตรวจหรือชำระแล้ว แก้ยอดค่าใช้จ่ายไม่ได้) */}
             {!isNew && <AdminRepairPayment repair={editing} />}
 
-            {/* คำแนะนำเมื่อเลือกสถานะที่ล้างนัดเดิม */}
-            {!isNew && editing.appointment_date && (form.status === 'pending' || form.status === 'cancelled') && editing.status === 'in_progress' && (
+            {/* คำแนะนำเมื่อเปลี่ยนกลับเป็นรอดำเนินการ (ล้างนัดเดิม) */}
+            {!isNew && editing.appointment_date && form.status === 'pending' && editing.status === 'in_progress' && (
                 <p className="-mt-2 text-xs text-muted">
-                    นัดเดิม ({formatSlot(editing.appointment_date, editing.appointment_period)}) จะถูกยกเลิก
-                    {form.status === 'pending' && ' ใช้กรณีช่างไปแล้วไม่พบผู้เช่า หรือต้องเลื่อนนัด'}
+                    นัดเดิม ({formatSlot(editing.appointment_date, editing.appointment_period)}) จะถูกยกเลิก ใช้กรณีช่างไปแล้วไม่พบผู้เช่า หรือต้องเลื่อนนัด
                 </p>
             )}
 
@@ -210,7 +206,7 @@ function AdminRepairForm({
             {hasTenant && (
                 <div>
                     <label className="block text-sm text-muted mb-1">หมายเหตุถึงผู้เช่า (ผู้เช่าจะเห็นข้อความนี้)</label>
-                    <textarea rows={2} maxLength={1000} value={form.admin_note} onChange={set('admin_note')} disabled={fieldLocked} placeholder={form.status === 'cancelled' ? 'เหตุผลที่ยกเลิก เช่น ซ่อมเรียบร้อยแล้วจากการแจ้งครั้งก่อน' : 'เช่น รออะไหล่ 2-3 วัน, ช่างจะโทรหาก่อนเข้า 30 นาที'} className={inputClass} />
+                    <textarea rows={2} maxLength={1000} value={form.admin_note} onChange={set('admin_note')} disabled={fieldLocked} placeholder="เช่น รออะไหล่ 2-3 วัน, ช่างจะโทรหาก่อนเข้า 30 นาที" className={inputClass} />
                 </div>
             )}
 

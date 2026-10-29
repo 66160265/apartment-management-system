@@ -26,11 +26,6 @@ describe('validateRepairForm', () => {
         expect(validateRepairForm({ form: form({ status: 'pending' }), editing, slotChoices: [] })).toMatch(/เปลี่ยนกลับ/)
     })
 
-    it('ยกเลิกต้องมีเหตุผล', () => {
-        expect(validateRepairForm({ form: form({ status: 'cancelled' }), editing: 'new', slotChoices: [] })).toMatch(/เหตุผล/)
-        expect(validateRepairForm({ form: form({ status: 'cancelled', admin_note: 'ซ่อมแล้ว' }), editing: 'new', slotChoices: [] })).toBe('')
-    })
-
     it('กำลังดำเนินการต้องมีชื่อและเบอร์ช่าง', () => {
         expect(validateRepairForm({ form: form({ status: 'in_progress' }), editing: 'new', slotChoices: [] })).not.toBe('')
         expect(validateRepairForm({ form: form({ status: 'in_progress', technician: 'ช่างสมชาย', technician_phone: '0812345678' }), editing: 'new', slotChoices: [] })).toBe('')
@@ -110,7 +105,7 @@ describe('repairFields', () => {
         expect(f.cost_payer).toBe('tenant')
     })
 
-    it('ให้ผู้เช่าเลือกเวลาใหม่: ล้างช่วงที่เลือกไว้ และเสร็จสิ้น/ยกเลิกเลิกปักหมุด', () => {
+    it('ให้ผู้เช่าเลือกเวลาใหม่: ล้างช่วงที่เลือกไว้ และเสร็จสิ้นแล้วเลิกปักหมุด', () => {
         const f = repairFields({ form: form({ status: 'done', pinned: true }), editing: tenantRepair(), tenant: undefined, imagePath: null, askNewTime: true })
         expect(f).toMatchObject({ available_slots: [], allow_entry: false, pinned: false })
     })

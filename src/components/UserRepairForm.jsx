@@ -39,11 +39,7 @@ function UserRepairForm({
             {/* รายการเดิม: แถบความคืบหน้าและวันที่แจ้ง */}
             {!isNew && (
                 <div className="rounded-xl bg-sand/60 border border-line px-4 py-4">
-                    {editing.status === 'cancelled' ? (
-                        <p className="text-center text-sm font-medium text-slate-600">ผู้ดูแลยกเลิกเรื่องนี้</p>
-                    ) : (
-                        <RepairProgress status={editing.status} />
-                    )}
+                    <RepairProgress status={editing.status} />
                     <p className="text-xs text-muted text-center mt-3">
                         แจ้งเมื่อ {formatDateTime(editing.created_at)}
                         {editing.reopen_count > 0 && ` · แจ้งซ้ำ ${editing.reopen_count} ครั้ง`}

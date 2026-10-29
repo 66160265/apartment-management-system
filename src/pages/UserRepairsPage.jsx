@@ -222,7 +222,7 @@ function UserRepairsPage() {
     }
 
     // จำนวนรายการที่ยังไม่เสร็จ และรายการแท็บ (ทั้งหมด + ทุกสถานะ)
-    const active = repairs.filter((r) => r.status !== 'done' && r.status !== 'cancelled').length
+    const active = repairs.filter((r) => r.status !== 'done').length
     const actionCount = repairs.filter((r) => needsAction(r) || needsNewTime(r)).length
     // เรื่องที่มีค่าซ่อมค้างชำระ / ส่งสลิปแล้วรอผู้ดูแลตรวจ / ผู้ดูแลยืนยันรับเงินแล้ว (แสดงป้ายในรายการ)
     const ids = {
@@ -230,7 +230,7 @@ function UserRepairsPage() {
         review: new Set(payments.filter((p) => p.status === 'review').map((p) => p.repair_id)),
         paid: new Set(payments.filter((p) => p.status === 'paid').map((p) => p.repair_id)),
     }
-    const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.filter((k) => k !== 'cancelled').map((k) => ({ key: k, label: repairStatuses[k].label, short: repairStatuses[k].short }))]
+    const tabs = [{ key: 'all', label: 'ทั้งหมด' }, ...repairStatusKeys.map((k) => ({ key: k, label: repairStatuses[k].label, short: repairStatuses[k].short }))]
     // นับจำนวนรายการตามแท็บสถานะ ('all' = ทั้งหมด)
     const countOf = (key) => (key === 'all' ? repairs.length : repairs.filter((r) => r.status === key).length)
     // กรองตามแท็บสถานะและประเภท แล้วเรียงตามวันที่แจ้ง (ใหม่สุดก่อน หรือเก่าสุดก่อน)

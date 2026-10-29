@@ -1,4 +1,4 @@
-import { formatSlot, isInSlots, isValidPeriod, normalizePeriod, toSlotPeriod, todayIso, validateTechnician } from './repairs'
+import { formatSlot, isInSlots, isValidPeriod, normalizePeriod, todayIso, validateTechnician } from './repairs'
 import { selectAll } from './selectAll'
 import { supabase } from './supabaseClient'
 
@@ -106,8 +106,6 @@ export function validateRepairForm({ form, editing, slotChoices }) {
             return `${formatSlot(form.appointment_date, form.appointment_period)} ผ่านไปแล้วหรือไม่ถูกต้อง กรุณากด "ให้ผู้เช่าเลือกเวลาใหม่"`
         }
     }
-    // ยกเลิก/ไม่รับเรื่อง ต้องบอกเหตุผลให้ผู้เช่าทราบ
-    if (form.status === 'cancelled' && !form.admin_note.trim()) return 'กรุณาระบุเหตุผลที่ยกเลิกในช่องหมายเหตุถึงผู้เช่า'
     // กำลังดำเนินการ: ต้องรู้ชื่อและเบอร์โทรช่าง (ผู้เช่าเห็นข้อมูลนี้ ฐานข้อมูลตรวจซ้ำอีกชั้น)
     if (form.status === 'in_progress') {
         const techError = validateTechnician(form.technician, form.technician_phone)
@@ -118,13 +116,13 @@ export function validateRepairForm({ form, editing, slotChoices }) {
 }
 
 // ช่วงที่ผู้เช่าส่งมาของเรื่องที่กำลังดำเนินการ/เสร็จสิ้นแล้ว พร้อมบอกว่าช่วงไหนเป็นวันนัด (chosen)
-// วันนัดไม่อยู่ในรายการ เช่น ข้อมูลเก่า = เพิ่มต่อท้าย คืน null ถ้าไม่มีวันนัดหรือสถานะยังไม่ถึง
+// วันนัดไม่อยู่ในรายการ (เช่น ผู้ดูแลนัดเองตอนผู้เช่าอนุญาตให้เข้าห้อง) = เพิ่มต่อท้าย คืน null ถ้าไม่มีวันนัดหรือสถานะยังไม่ถึง
 export function lockedSlotsOf(editing) {
     if (!editing || editing === 'new' || !['in_progress', 'done'].includes(editing.status) || !editing.appointment_date) return null
     const apptPeriod = normalizePeriod(editing.appointment_period)
     const list = (editing.available_slots ?? []).map((s) => ({
         ...s,
-        chosen: s.date === editing.appointment_date && (normalizePeriod(s.period) === apptPeriod || toSlotPeriod(s.period) === apptPeriod),
+        chosen: s.date === editing.appointment_date && s.period === apptPeriod,
     }))
     return list.some((s) => s.chosen) ? list : [...list, { date: editing.appointment_date, period: apptPeriod, chosen: true }]
 }
@@ -156,8 +154,8 @@ export function repairFields({ form, editing, tenant, imagePath, askNewTime }) {
         appointment_state: keepAppt && form.appointment_date ? appointmentState : null,
         technician: form.technician.trim(),
         technician_phone: form.technician_phone.trim(),
-        // เสร็จสิ้น/ยกเลิก ไม่ต้องปักหมุดอีก (ฐานข้อมูลเอาออกให้ด้วย)
-        pinned: ['done', 'cancelled'].includes(form.status) ? false : form.pinned,
+        // เสร็จสิ้น ไม่ต้องปักหมุดอีก (ฐานข้อมูลเอาออกให้ด้วย)
+        pinned: form.status === 'done' ? false : form.pinned,
         cost: costOf(form),
         // แอดมินแจ้งเอง (ห้องว่าง ไม่มีผู้เช่า) หอพักรับผิดชอบค่าใช้จ่ายเสมอ
         cost_payer: isNew || !editing.user_id ? 'owner' : form.cost_payer,

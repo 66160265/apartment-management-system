@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient'
-import { MAX_SLOTS, REPAIR_BREAK, REPAIR_HOURS, legacyPeriods } from '../data/repairs'
+import { MAX_SLOTS, REPAIR_BREAK, REPAIR_HOURS } from '../data/repairs'
 
 // ข้อจำกัดรูปแจ้งซ่อม: ไม่เกิน 5 MB และชนิดไฟล์ที่รับ (MIME -> นามสกุลไฟล์)
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024
@@ -73,8 +73,8 @@ export const isBreakTime = (period) => {
     return start >= REPAIR_BREAK.start && start < REPAIR_BREAK.end
 }
 
-// แปลงค่าแบบเดิม (morning) เป็นช่วงเวลา "09:00-12:00"
-export const normalizePeriod = (period) => legacyPeriods[period] ?? period ?? ''
+// ช่วงเวลาที่ไม่มีค่า (null) เป็นสตริงว่าง
+export const normalizePeriod = (period) => period ?? ''
 
 // "13:00-15:30" -> { start: '13:00', end: '15:30' }
 export const parsePeriod = (period) => {
@@ -116,21 +116,10 @@ export const isInSlots = (slots, date, period) => {
     })
 }
 
-// ช่วงแบบเดิม (เช่น "13:00-15:30", "17:00-20:00", morning) -> ช่วงที่เลือกได้ใกล้เคียงที่สุด (ปัดเวลาเริ่มลง เวลาสิ้นสุดขึ้น ไม่เกินขอบเขต)
-export const toSlotPeriod = (period) => {
-    if (isValidPeriod(period)) return normalizePeriod(period)
-    const { start, end } = parsePeriod(period)
-    const from = [...repairStartOptions].reverse().find((t) => t <= start) ?? repairStartOptions[0]
-    const ends = repairEndOptions(from)
-    const to = ends.find((t) => t >= end) ?? ends[ends.length - 1]
-    return `${from}-${to}`
-}
-
-// ตัดช่วงเวลาที่ผ่านไปแล้วทิ้ง (ใช้ตอนเปิดฟอร์มแก้ไข) แปลงช่วงแบบเดิมเป็นช่วงที่เลือกได้ เรียงตามวัน และเก็บไว้ไม่เกิน MAX_SLOTS
+// ตัดช่วงเวลาที่ผ่านไปแล้วทิ้ง (ใช้ตอนเปิดฟอร์มแก้ไข) เรียงตามวัน และเก็บไว้ไม่เกิน MAX_SLOTS
 export const upcomingSlots = (slots) =>
     (slots ?? [])
         .filter((s) => s.date >= todayIso())
-        .map((s) => ({ ...s, period: toSlotPeriod(s.period) }))
         .sort((a, b) => (a.date + a.period).localeCompare(b.date + b.period))
         .slice(0, MAX_SLOTS)
 
