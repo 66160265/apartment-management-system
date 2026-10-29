@@ -374,13 +374,12 @@ describe('สัญญาใกล้หมด', () => {
 })
 
 describe('สถิติแจ้งซ่อม', () => {
-    it('นับตามประเภทและห้อง เวลาซ่อมเฉลี่ย และงานค้างเกิน 7 วัน ไม่นับที่ยกเลิก', () => {
+    it('นับตามประเภทและห้อง เวลาซ่อมเฉลี่ย และงานค้างเกิน 7 วัน', () => {
         const repairs = [
             { id: 'a', room: '101', category: 'aircon', status: 'done', cost: 300, cost_payer: 'owner', created_at: '2026-10-01T10:00:00+07:00', completed_at: '2026-10-03T10:00:00+07:00' },
             { id: 'b', room: '101', category: 'aircon', status: 'done', cost: 500, cost_payer: 'tenant', created_at: '2026-10-05T10:00:00+07:00', completed_at: '2026-10-06T10:00:00+07:00' },
             { id: 'c', room: '102', category: 'plumbing', status: 'pending', problem: 'ก๊อกรั่ว', created_at: '2026-10-25T10:00:00+07:00' },
             { id: 'd', room: '103', category: 'electric', status: 'in_progress', problem: 'ไฟดับ', created_at: '2026-11-08T10:00:00+07:00' },
-            { id: 'e', room: '104', category: 'door', status: 'cancelled', cost: 999, created_at: '2026-10-01T10:00:00+07:00' },
         ]
         const s = repairStats(repairs, now)
         expect(s.total).toBe(4)

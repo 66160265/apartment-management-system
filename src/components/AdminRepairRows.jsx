@@ -30,7 +30,7 @@ function RepairCost({ repair, inline = false }) {
     )
 }
 
-// ปุ่มปัก/เลิกปักหมุดในหน้ารายการ (เฉพาะเรื่องที่ยังไม่เสร็จ เรื่องเสร็จสิ้น/ยกเลิกไม่มีปุ่ม)
+// ปุ่มปัก/เลิกปักหมุดในหน้ารายการ (เฉพาะเรื่องที่ยังไม่เสร็จ เรื่องเสร็จสิ้นไม่มีปุ่ม)
 function PinButton({ repair, onToggle }) {
     if (!['pending', 'in_progress'].includes(repair.status)) return null
     return (

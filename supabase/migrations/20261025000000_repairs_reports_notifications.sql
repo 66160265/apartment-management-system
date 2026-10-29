@@ -2,7 +2,7 @@
 -- วิธีใช้: วางทั้งไฟล์ใน Supabase SQL Editor แล้วกด Run (หรือ `npx supabase db push`) แล้วรัน `notify pgrst, 'reload schema';`
 --   1) แจ้งซ่อม: เปลี่ยนเป็น "กำลังดำเนินการ" ต้องมีชื่อช่างและเบอร์โทรช่าง, แอดมินปักหมุดเรื่องเร่งด่วนได้
 --   2) ค่าใช้จ่ายของหอพักรายเดือน (ตาราง expenses เฉพาะแอดมิน) ใช้ในหน้ารายงาน
---   1.1) เวลาที่ผู้เช่าเลือกให้ช่างเข้าเป็นช่วงที่กำหนดเอง ไม่เริ่มในเวลาพัก 12:00-13:00 และนัดซ่อมซ้อนเวลากันได้
+--   1.1) เวลาที่ผู้เช่าเลือกให้ช่างเข้าเป็นช่วงที่กำหนดเอง ไม่เริ่มในเวลาพัก 12:00-13:00
 --        แอดมินบันทึกเป็น "กำลังดำเนินการ" แล้ว เปลี่ยนวันนัดและย้อนกลับเป็น "รอดำเนินการ" ไม่ได้
 --   1.2) ประเภทงานซ่อมใหม่: อินเทอร์เน็ต (internet) และผนัง / เพดาน / พื้น (structure)
 --   3) แจ้งเตือนรายวัน (pg_cron): เตือนผู้เช่าก่อนครบกำหนดชำระ 3 วัน, เตือนแอดมินเมื่อสัญญาเหลือ 60 และ 30 วัน,
@@ -71,8 +71,8 @@ begin
     end if;
   end if;
 
-  -- เรื่องที่เสร็จสิ้นหรือยกเลิก ไม่ต้องปักหมุดอีก
-  if new.status in ('done', 'cancelled') then
+  -- เรื่องที่เสร็จสิ้น ไม่ต้องปักหมุดอีก
+  if new.status = 'done' then
     new.pinned := false;
   end if;
   if not new.pinned then
@@ -99,13 +99,6 @@ create trigger repairs_technician_pin before insert or update on public.repairs
   for each row execute function public.repairs_technician_pin();
 
 revoke execute on function public.repairs_technician_pin() from public, anon, authenticated;
-
--- เวลาเข้าซ่อมเป็นช่วงที่ผู้เช่ากำหนดเอง (เช่น 09:00-16:00) และเลิกห้ามนัดซ่อมซ้อนเวลากัน (ช่วงยาวช่างทำได้หลายห้อง และเคสด่วนต้องแทรกคิวได้)
--- ลบ trigger กันนัดซ้อนและฟังก์ชันที่ใช้เฉพาะ trigger นี้ (จากไฟล์ 20261022000000) แล้วใช้ trigger ตรวจช่วงเวลาตัวใหม่แทน
-drop trigger if exists repairs_no_double_booking on public.repairs;
-drop function if exists public.repairs_no_double_booking();
-drop function if exists public.repair_time_taken(uuid, date, text);
-drop function if exists public.repair_booked_times(uuid);
 
 -- ตรวจช่วงเวลาที่ผู้เช่าเพิ่งเลือก (ช่วงที่เลือกไว้ก่อนแล้วไม่ตรวจซ้ำ) ให้ตรงกับ src/data/repairs.js
 --   รูปแบบ: เต็มชั่วโมง "HH:00-HH:00" ภายใน 09:00-18:00 และเวลาสิ้นสุดหลังเวลาเริ่ม (REPAIR_HOURS)
@@ -154,11 +147,7 @@ returns text
 language sql
 immutable
 as $$
-  select case p
-    when 'morning' then '09:00-12:00 น.'
-    when 'afternoon' then '13:00-17:00 น.'
-    when 'evening' then '17:00-20:00 น.'
-    else coalesce(p || ' น.', '') end;
+  select coalesce(p || ' น.', '');
 $$;
 
 -- ============================================================

@@ -4,7 +4,7 @@
 -- รันได้ทั้งฐานข้อมูลใหม่และฐานข้อมูลที่เคยรันไฟล์เดิมมาแล้ว (รันซ้ำได้ ข้อมูลเดิมไม่หาย)
 -- วิธีใช้: วางทั้งไฟล์ใน Supabase SQL Editor แล้วกด Run หรือใช้ Supabase CLI `npx supabase db push`
 -- ส่วนที่ไม่บังคับ: เปิด extension pg_cron (Database > Extensions) ก่อนรัน เพื่อให้ระบบเตือนนัดซ่อมและใกล้ครบกำหนดทำงานทุกเช้า
--- ข้อควรระวัง: ถ้าฐานข้อมูลมีฟังก์ชัน/ตารางที่เพิ่มนอกไฟล์นี้ (เช่น ระบบกันนัดซ่อมซ้อนเวลา) การรันทั้งไฟล์ซ้ำจะเขียนทับฟังก์ชันที่ชื่อซ้ำกัน (repairs_before_insert ฯลฯ) ตรวจก่อนรัน
+-- ข้อควรระวัง: ถ้าฐานข้อมูลมีฟังก์ชัน/ตารางที่เพิ่มนอกไฟล์นี้ การรันทั้งไฟล์ซ้ำจะเขียนทับฟังก์ชันที่ชื่อซ้ำกัน (repairs_before_insert ฯลฯ) ตรวจก่อนรัน
 -- ส่วน hardening และ rls-performance อยู่ท้ายสุดเสมอ (ไล่แก้ทุกฟังก์ชัน trigger และทุก policy ที่มี ณ ตอนนั้น)
 
 -- ============================================================
@@ -206,12 +206,10 @@ create table if not exists public.repairs (
 -- ---------------------------------------------------------------------------
 -- ข้อมูลเพิ่มเติมสำหรับนัดวันเวลาเข้าซ่อม (ใช้ alter เพื่อให้ฐานข้อมูลเดิมที่มีตารางอยู่แล้วได้คอลัมน์ใหม่ด้วย)
 -- ---------------------------------------------------------------------------
--- สถานะ: pending รอดำเนินการ -> in_progress กำลังดำเนินการ (มีวันนัดเข้าซ่อม) -> done เสร็จสิ้น, cancelled ยกเลิก/ไม่รับเรื่อง
--- (scheduled นัดหมายแล้ว = สถานะเดิม เลิกใช้แล้ว รายการเก่าถูกย้ายเป็น in_progress ในส่วน repair-updates)
--- สถานะ: pending รอนัดหมาย -> scheduled นัดหมายแล้ว -> in_progress กำลังซ่อม -> done เสร็จสิ้น, cancelled ยกเลิก/ไม่รับเรื่อง
+-- สถานะ: pending รอดำเนินการ -> in_progress กำลังดำเนินการ (มีวันนัดเข้าซ่อม) -> done เสร็จสิ้น
 alter table public.repairs drop constraint if exists repairs_status_check;
 alter table public.repairs add constraint repairs_status_check
-  check (status in ('pending', 'scheduled', 'in_progress', 'done', 'cancelled'));
+  check (status in ('pending', 'in_progress', 'done'));
 
 alter table public.repairs
   -- ประเภทงาน และความเร่งด่วน (ฉุกเฉิน = ช่างเข้าได้ทันทีโดยไม่ต้องรอนัด เช่น น้ำรั่วหนัก ไฟช็อต)
@@ -249,18 +247,17 @@ alter table public.repairs add constraint repairs_slots_check
   check (jsonb_typeof(available_slots) = 'array' and jsonb_array_length(available_slots) <= 3);
 alter table public.repairs drop constraint if exists repairs_availability_note_check;
 alter table public.repairs add constraint repairs_availability_note_check check (char_length(availability_note) <= 500);
--- ช่วงเวลาเข้าซ่อม "HH:MM-HH:MM" ระหว่าง 09:00-20:00 (เริ่มก่อนสิ้นสุด) หรือค่าแบบเดิม morning/afternoon/evening
+-- ช่วงเวลาเข้าซ่อม "HH:MM-HH:MM" ระหว่าง 09:00-20:00 (เริ่มก่อนสิ้นสุด)
 create or replace function public.repair_valid_period(p text)
 returns boolean
 language sql
 immutable
 as $$
   select coalesce(
-    p in ('morning', 'afternoon', 'evening')
-    or (p ~ '^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$'
-        and split_part(p, '-', 1) >= '09:00'
-        and split_part(p, '-', 2) <= '20:00'
-        and split_part(p, '-', 1) < split_part(p, '-', 2)),
+    p ~ '^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$'
+    and split_part(p, '-', 1) >= '09:00'
+    and split_part(p, '-', 2) <= '20:00'
+    and split_part(p, '-', 1) < split_part(p, '-', 2),
     false);
 $$;
 
@@ -270,10 +267,6 @@ alter table public.repairs add constraint repairs_period_check
 alter table public.repairs drop constraint if exists repairs_appointment_state_check;
 alter table public.repairs add constraint repairs_appointment_state_check
   check (appointment_state is null or appointment_state in ('proposed', 'confirmed'));
--- นัดหมายแล้วต้องมีวันและช่วงเวลาเสมอ
-alter table public.repairs drop constraint if exists repairs_scheduled_check;
-alter table public.repairs add constraint repairs_scheduled_check
-  check (status <> 'scheduled' or (appointment_date is not null and appointment_period is not null and appointment_state is not null));
 alter table public.repairs drop constraint if exists repairs_technician_check;
 alter table public.repairs add constraint repairs_technician_check check (char_length(technician) <= 100);
 alter table public.repairs drop constraint if exists repairs_tenant_message_check;
@@ -394,8 +387,8 @@ begin
       -- ปิดงานใหม่ ต้องให้ผู้เช่ายืนยันใหม่
       if new.status = 'done' then new.tenant_confirmed_at := null; end if;
     end if;
-    -- กลับไปรอนัดหมาย / ยกเลิก: ล้างนัดเดิม
-    if new.status in ('pending', 'cancelled') then
+    -- กลับไปรอนัดหมาย: ล้างนัดเดิม
+    if new.status = 'pending' then
       new.appointment_date := null;
       new.appointment_period := null;
       new.appointment_state := null;
@@ -2106,28 +2099,22 @@ immutable
 as $$
   select case s
     when 'pending' then 'รอดำเนินการ'
-    when 'scheduled' then 'นัดหมายแล้ว'
     when 'in_progress' then 'กำลังดำเนินการ'
     when 'done' then 'เสร็จสิ้น'
-    when 'cancelled' then 'ยกเลิก'
     else s end;
 $$;
 
--- 13:00-15:30 -> 13:00-15:30 น. (ค่าแบบเดิม morning -> 09:00-12:00 น.)
+-- 13:00-15:30 -> 13:00-15:30 น.
 create or replace function public.repair_period_label(p text)
 returns text
 language sql
 immutable
 as $$
-  select case p
-    when 'morning' then '09:00-12:00 น.'
-    when 'afternoon' then '13:00-17:00 น.'
-    when 'evening' then '17:00-20:00 น.'
-    else case
-      -- ตรวจรูปแบบก่อนแปลงเป็นเวลา (case ตรวจตามลำดับ ไม่แปลงค่าที่รูปแบบไม่ถูก)
-      when p !~ '^\d\d:\d\d-\d\d:\d\d$' then coalesce(p || ' น.', '')
-      when split_part(p, '-', 2)::time - split_part(p, '-', 1)::time = interval '1 hour' then split_part(p, '-', 1) || ' น.'
-      else p || ' น.' end end;
+  select case
+    -- ตรวจรูปแบบก่อนแปลงเป็นเวลา (case ตรวจตามลำดับ ไม่แปลงค่าที่รูปแบบไม่ถูก)
+    when p !~ '^\d\d:\d\d-\d\d:\d\d$' then coalesce(p || ' น.', '')
+    when split_part(p, '-', 2)::time - split_part(p, '-', 1)::time = interval '1 hour' then split_part(p, '-', 1) || ' น.'
+    else p || ' น.' end;
 $$;
 
 -- 2026-10-20 -> จ. 20 ต.ค. 69
@@ -2254,7 +2241,6 @@ begin
           when 'done' then case when new.cost_payer = 'tenant' and new.cost > 0
                                 then 'ซ่อมเสร็จแล้ว มีค่าซ่อมที่ต้องชำระ ' || public.fmt_baht(new.cost)
                                 else 'ซ่อมเสร็จแล้ว กรุณาตรวจสอบและยืนยัน' end
-          when 'cancelled' then 'เรื่องแจ้งซ่อมถูกยกเลิก'
           when 'pending' then 'ต้องนัดวันเข้าซ่อมใหม่'
           else 'สถานะแจ้งซ่อมเปลี่ยนเป็น "' || public.repair_status_label(new.status) || '"' end;
       elsif new.status = 'done' and new.cost_payer = 'tenant' and new.cost > 0
@@ -2360,10 +2346,9 @@ begin
   end loop;
 
   -- ค่าซ่อมที่ผู้เช่ายังไม่ชำระ: เตือนทุก 3 วันนับจากวันที่ซ่อมเสร็จ (วันที่ 3, 6, 9, ...) ไม่เตือนเรื่องที่ส่งสลิปแล้วหรือชำระแล้ว
-  -- และไม่เตือนเรื่องเก่าที่เคยรวมในใบแจ้งหนี้ค่าห้องแล้ว (invoice_id)
   for r in
     select rp.* from public.repairs rp
-    where rp.status = 'done' and rp.cost_payer = 'tenant' and rp.cost > 0 and rp.invoice_id is null
+    where rp.status = 'done' and rp.cost_payer = 'tenant' and rp.cost > 0
       and rp.user_id is not null and rp.completed_at is not null
       and (public.today_th() - (rp.completed_at at time zone 'Asia/Bangkok')::date) >= 3
       and (public.today_th() - (rp.completed_at at time zone 'Asia/Bangkok')::date) % 3 = 0
@@ -2668,167 +2653,9 @@ grant execute on function public.renew_contract(text, date, text) to authenticat
 -- ============================================================
 -- repair-updates
 -- ============================================================
--- ระบบแจ้งซ่อมรุ่นใหม่: เวลาเข้าซ่อมทีละ 1 ชั่วโมง กันเวลาซ้ำกับห้องอื่น สถานะ in_progress แทน scheduled และค่าซ่อมรวมในใบแจ้งหนี้ค่าห้อง
--- (ฟังก์ชันเดิมที่เปลี่ยนไปอยู่ในส่วน repairs และ notifications ด้านบนแล้ว)
-
--- ============================================================
--- กันนัดซ่อมชนกัน: เวลาที่เป็นนัดของห้องหนึ่งแล้ว ห้องอื่นนัดซ้อนไม่ได้
--- (เวลานัด 1 ครั้ง = "09:00-10:00" ค่าแบบเดิมอาจเป็นช่วงยาวกว่า หรือ morning/afternoon/evening)
--- ============================================================
-
--- "09:00-10:00" / morning -> array['09:00', '10:00'] (เวลาเริ่ม, เวลาสิ้นสุด)
-create or replace function public.repair_period_range(p text)
-returns text[]
-language sql
-immutable
-as $$
-  select case p
-    when 'morning' then array['09:00', '12:00']
-    when 'afternoon' then array['13:00', '17:00']
-    when 'evening' then array['17:00', '20:00']
-    else array[split_part(p, '-', 1), split_part(p, '-', 2)] end;
-$$;
-
--- สองช่วงเวลาซ้อนกันไหม
-create or replace function public.repair_periods_overlap(a text, b text)
-returns boolean
-language sql
-immutable
-as $$
-  select (public.repair_period_range(a))[1] < (public.repair_period_range(b))[2]
-     and (public.repair_period_range(b))[1] < (public.repair_period_range(a))[2];
-$$;
-
--- เวลาที่ไม่ว่างของทุกห้อง ให้หน้าเว็บปิดเวลานั้น (คืนแค่วันและเวลา ไม่มีข้อมูลห้อง/ผู้เช่า)
--- นับ: นัดที่แอดมินกำหนดแล้ว + วันเวลาที่ผู้เช่าห้องอื่นเลือกไว้ในเรื่องที่ยังรอดำเนินการ
--- p_exclude = รายการที่กำลังแก้ไขอยู่ (ไม่นับเวลาของตัวเอง)
-create or replace function public.repair_booked_times(p_exclude uuid default null)
-returns table (appointment_date date, appointment_period text)
-language sql
-stable
-security definer set search_path = public
-as $$
-  select r.appointment_date, r.appointment_period
-  from public.repairs r
-  where r.status = 'in_progress'
-    and r.appointment_date >= public.today_th()
-    and r.id is distinct from p_exclude
-  union
-  select (s ->> 'date')::date, s ->> 'period'
-  from public.repairs r, jsonb_array_elements(r.available_slots) s
-  where r.status = 'pending'
-    and (s ->> 'date') >= public.today_th()::text
-    and r.id is distinct from p_exclude;
-$$;
-
-revoke all on function public.repair_booked_times(uuid) from public, anon;
-grant execute on function public.repair_booked_times(uuid) to authenticated;
-
--- วัน + เวลานี้ไม่ว่างไหม (นัดที่กำหนดแล้ว หรือเวลาที่ผู้เช่าห้องอื่นเลือกไว้) ไม่นับรายการ p_self
-create or replace function public.repair_time_taken(p_self uuid, p_date date, p_period text)
-returns boolean
-language sql
-stable
-security definer set search_path = public
-as $$
-  select exists (
-    select 1 from public.repairs r
-    where r.id <> p_self and r.status = 'in_progress'
-      and r.appointment_date = p_date
-      and public.repair_periods_overlap(r.appointment_period, p_period)
-  ) or exists (
-    select 1 from public.repairs r, jsonb_array_elements(r.available_slots) s
-    where r.id <> p_self and r.status = 'pending'
-      and s ->> 'date' = p_date::text
-      and public.repair_periods_overlap(s ->> 'period', p_period)
-  );
-$$;
-
-revoke all on function public.repair_time_taken(uuid, date, text) from public, anon, authenticated;
-
--- กันเวลาซ้ำกับห้องอื่น (ล็อกตามวัน กันสองคนบันทึกเวลาเดียวกันพร้อมกัน)
---   แอดมินตั้ง/เปลี่ยนนัด: ห้ามชนกับนัดที่กำหนดแล้ว
---   ผู้เช่าเลือก/เปลี่ยนวันเวลาที่สะดวก: ห้ามชนกับนัดที่กำหนดแล้ว และเวลาที่ผู้เช่าห้องอื่นเลือกไว้
-create or replace function public.repairs_no_double_booking()
-returns trigger
-language plpgsql
-security definer set search_path = public
-as $$
-declare
-  s jsonb;
-  d text;
-begin
-  if new.status = 'in_progress' and new.appointment_date is not null
-     and (tg_op = 'INSERT'
-          or old.status is distinct from 'in_progress'
-          or new.appointment_date is distinct from old.appointment_date
-          or new.appointment_period is distinct from old.appointment_period) then
-    perform pg_advisory_xact_lock(hashtext('repair-appointment-' || new.appointment_date::text));
-    if exists (
-      select 1 from public.repairs r
-      where r.id <> new.id
-        and r.status = 'in_progress'
-        and r.appointment_date = new.appointment_date
-        and public.repair_periods_overlap(r.appointment_period, new.appointment_period)
-    ) then
-      raise exception 'เวลานี้มีนัดซ่อมของห้องอื่นแล้ว กรุณาเลือกเวลาอื่น';
-    end if;
-  end if;
-
-  if new.status = 'pending' and jsonb_array_length(new.available_slots) > 0
-     and (tg_op = 'INSERT' or old.status is distinct from 'pending' or new.available_slots is distinct from old.available_slots) then
-    -- ล็อกทุกวันที่เลือก (เรียงวันก่อน กันล็อกค้างกันเอง)
-    for d in select distinct x ->> 'date' from jsonb_array_elements(new.available_slots) x order by 1 loop
-      perform pg_advisory_xact_lock(hashtext('repair-appointment-' || d));
-    end loop;
-    for s in select * from jsonb_array_elements(new.available_slots) loop
-      -- เวลาที่เพิ่งเลือก: วันที่ผ่านมาแล้ว หรือวันนี้แต่เวลาเริ่มเลยมาแล้ว เลือกไม่ได้ (เวลาไทย)
-      if (tg_op = 'INSERT' or not coalesce(old.available_slots, '[]'::jsonb) @> jsonb_build_array(s))
-         and ((s ->> 'date') < public.today_th()::text
-              or ((s ->> 'date') = public.today_th()::text
-                  and (public.repair_period_range(s ->> 'period'))[1] <= to_char(now() at time zone 'Asia/Bangkok', 'HH24:MI'))) then
-        raise exception 'เวลานี้ผ่านไปแล้ว กรุณาเลือกเวลาอื่น';
-      end if;
-      if (s ->> 'date') >= public.today_th()::text
-         and public.repair_time_taken(new.id, (s ->> 'date')::date, s ->> 'period') then
-        raise exception 'เวลานี้มีห้องอื่นเลือกไว้แล้ว กรุณาเลือกเวลาอื่น';
-      end if;
-    end loop;
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists repairs_no_double_booking on public.repairs;
-create trigger repairs_no_double_booking before insert or update on public.repairs
-  for each row execute function public.repairs_no_double_booking();
-
--- เลิกใช้สถานะ "นัดหมายแล้ว" (scheduled): ย้ายรายการเดิมเป็น "กำลังดำเนินการ" (in_progress) โดยเก็บวันนัดไว้
--- (เปิด app.repair_tenant_action ชั่วคราวเพื่อข้ามการล็อกคอลัมน์ใน trigger, ไม่มีผู้ใช้จึงไม่ส่งแจ้งเตือน)
-select set_config('app.repair_tenant_action', 'on', false);
-update public.repairs set status = 'in_progress' where status = 'scheduled';
-select set_config('app.repair_tenant_action', 'off', false);
-
--- ============================================================
--- ค่าซ่อมที่ผู้เช่าจ่าย: ชำระแยกตอนซ่อมเสร็จ (ส่วน repair-payments) ไม่รวมในใบแจ้งหนี้ค่าห้องแล้ว
--- ============================================================
--- ช่วงหนึ่งค่าซ่อมเคยถูกรวมในใบแจ้งหนี้ใบถัดไป คอลัมน์ที่ใช้ตอนนั้นเก็บไว้ให้ใบเก่ายังแสดงยอดถูก
---   invoices.repair_fee = ค่าซ่อมที่รวมอยู่ในใบ, repairs.invoice_id = เรื่องซ่อมนี้ถูกเก็บในใบไหนแล้ว (ไม่ต้องจ่ายแยกซ้ำ)
--- ไม่มีการบวกค่าซ่อมเข้าใบใหม่อีก: ลบ trigger และฟังก์ชันของระบบเดิม (รันซ้ำได้)
-
-alter table public.invoices add column if not exists repair_fee numeric(12, 2) not null default 0;
-alter table public.repairs add column if not exists invoice_id uuid references public.invoices (id) on delete set null;
-
-drop trigger if exists invoices_add_repair_fee on public.invoices;
-drop trigger if exists invoices_link_repairs on public.invoices;
-drop trigger if exists repairs_lock_billed_cost on public.repairs;
-drop function if exists public.invoices_add_repair_fee();
-drop function if exists public.invoices_link_repairs();
-drop function if exists public.repairs_lock_billed_cost();
-drop function if exists public.repair_unbilled(text, uuid);
 
 -- ล็อกการแก้ไขเรื่องแจ้งซ่อมของแอดมิน (ผู้เช่าล็อกไว้แล้วใน repairs_before_update)
---   เสร็จสิ้นแล้ว: แก้อะไรไม่ได้อีก (ยกเว้นระบบผูกเรื่องกับใบแจ้งหนี้ invoice_id และการกระทำของผู้เช่า เช่น แจ้งว่ายังไม่หาย)
+--   เสร็จสิ้นแล้ว: แก้อะไรไม่ได้อีก (ยกเว้นการกระทำของผู้เช่า เช่น แจ้งว่ายังไม่หาย)
 --   เรื่องที่ผู้เช่าแจ้ง: แอดมินแก้ปัญหา รายละเอียด และรูปของผู้เช่าไม่ได้
 create or replace function public.repairs_admin_lock()
 returns trigger
@@ -2917,8 +2744,7 @@ begin
        and p.proname in (
          'repair_valid_period', 'today_th', 'repair_valid_slots', 'invoices_lock_total', 'thai_month', 'fmt_baht',
          'repair_status_label', 'repair_period_label', 'thai_date', 'repair_appointment_text', 'repair_slots_text',
-         'invoices_reset_verify', 'invoice_late_fee', 'audit_log_immutable', 'asof_date', 'audit_status_label',
-         'repair_period_range', 'repair_periods_overlap'
+         'invoices_reset_verify', 'invoice_late_fee', 'audit_log_immutable', 'asof_date', 'audit_status_label'
        )
   loop
     execute format('alter function %s set search_path = public', f.sig);

@@ -10,7 +10,6 @@ const summaryMeta = {
     pending: { icon: 'clock', tone: 'bg-sky-50 text-sky-700' },
     in_progress: { icon: 'review', tone: 'bg-amber-50 text-amber-700' },
     done: { icon: 'checkCircle', tone: 'bg-emerald-50 text-emerald-700' },
-    cancelled: { icon: 'ban', tone: 'bg-slate-100 text-slate-600' },
 }
 
 // นัดซ่อมที่จะถึง (ตารางงานช่าง) แสดง 8 นัดแรก กดเพื่อเปิดจัดการเรื่องนั้น

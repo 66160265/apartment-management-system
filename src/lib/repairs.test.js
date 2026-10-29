@@ -5,7 +5,7 @@ vi.mock('./supabaseClient', () => ({ supabase: {} }))
 const {
     formatSize, validateImage, repairStartOptions, repairEndOptions, normalizePeriod, parsePeriod, isValidPeriod, formatPeriod,
     periodsOverlap, formatSlot, isInSlots, upcomingSlots, validateAvailability, todayIso,
-    toSlotPeriod, countOverlaps, isBreakTime, isPastTime, validateTechnician, sortRepairs,
+    countOverlaps, isBreakTime, isPastTime, validateTechnician, sortRepairs,
 } = await import('./repairs')
 
 // ตรึงเวลาเป็น 20 ต.ค. 2026 เที่ยงวัน (เวลาท้องถิ่น) ให้ผลของ "วันนี้" คงที่
@@ -53,11 +53,10 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
         expect(validateAvailability({ slots: [{ date: '2026-10-21', period: '12:00-15:00' }], allowEntry: false, urgency: 'normal' })).toContain('เวลาพัก')
     })
 
-    it('แปลงค่าแบบเดิม (morning/afternoon/evening) เป็นช่วงเวลา', () => {
-        expect(normalizePeriod('morning')).toBe('09:00-12:00')
-        expect(normalizePeriod('13:00-15:30')).toBe('13:00-15:30')
+    it('normalizePeriod / parsePeriod: ไม่มีค่าเป็นสตริงว่าง แยกเวลาเริ่มและสิ้นสุด', () => {
+        expect(normalizePeriod('13:00-15:00')).toBe('13:00-15:00')
         expect(normalizePeriod(undefined)).toBe('')
-        expect(parsePeriod('afternoon')).toEqual({ start: '13:00', end: '17:00' })
+        expect(parsePeriod('13:00-17:00')).toEqual({ start: '13:00', end: '17:00' })
     })
 
     it('isValidPeriod: เวลาเริ่มและสิ้นสุดเต็มชั่วโมง ภายใน 09:00-18:00 และสิ้นสุดหลังเวลาเริ่ม', () => {
@@ -79,7 +78,6 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
     it('formatPeriod / formatSlot: แสดงทั้งช่วงเสมอ', () => {
         expect(formatPeriod('09:00-10:00')).toBe('09:00-10:00 น.')
         expect(formatPeriod('09:00-16:00')).toBe('09:00-16:00 น.')
-        expect(formatPeriod('morning')).toBe('09:00-12:00 น.')
         expect(formatPeriod('')).toBe('')
         expect(formatSlot('2026-10-20', '13:00-15:30')).toContain('13:00-15:30 น.')
     })
@@ -92,7 +90,7 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
     })
 
     it('isInSlots: นัดต้องอยู่ในช่วงที่ผู้เช่าสะดวกช่วงใดช่วงหนึ่ง วันเดียวกัน', () => {
-        const slots = [{ date: '2026-10-21', period: '09:00-12:00' }, { date: '2026-10-22', period: 'afternoon' }]
+        const slots = [{ date: '2026-10-21', period: '09:00-12:00' }, { date: '2026-10-22', period: '13:00-17:00' }]
         expect(isInSlots(slots, '2026-10-21', '10:00-11:00')).toBe(true)
         expect(isInSlots(slots, '2026-10-21', '11:00-13:00')).toBe(false)
         expect(isInSlots(slots, '2026-10-23', '10:00-11:00')).toBe(false)
@@ -100,23 +98,15 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
         expect(isInSlots(null, '2026-10-21', '10:00-11:00')).toBe(false)
     })
 
-    it('upcomingSlots: ทิ้งวันที่ผ่านแล้ว แปลงช่วงแบบเดิม เรียงตามวัน และเก็บไม่เกิน 3 ตัวเลือก', () => {
+    it('upcomingSlots: ทิ้งวันที่ผ่านแล้ว เรียงตามวัน และเก็บไม่เกิน 3 ตัวเลือก', () => {
         const result = upcomingSlots([
             { date: '2026-10-26', period: '09:00-12:00' },
-            { date: '2026-10-25', period: 'evening' },
+            { date: '2026-10-25', period: '17:00-18:00' },
             { date: '2026-10-19', period: '09:00-12:00' },
-            { date: '2026-10-21', period: '13:00-15:30' },
+            { date: '2026-10-21', period: '13:00-16:00' },
             { date: '2026-10-20', period: '09:00-10:00' },
         ])
         expect(result.map((s) => `${s.date} ${s.period}`)).toEqual(['2026-10-20 09:00-10:00', '2026-10-21 13:00-16:00', '2026-10-25 17:00-18:00'])
-    })
-
-    it('toSlotPeriod: ช่วงแบบเดิม -> ช่วงที่เลือกได้ใกล้เคียงที่สุด', () => {
-        expect(toSlotPeriod('13:00-15:30')).toBe('13:00-16:00')
-        expect(toSlotPeriod('evening')).toBe('17:00-18:00')
-        expect(toSlotPeriod('morning')).toBe('09:00-12:00')
-        expect(toSlotPeriod('12:00-13:00')).toBe('11:00-13:00')
-        expect(toSlotPeriod('10:00-11:00')).toBe('10:00-11:00')
     })
 
     it('isPastTime: วันนี้เวลาที่เลยมาแล้วเลือกไม่ได้ (ตอนนี้ 12:00)', () => {
