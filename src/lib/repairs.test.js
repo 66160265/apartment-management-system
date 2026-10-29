@@ -50,7 +50,7 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
         expect(isBreakTime('09:00-16:00')).toBe(false)
         expect(isBreakTime('13:00-14:00')).toBe(false)
         expect(isBreakTime('')).toBe(false)
-        expect(validateAvailability({ slots: [{ date: '2026-10-21', period: '12:00-15:00' }], allowEntry: false, urgency: 'normal' })).toContain('เวลาพัก')
+        expect(validateAvailability({ slots: [{ date: '2026-10-21', period: '12:00-15:00' }], allowEntry: false })).toContain('เวลาพัก')
     })
 
     it('normalizePeriod / parsePeriod: ไม่มีค่าเป็นสตริงว่าง แยกเวลาเริ่มและสิ้นสุด', () => {
@@ -115,13 +115,13 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
         expect(isPastTime('2026-10-20', '13:00-14:00')).toBe(false)
         expect(isPastTime('2026-10-19', '17:00-18:00')).toBe(true)
         expect(isPastTime('2026-10-21', '09:00-10:00')).toBe(false)
-        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '10:00-11:00' }], allowEntry: false, urgency: 'normal' })).toContain('ผ่านไปแล้ว')
+        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '10:00-11:00' }], allowEntry: false })).toContain('ผ่านไปแล้ว')
     })
 
     it('เลือกเวลาที่ใกล้ถึงได้ ขอแค่ยังไม่ผ่านไป (ตอนนี้ 12:30)', () => {
         vi.setSystemTime(new Date(2026, 9, 20, 12, 30, 0))
-        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '13:00-16:00' }], allowEntry: false, urgency: 'normal' })).toBe('')
-        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '11:00-16:00' }], allowEntry: false, urgency: 'normal' })).toContain('ผ่านไปแล้ว')
+        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '13:00-16:00' }], allowEntry: false })).toBe('')
+        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '11:00-16:00' }], allowEntry: false })).toContain('ผ่านไปแล้ว')
     })
 
     it('countOverlaps: นับนัดของห้องอื่นที่ทับวันและช่วงเดียวกัน (ใช้เตือน ไม่ได้ห้าม)', () => {
@@ -140,7 +140,7 @@ describe('todayIso', () => {
 })
 
 describe('validateAvailability', () => {
-    const ok = { slots: [{ date: '2026-10-21', period: '09:00-10:00' }], allowEntry: false, urgency: 'normal' }
+    const ok = { slots: [{ date: '2026-10-21', period: '09:00-10:00' }], allowEntry: false }
 
     it('ข้อมูลถูกต้อง = ไม่มี error', () => {
         expect(validateAvailability(ok)).toBe('')
@@ -173,10 +173,9 @@ describe('validateAvailability', () => {
         expect(validateAvailability({ ...ok, slots: [three[0], three[0]] })).toContain('ซ้อนกัน')
     })
 
-    it('ไม่เลือกช่วงเวลาเลย: ต้องอนุญาตให้ช่างเข้าได้ หรือเป็นเรื่องฉุกเฉิน', () => {
-        expect(validateAvailability({ slots: [], allowEntry: false, urgency: 'normal' })).toContain('อย่างน้อย 1 ช่วง')
-        expect(validateAvailability({ slots: [], allowEntry: true, urgency: 'normal' })).toBe('')
-        expect(validateAvailability({ slots: [], allowEntry: false, urgency: 'emergency' })).toBe('')
+    it('ไม่เลือกช่วงเวลาเลย: ต้องอนุญาตให้ช่างเข้าได้', () => {
+        expect(validateAvailability({ slots: [], allowEntry: false })).toContain('อย่างน้อย 1 ช่วง')
+        expect(validateAvailability({ slots: [], allowEntry: true })).toBe('')
     })
 })
 

@@ -16,7 +16,7 @@ function writeChecked(day) {
 }
 
 // ตรวจวันละไม่เกินหนึ่งครั้งต่อเบราว์เซอร์ คืน true ถ้าครั้งนี้ฐานข้อมูลส่งแจ้งเตือน (ผู้ดูแลจะเห็นผ่านกระดิ่งแบบ real-time)
-// ฐานข้อมูลยังไม่ได้รัน SQL ของฟีเจอร์นี้ = เรียกไม่สำเร็จ ข้ามเงียบ ๆ ไม่กระทบการใช้งาน และลองใหม่ครั้งหน้า
+// เรียกไม่สำเร็จ (เช่น เน็ตหลุด) = ข้ามเงียบ ๆ ไม่กระทบการใช้งาน และลองใหม่ครั้งหน้า
 export async function checkBillingReminder(now = new Date()) {
     const today = thaiDateOf(now)
     if (readChecked() === today) return false

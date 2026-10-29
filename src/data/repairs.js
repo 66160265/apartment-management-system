@@ -22,13 +22,6 @@ export const repairCategories = {
     other: 'อื่น ๆ',
 }
 
-// ความเร่งด่วน (ฉุกเฉิน = ช่างเข้าได้ทันทีโดยไม่ต้องรอนัด)
-export const repairUrgencies = {
-    normal: { label: 'ปกติ', hint: 'รอนัดวันที่สะดวกได้', color: 'bg-slate-100 text-slate-700' },
-    urgent: { label: 'ด่วน', hint: 'ใช้งานไม่ได้ ควรซ่อมภายใน 1-2 วัน', color: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200' },
-    emergency: { label: 'ฉุกเฉิน', hint: 'อันตรายหรือเสียหายต่อเนื่อง เช่น น้ำรั่วหนัก ไฟช็อต', color: 'bg-red-50 text-red-700 ring-1 ring-red-200' },
-}
-
 // เวลาเข้าซ่อม: ผู้เช่ากำหนดช่วงเอง (เวลาเริ่ม - เวลาสิ้นสุด ทีละ 1 ชั่วโมง) ภายใน 09:00-18:00 เก็บเป็น "HH:MM-HH:MM" เช่น "09:00-16:00"
 // (start/end = ขอบเขตของช่วงที่เลือกได้, step = ระยะห่างของเวลาที่เลือกได้เป็นนาที)
 export const REPAIR_HOURS = { start: '09:00', end: '18:00', step: 60 }

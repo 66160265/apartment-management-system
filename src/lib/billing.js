@@ -87,7 +87,7 @@ export function lateFeeSnapshot(settings, month) {
     }
 }
 
-// ยอดที่ได้รับแล้วของใบแจ้งหนี้ (ผู้เช่าโอนหลายครั้งได้ ดู supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)) ใบเก่าที่ไม่มีช่องนี้ถือว่า 0
+// ยอดที่ได้รับแล้วของใบแจ้งหนี้ (ผู้เช่าโอนหลายครั้งได้ ดู supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments))
 export const paidOf = (invoice) => round2(invoice.paid_amount ?? 0)
 
 // ยอดคงเหลือที่ต้องชำระ ณ ตอนนี้ (ไม่ติดลบ) = ยอดบิล + ค่าปรับล่าช้าวันนี้ - ที่ได้รับแล้ว ใช้เป็นยอดใน QR พร้อมเพย์และข้อความ "ยอดที่ต้องชำระ"

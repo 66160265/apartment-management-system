@@ -12,13 +12,13 @@ import { SkeletonList } from './Skeleton.jsx'
 // endDate = วันสิ้นสุดสัญญาปัจจุบัน onRenewed(newEnd) เรียกหลังต่อสำเร็จ (หน้าแม่อัปเดตวันที่ในฟอร์มด้วย กันบันทึกฟอร์มแล้วทับวันที่ใหม่)
 function ContractSection({ tenant, endDate, onRenewed }) {
     const [open, setOpen] = useState(false)
-    // null = ยังโหลดไม่เสร็จ / ไม่มีตารางประวัติ (ยังไม่ได้รัน migration) แล้วแต่ unavailable
+    // null = ยังโหลดไม่เสร็จหรือโหลดไม่สำเร็จ (แยกด้วย loadFailed)
     const [renewals, setRenewals] = useState(null)
-    const [unavailable, setUnavailable] = useState(false)
+    const [loadFailed, setLoadFailed] = useState(false)
 
     const reload = useCallback(async () => {
         const list = await loadRenewals(tenant.room)
-        setUnavailable(list === null)
+        setLoadFailed(list === null)
         setRenewals(list)
     }, [tenant.room])
 
@@ -62,8 +62,8 @@ function ContractSection({ tenant, endDate, onRenewed }) {
 
             <div>
                 <h3 className="text-sm font-medium text-primary-dark mb-2">ประวัติการต่อสัญญา</h3>
-                {unavailable ? (
-                    <p className="text-sm text-muted">ยังดูประวัติไม่ได้ เพราะยังไม่ได้ติดตั้งฟีเจอร์ต่อสัญญาในระบบหลังบ้าน กรุณาแจ้งผู้พัฒนาระบบ</p>
+                {loadFailed ? (
+                    <p className="text-sm text-red-700">โหลดประวัติการต่อสัญญาไม่สำเร็จ ลองรีเฟรชหน้าอีกครั้ง</p>
                 ) : renewals === null ? (
                     <SkeletonList rows={2} avatar={false} className="-mx-4" />
                 ) : renewals.length === 0 ? (

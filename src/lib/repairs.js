@@ -138,7 +138,7 @@ export const countOverlaps = (appointments, date, period) =>
     (appointments ?? []).filter((a) => a.date === date && periodsOverlap(a.period, period)).length
 
 // ตรวจช่วงเวลาที่ผู้เช่ากรอก: คืนข้อความ error หรือสตริงว่าง
-export function validateAvailability({ slots, allowEntry, urgency }) {
+export function validateAvailability({ slots, allowEntry }) {
     if (slots.some((s) => !s.date || !parsePeriod(s.period).start || !parsePeriod(s.period).end)) return 'กรุณาเลือกวัน เวลาเริ่ม และเวลาสิ้นสุดให้ครบทุกช่อง'
     const onBreak = slots.find((s) => isBreakTime(s.period))
     if (onBreak) return `เวลา ${REPAIR_BREAK.start}-${REPAIR_BREAK.end} น. เป็นเวลาพักของช่าง กรุณาเลือกช่วงเวลาอื่น`
@@ -148,7 +148,7 @@ export function validateAvailability({ slots, allowEntry, urgency }) {
     // ช่วงในวันเดียวกันห้ามซ้อนกัน (เลือกช่วงยาวช่วงเดียวแทนได้)
     if (slots.some((s, i) => slots.some((o, j) => j < i && o.date === s.date && periodsOverlap(o.period, s.period))))
         return 'มีช่วงเวลาในวันเดียวกันซ้อนกัน กรุณารวมเป็นช่วงเดียวหรือเลือกเวลาอื่น'
-    if (slots.length === 0 && !allowEntry && urgency !== 'emergency')
+    if (slots.length === 0 && !allowEntry)
         return 'กรุณาเลือกช่วงเวลาที่สะดวกอย่างน้อย 1 ช่วง หรืออนุญาตให้ช่างเข้าห้องได้แม้ไม่อยู่'
     return ''
 }

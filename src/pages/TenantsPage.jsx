@@ -65,7 +65,7 @@ function TenantsPage() {
         const err = await createTenantAccount(data)
         if (err) return err
         // เงินประกัน: Edge Function create-tenant ไม่รู้จักช่องนี้ จึงตั้งค่าตามหลังด้วยการอัปเดตแถวผู้เช่า (ไม่ต้อง deploy ฟังก์ชันใหม่)
-        // ถ้าตั้งไม่สำเร็จ (เช่น ยังไม่ได้รัน ส่วน move-out ของไฟล์ migration) ผู้เช่าถูกสร้างแล้ว จึงแจ้งเตือนให้ไปแก้ในหน้ารายละเอียดแทนการแจ้งว่าล้มเหลว
+        // ถ้าตั้งไม่สำเร็จ ผู้เช่าถูกสร้างแล้ว จึงแจ้งเตือนให้ไปแก้ในหน้ารายละเอียดแทนการแจ้งว่าล้มเหลว
         if (deposit > 0) {
             const { error } = await supabase.from('tenants').update({ deposit }).eq('room', data.room)
             if (error) setNotice(`เพิ่มผู้เช่าห้อง ${data.room} แล้ว แต่ตั้งเงินประกันไม่สำเร็จ (${error.message}) กรุณาแก้ในหน้ารายละเอียดผู้เช่า`)

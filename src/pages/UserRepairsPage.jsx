@@ -205,7 +205,7 @@ function UserRepairsPage() {
         accept: () => runAction('repair_accept_appointment', { p_id: editing.id }, 'ยืนยันวันนัดเรียบร้อยแล้ว'),
         // ส่งช่วงเวลาใหม่ที่สะดวก (รายการจะกลับไปรอผู้ดูแลนัดใหม่)
         submitReschedule: () => {
-            const err = validateAvailability({ slots: actionForm.slots, allowEntry: actionForm.allow_entry, urgency: 'normal' })
+            const err = validateAvailability({ slots: actionForm.slots, allowEntry: actionForm.allow_entry })
             if (err) return setFormError(err)
             runAction(
                 'repair_request_new_time',

@@ -35,7 +35,7 @@ async function load(userId) {
     ])
     inflight = null
     if (current !== userId) return
-    // โหลดไม่สำเร็จ (เช่น ยังไม่ได้รัน ส่วน repair-payments ของไฟล์ migration) ไม่แสดงค่าซ่อมค้าง เพราะผู้เช่าจะชำระไม่ได้
+    // โหลดไม่สำเร็จ ไม่แสดงค่าซ่อมค้าง (ไม่รู้ว่าส่งสลิปไปแล้วหรือยัง)
     const items = repairsRes.error || paymentsRes.error ? EMPTY : unpaidRepairCosts(repairsRes.data ?? [], paymentsRes.data ?? [])
     state = { userId, items }
     listeners.forEach((l) => l())

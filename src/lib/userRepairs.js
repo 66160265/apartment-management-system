@@ -33,7 +33,7 @@ export function validateRepairSubmit(form) {
     if (!form.category) return 'กรุณาเลือกประเภทงานซ่อม'
     if (!form.problem.trim()) return 'กรุณาระบุปัญหาที่พบ'
     // ต้องบอกว่าช่างเข้าได้เมื่อไร (ยกเว้นอนุญาตให้เข้าห้องได้แม้ไม่อยู่)
-    return validateAvailability({ slots: form.slots, allowEntry: form.allow_entry, urgency: 'normal' }) || ''
+    return validateAvailability({ slots: form.slots, allowEntry: form.allow_entry }) || ''
 }
 
 // ฟิลด์ที่จะบันทึกลงตาราง repairs (รายการใหม่ใช้ insert รายการเดิมใช้ update)

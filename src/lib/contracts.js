@@ -50,7 +50,7 @@ export async function renewContract(room, newEnd, note) {
     return error ? error.message : null
 }
 
-// ประวัติการต่อสัญญา (ใหม่ไปเก่า) ของห้องหนึ่ง (แอดมิน) หรือของตัวเอง (ผู้เช่า ส่ง room = undefined) ไม่มีตาราง/อ่านไม่ได้ = null
+// ประวัติการต่อสัญญา (ใหม่ไปเก่า) ของห้องหนึ่ง (แอดมิน) หรือของตัวเอง (ผู้เช่า ส่ง room = undefined) โหลดไม่สำเร็จ = null
 export async function loadRenewals(room) {
     let query = supabase
         .from('contract_renewals')
