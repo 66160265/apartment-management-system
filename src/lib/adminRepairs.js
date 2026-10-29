@@ -93,6 +93,7 @@ export function validateRepairForm({ form, editing, slotChoices }) {
     if (!form.room) return 'กรุณาเลือกห้อง'
     if (!form.problem.trim()) return 'กรุณาระบุปัญหา'
     if (!isNew && editing.status === 'in_progress' && form.status === 'pending') return 'เรื่องที่กำลังดำเนินการแล้ว เปลี่ยนกลับเป็นรอดำเนินการไม่ได้'
+    if ((isNew || editing.status === 'pending') && form.status === 'done') return 'เรื่องที่รอดำเนินการ ต้องเปลี่ยนเป็น "กำลังดำเนินการ" ก่อน จึงเปลี่ยนเป็นเสร็จสิ้นได้'
     // กำลังดำเนินการ: ต้องเลือกวันนัดจากช่วงที่ผู้เช่าส่งมาก่อน ถ้าทุกช่วงผ่านไปแล้ว ให้ผู้เช่าเลือกใหม่
     // (ผู้เช่าไม่ได้เลือกเวลา เช่น อนุญาตให้เข้าห้องได้เลย หรือแอดมินแจ้งซ่อมเอง = ไม่มีวันนัด)
     const apptChanged = isNew || form.appointment_date !== (editing.appointment_date ?? '') || form.appointment_period !== normalizePeriod(editing.appointment_period)
