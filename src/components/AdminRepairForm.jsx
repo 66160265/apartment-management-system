@@ -145,8 +145,10 @@ function AdminRepairForm({
                         const waitSlot = k === 'in_progress' && needSlot && form.status !== k
                         // กำลังดำเนินการแล้ว ย้อนกลับเป็นรอดำเนินการไม่ได้
                         const noBack = k === 'pending' && startedWork
+                        // รอดำเนินการ ข้ามไปเสร็จสิ้นเลยไม่ได้ ต้องเป็นกำลังดำเนินการก่อน
+                        const noSkip = k === 'done' && (isNew || editing.status === 'pending')
                         return (
-                            <option key={k} value={k} disabled={waitSlot || noBack}>
+                            <option key={k} value={k} disabled={waitSlot || noBack || noSkip}>
                                 {repairStatuses[k].label}{waitSlot ? ' (เลือกวันเวลานัดก่อน)' : ''}
                             </option>
                         )

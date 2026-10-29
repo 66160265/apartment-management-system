@@ -26,6 +26,12 @@ describe('validateRepairForm', () => {
         expect(validateRepairForm({ form: form({ status: 'pending' }), editing, slotChoices: [] })).toMatch(/เปลี่ยนกลับ/)
     })
 
+    it('รอดำเนินการ ข้ามไปเสร็จสิ้นเลยไม่ได้ ต้องกำลังดำเนินการก่อน', () => {
+        expect(validateRepairForm({ form: form({ status: 'done' }), editing: tenantRepair(), slotChoices: [] })).toMatch(/กำลังดำเนินการ/)
+        expect(validateRepairForm({ form: form({ status: 'done' }), editing: 'new', slotChoices: [] })).toMatch(/กำลังดำเนินการ/)
+        expect(validateRepairForm({ form: form({ status: 'done' }), editing: tenantRepair({ status: 'in_progress' }), slotChoices: [] })).toBe('')
+    })
+
     it('กำลังดำเนินการต้องมีชื่อและเบอร์ช่าง', () => {
         expect(validateRepairForm({ form: form({ status: 'in_progress' }), editing: 'new', slotChoices: [] })).not.toBe('')
         expect(validateRepairForm({ form: form({ status: 'in_progress', technician: 'ช่างสมชาย', technician_phone: '0812345678' }), editing: 'new', slotChoices: [] })).toBe('')
