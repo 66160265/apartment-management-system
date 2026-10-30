@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient'
-import { MAX_SLOTS, REPAIR_BREAK, REPAIR_HOURS, legacyPeriods } from '../data/repairs'
+import { MAX_SLOTS, REPAIR_BREAK, REPAIR_HOURS } from '../data/repairs'
 
 // ข้อจำกัดรูปแจ้งซ่อม: ไม่เกิน 5 MB และชนิดไฟล์ที่รับ (MIME -> นามสกุลไฟล์)
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024
@@ -73,8 +73,8 @@ export const isBreakTime = (period) => {
     return start >= REPAIR_BREAK.start && start < REPAIR_BREAK.end
 }
 
-// แปลงค่าแบบเดิม (morning) เป็นช่วงเวลา "09:00-12:00"
-export const normalizePeriod = (period) => legacyPeriods[period] ?? period ?? ''
+// ช่วงเวลาที่ไม่มีค่า (null) เป็นสตริงว่าง
+export const normalizePeriod = (period) => period ?? ''
 
 // "13:00-15:30" -> { start: '13:00', end: '15:30' }
 export const parsePeriod = (period) => {
@@ -116,21 +116,10 @@ export const isInSlots = (slots, date, period) => {
     })
 }
 
-// ช่วงแบบเดิม (เช่น "13:00-15:30", "17:00-20:00", morning) -> ช่วงที่เลือกได้ใกล้เคียงที่สุด (ปัดเวลาเริ่มลง เวลาสิ้นสุดขึ้น ไม่เกินขอบเขต)
-export const toSlotPeriod = (period) => {
-    if (isValidPeriod(period)) return normalizePeriod(period)
-    const { start, end } = parsePeriod(period)
-    const from = [...repairStartOptions].reverse().find((t) => t <= start) ?? repairStartOptions[0]
-    const ends = repairEndOptions(from)
-    const to = ends.find((t) => t >= end) ?? ends[ends.length - 1]
-    return `${from}-${to}`
-}
-
-// ตัดช่วงเวลาที่ผ่านไปแล้วทิ้ง (ใช้ตอนเปิดฟอร์มแก้ไข) แปลงช่วงแบบเดิมเป็นช่วงที่เลือกได้ เรียงตามวัน และเก็บไว้ไม่เกิน MAX_SLOTS
+// ตัดช่วงเวลาที่ผ่านไปแล้วทิ้ง (ใช้ตอนเปิดฟอร์มแก้ไข) เรียงตามวัน และเก็บไว้ไม่เกิน MAX_SLOTS
 export const upcomingSlots = (slots) =>
     (slots ?? [])
         .filter((s) => s.date >= todayIso())
-        .map((s) => ({ ...s, period: toSlotPeriod(s.period) }))
         .sort((a, b) => (a.date + a.period).localeCompare(b.date + b.period))
         .slice(0, MAX_SLOTS)
 
@@ -149,7 +138,7 @@ export const countOverlaps = (appointments, date, period) =>
     (appointments ?? []).filter((a) => a.date === date && periodsOverlap(a.period, period)).length
 
 // ตรวจช่วงเวลาที่ผู้เช่ากรอก: คืนข้อความ error หรือสตริงว่าง
-export function validateAvailability({ slots, allowEntry, urgency }) {
+export function validateAvailability({ slots, allowEntry }) {
     if (slots.some((s) => !s.date || !parsePeriod(s.period).start || !parsePeriod(s.period).end)) return 'กรุณาเลือกวัน เวลาเริ่ม และเวลาสิ้นสุดให้ครบทุกช่อง'
     const onBreak = slots.find((s) => isBreakTime(s.period))
     if (onBreak) return `เวลา ${REPAIR_BREAK.start}-${REPAIR_BREAK.end} น. เป็นเวลาพักของช่าง กรุณาเลือกช่วงเวลาอื่น`
@@ -159,7 +148,7 @@ export function validateAvailability({ slots, allowEntry, urgency }) {
     // ช่วงในวันเดียวกันห้ามซ้อนกัน (เลือกช่วงยาวช่วงเดียวแทนได้)
     if (slots.some((s, i) => slots.some((o, j) => j < i && o.date === s.date && periodsOverlap(o.period, s.period))))
         return 'มีช่วงเวลาในวันเดียวกันซ้อนกัน กรุณารวมเป็นช่วงเดียวหรือเลือกเวลาอื่น'
-    if (slots.length === 0 && !allowEntry && urgency !== 'emergency')
+    if (slots.length === 0 && !allowEntry)
         return 'กรุณาเลือกช่วงเวลาที่สะดวกอย่างน้อย 1 ช่วง หรืออนุญาตให้ช่างเข้าห้องได้แม้ไม่อยู่'
     return ''
 }

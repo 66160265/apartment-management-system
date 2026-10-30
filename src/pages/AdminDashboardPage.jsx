@@ -19,7 +19,7 @@ import { selectAll } from '../lib/selectAll'
 // รายละเอียดอื่น (ย้อนหลังหลายเดือน การใช้น้ำ-ไฟ ส่งออก CSV) อยู่ที่หน้ารายงาน ไม่ซ้ำกันที่นี่
 
 // ดึงข้อมูลจากฐานข้อมูล (ไม่มีการ setState เพื่อให้เรียกซ้ำได้อย่างปลอดภัย)
-// ใบแจ้งหนี้และห้องจำเป็น พลาดแล้วโยน error ส่วนที่เหลือมาจาก SQL รุ่นหลัง ถ้ายังไม่มีตารางให้ถือว่าไม่มีข้อมูล หน้ายังใช้ได้
+// ใบแจ้งหนี้และห้องจำเป็น พลาดแล้วโยน error ส่วนที่เหลือโหลดไม่สำเร็จให้ถือว่าไม่มีข้อมูล หน้ายังใช้ได้
 async function fetchDashboardData() {
     const [invoicesRes, roomsRes, paymentsRes, repairPaymentsRes, pendingRepairsRes, tenantsRes, slipUsage, todayRepairsRes] = await Promise.all([
         selectAll(() => supabase.from('invoices').select('*').order('created_at', { ascending: false }).order('id')),
@@ -232,7 +232,6 @@ function AdminDashboardPage() {
                                         {r.problem}
                                         <span className="block text-xs text-muted">
                                             {r.technician ? `ช่าง${r.technician}${r.technician_phone ? ` · ${r.technician_phone}` : ''}` : 'ยังไม่ระบุช่าง'}
-                                            {r.contact_phone && ` · ผู้เช่า ${r.contact_phone}`}
                                         </span>
                                     </span>
                                     {r.allow_entry && <span className="text-xs text-emerald-700">เข้าห้องได้แม้ไม่อยู่</span>}
@@ -252,7 +251,7 @@ function AdminDashboardPage() {
                     hintClassName="hidden sm:block"
                     title={`การเงินเดือน ${formatMonth(selectedMonth)}`}
                     action={<MonthPicker value={selectedMonth} onChange={setSelectedMonth} marked={monthsWithInvoices} />}
-                    hint={`เรียกเก็บและยังค้าง = บิลเดือน ${formatMonth(summary.billMonth)} (ออกเดือน ${formatMonth(selectedMonth)}) · ได้รับ = เงินที่รับจริงในเดือนนี้ (ค่าห้อง+ค่าซ่อม รวมค่าปรับ)`}
+                    hint={`เรียกเก็บและยังค้าง = ใบแจ้งหนี้ค่าเช่า น้ำ ไฟ ของเดือน ${formatMonth(summary.billMonth)} ที่ออกในเดือน ${formatMonth(selectedMonth)} · ได้รับแล้ว = เงินที่รับจริงในเดือน ${formatMonth(selectedMonth)} (ค่าห้อง ค่าซ่อม และค่าปรับ)`}
                 >
                     <dl className="flex flex-col gap-1.5 sm:gap-2">
                         <div className="flex items-baseline justify-between gap-3">

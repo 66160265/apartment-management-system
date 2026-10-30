@@ -6,7 +6,6 @@ export const menuItems = [
     { label: 'ใบแจ้งหนี้', path: '/invoices', icon: 'receipt', group: 'main' },
     { label: 'แจ้งซ่อม', path: '/repairs', icon: 'wrench', group: 'main' },
     { label: 'แจ้งเตือน', path: '/notifications', icon: 'bell', group: 'main' },
-    { label: 'ประกาศ', path: '/announcements', icon: 'megaphone', group: 'main' },
     { label: 'ผู้เช่า', path: '/tenants', icon: 'users', group: 'main', adminOnly: true },
     { label: 'ห้องพัก', path: '/rooms', icon: 'door', group: 'main', adminOnly: true },
     { label: 'รายงาน', path: '/admin/reports', icon: 'fileText', group: 'main', adminOnly: true },

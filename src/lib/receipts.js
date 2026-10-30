@@ -3,7 +3,7 @@ import { formatMonth, invoiceCode, thaiDateOf } from './billing'
 // ใบเสร็จรับเงิน (PDF) ออกให้ทุกครั้งที่ยืนยันรับเงิน: ตรรกะประกอบข้อมูล แยกจากหน้าตาเอกสาร (components/ReceiptDocument.jsx) เพื่อทดสอบได้
 // เลขที่ใบเสร็จออกโดยฐานข้อมูลตอนยืนยันรับเงิน (receipt_no ดู supabase/migrations/20261022000000_initial_schema.sql (ส่วน payments)) ที่นี่แค่จัดรูปแบบ
 
-// RC-<ปี ค.ศ. ของวันที่รับเงิน (เวลาไทย)>-<เลข 6 หลัก> เช่น RC-2026-000012 ไม่มีเลข (ข้อมูลก่อนมีระบบ/ยังไม่ได้รัน SQL) = ว่าง
+// RC-<ปี ค.ศ. ของวันที่รับเงิน (เวลาไทย)>-<เลข 6 หลัก> เช่น RC-2026-000012 ไม่มีเลข (ยังไม่ได้ยืนยันรับเงิน) = ว่าง
 export function receiptCode(receiptNo, atIso) {
     if (receiptNo === null || receiptNo === undefined || !atIso) return ''
     return `RC-${thaiDateOf(new Date(atIso)).slice(0, 4)}-${String(receiptNo).padStart(6, '0')}`
@@ -61,9 +61,8 @@ export function buildRepairReceipt({ payment, repair }) {
         reference: '',
         amount: round2(payment.amount),
         cumulative: round2(payment.amount),
-        // ยอดที่ชำระ = ค่าซ่อม + ค่าปรับล่าช้า (ถ้ามี)
-        billTotal: round2(Number(payment.amount) - Number(payment.late_fee ?? 0)),
-        lateFee: round2(payment.late_fee ?? 0),
+        billTotal: round2(payment.amount),
+        lateFee: 0,
         dueTotal: round2(payment.amount),
         installment: null,
         status: 'paid',

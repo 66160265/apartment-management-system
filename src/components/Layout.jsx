@@ -4,6 +4,7 @@ import Icon from './Icon.jsx'
 import ScrollDownHint from './ScrollDownHint.jsx'
 import Sidebar from './Sidebar.jsx'
 import { SkeletonPage } from './Skeleton.jsx'
+import { checkBillingReminder } from '../lib/billingReminder.js'
 import { prefetchPages } from '../lib/pages.js'
 import { useCurrentUser } from '../lib/useCurrentUser.js'
 
@@ -16,6 +17,11 @@ function Layout() {
 
     // รู้สิทธิ์แล้ว ดึงโค้ดหน้าที่น่าจะเปิดต่อไว้ล่วงหน้าตอนเครื่องว่าง (ไปหน้าอื่นแล้วเปิดทันที ไม่ต้องรอโหลดไฟล์)
     useEffect(() => (role ? prefetchPages(role) : undefined), [role])
+
+    // ผู้ดูแลเปิดเว็บ: ให้ฐานข้อมูลตรวจว่าถึงวันออกบิลและยังมีห้องที่ไม่ได้ออกบิลไหม ถ้ามีจะส่งแจ้งเตือนถึงผู้ดูแลทุกคน (เดือนละครั้ง)
+    useEffect(() => {
+        if (role === 'admin') checkBillingReminder()
+    }, [role])
 
     // เปลี่ยนหน้าแล้วปิดเมนูบนจอเล็ก
     useEffect(() => {

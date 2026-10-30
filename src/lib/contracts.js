@@ -1,7 +1,7 @@
 import { thaiDateOf } from './billing'
 import { supabase } from './supabaseClient'
 
-// ต่อสัญญาเช่า (ฟังก์ชัน renew_contract ในไฟล์ supabase/migrations/20261022000000_initial_schema.sql ส่วน contracts-announcements)
+// ต่อสัญญาเช่า (ฟังก์ชัน renew_contract ในไฟล์ supabase/migrations/20261022000000_initial_schema.sql ส่วน contracts)
 // แอดมินเป็นผู้ต่อ ต่ออย่างเดียว วันเริ่มสัญญากับเงินประกันไม่เปลี่ยน
 
 // บวกเดือนให้วันที่ (YYYY-MM-DD) ถ้าเดือนปลายทางสั้นกว่า ใช้วันสุดท้ายของเดือนนั้น (31 ม.ค. + 1 เดือน = 28/29 ก.พ.)
@@ -50,7 +50,7 @@ export async function renewContract(room, newEnd, note) {
     return error ? error.message : null
 }
 
-// ประวัติการต่อสัญญา (ใหม่ไปเก่า) ของห้องหนึ่ง (แอดมิน) หรือของตัวเอง (ผู้เช่า ส่ง room = undefined) ไม่มีตาราง/อ่านไม่ได้ = null
+// ประวัติการต่อสัญญา (ใหม่ไปเก่า) ของห้องหนึ่ง (แอดมิน) หรือของตัวเอง (ผู้เช่า ส่ง room = undefined) โหลดไม่สำเร็จ = null
 export async function loadRenewals(room) {
     let query = supabase
         .from('contract_renewals')

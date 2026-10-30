@@ -5,7 +5,7 @@ vi.mock('./supabaseClient', () => ({ supabase: {} }))
 const {
     formatSize, validateImage, repairStartOptions, repairEndOptions, normalizePeriod, parsePeriod, isValidPeriod, formatPeriod,
     periodsOverlap, formatSlot, isInSlots, upcomingSlots, validateAvailability, todayIso,
-    toSlotPeriod, countOverlaps, isBreakTime, isPastTime, validateTechnician, sortRepairs,
+    countOverlaps, isBreakTime, isPastTime, validateTechnician, sortRepairs,
 } = await import('./repairs')
 
 // ตรึงเวลาเป็น 20 ต.ค. 2026 เที่ยงวัน (เวลาท้องถิ่น) ให้ผลของ "วันนี้" คงที่
@@ -50,14 +50,13 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
         expect(isBreakTime('09:00-16:00')).toBe(false)
         expect(isBreakTime('13:00-14:00')).toBe(false)
         expect(isBreakTime('')).toBe(false)
-        expect(validateAvailability({ slots: [{ date: '2026-10-21', period: '12:00-15:00' }], allowEntry: false, urgency: 'normal' })).toContain('เวลาพัก')
+        expect(validateAvailability({ slots: [{ date: '2026-10-21', period: '12:00-15:00' }], allowEntry: false })).toContain('เวลาพัก')
     })
 
-    it('แปลงค่าแบบเดิม (morning/afternoon/evening) เป็นช่วงเวลา', () => {
-        expect(normalizePeriod('morning')).toBe('09:00-12:00')
-        expect(normalizePeriod('13:00-15:30')).toBe('13:00-15:30')
+    it('normalizePeriod / parsePeriod: ไม่มีค่าเป็นสตริงว่าง แยกเวลาเริ่มและสิ้นสุด', () => {
+        expect(normalizePeriod('13:00-15:00')).toBe('13:00-15:00')
         expect(normalizePeriod(undefined)).toBe('')
-        expect(parsePeriod('afternoon')).toEqual({ start: '13:00', end: '17:00' })
+        expect(parsePeriod('13:00-17:00')).toEqual({ start: '13:00', end: '17:00' })
     })
 
     it('isValidPeriod: เวลาเริ่มและสิ้นสุดเต็มชั่วโมง ภายใน 09:00-18:00 และสิ้นสุดหลังเวลาเริ่ม', () => {
@@ -79,7 +78,6 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
     it('formatPeriod / formatSlot: แสดงทั้งช่วงเสมอ', () => {
         expect(formatPeriod('09:00-10:00')).toBe('09:00-10:00 น.')
         expect(formatPeriod('09:00-16:00')).toBe('09:00-16:00 น.')
-        expect(formatPeriod('morning')).toBe('09:00-12:00 น.')
         expect(formatPeriod('')).toBe('')
         expect(formatSlot('2026-10-20', '13:00-15:30')).toContain('13:00-15:30 น.')
     })
@@ -92,7 +90,7 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
     })
 
     it('isInSlots: นัดต้องอยู่ในช่วงที่ผู้เช่าสะดวกช่วงใดช่วงหนึ่ง วันเดียวกัน', () => {
-        const slots = [{ date: '2026-10-21', period: '09:00-12:00' }, { date: '2026-10-22', period: 'afternoon' }]
+        const slots = [{ date: '2026-10-21', period: '09:00-12:00' }, { date: '2026-10-22', period: '13:00-17:00' }]
         expect(isInSlots(slots, '2026-10-21', '10:00-11:00')).toBe(true)
         expect(isInSlots(slots, '2026-10-21', '11:00-13:00')).toBe(false)
         expect(isInSlots(slots, '2026-10-23', '10:00-11:00')).toBe(false)
@@ -100,23 +98,15 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
         expect(isInSlots(null, '2026-10-21', '10:00-11:00')).toBe(false)
     })
 
-    it('upcomingSlots: ทิ้งวันที่ผ่านแล้ว แปลงช่วงแบบเดิม เรียงตามวัน และเก็บไม่เกิน 3 ตัวเลือก', () => {
+    it('upcomingSlots: ทิ้งวันที่ผ่านแล้ว เรียงตามวัน และเก็บไม่เกิน 3 ตัวเลือก', () => {
         const result = upcomingSlots([
             { date: '2026-10-26', period: '09:00-12:00' },
-            { date: '2026-10-25', period: 'evening' },
+            { date: '2026-10-25', period: '17:00-18:00' },
             { date: '2026-10-19', period: '09:00-12:00' },
-            { date: '2026-10-21', period: '13:00-15:30' },
+            { date: '2026-10-21', period: '13:00-16:00' },
             { date: '2026-10-20', period: '09:00-10:00' },
         ])
         expect(result.map((s) => `${s.date} ${s.period}`)).toEqual(['2026-10-20 09:00-10:00', '2026-10-21 13:00-16:00', '2026-10-25 17:00-18:00'])
-    })
-
-    it('toSlotPeriod: ช่วงแบบเดิม -> ช่วงที่เลือกได้ใกล้เคียงที่สุด', () => {
-        expect(toSlotPeriod('13:00-15:30')).toBe('13:00-16:00')
-        expect(toSlotPeriod('evening')).toBe('17:00-18:00')
-        expect(toSlotPeriod('morning')).toBe('09:00-12:00')
-        expect(toSlotPeriod('12:00-13:00')).toBe('11:00-13:00')
-        expect(toSlotPeriod('10:00-11:00')).toBe('10:00-11:00')
     })
 
     it('isPastTime: วันนี้เวลาที่เลยมาแล้วเลือกไม่ได้ (ตอนนี้ 12:00)', () => {
@@ -125,13 +115,13 @@ describe('ช่วงเวลาเข้าซ่อม', () => {
         expect(isPastTime('2026-10-20', '13:00-14:00')).toBe(false)
         expect(isPastTime('2026-10-19', '17:00-18:00')).toBe(true)
         expect(isPastTime('2026-10-21', '09:00-10:00')).toBe(false)
-        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '10:00-11:00' }], allowEntry: false, urgency: 'normal' })).toContain('ผ่านไปแล้ว')
+        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '10:00-11:00' }], allowEntry: false })).toContain('ผ่านไปแล้ว')
     })
 
     it('เลือกเวลาที่ใกล้ถึงได้ ขอแค่ยังไม่ผ่านไป (ตอนนี้ 12:30)', () => {
         vi.setSystemTime(new Date(2026, 9, 20, 12, 30, 0))
-        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '13:00-16:00' }], allowEntry: false, urgency: 'normal' })).toBe('')
-        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '11:00-16:00' }], allowEntry: false, urgency: 'normal' })).toContain('ผ่านไปแล้ว')
+        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '13:00-16:00' }], allowEntry: false })).toBe('')
+        expect(validateAvailability({ slots: [{ date: '2026-10-20', period: '11:00-16:00' }], allowEntry: false })).toContain('ผ่านไปแล้ว')
     })
 
     it('countOverlaps: นับนัดของห้องอื่นที่ทับวันและช่วงเดียวกัน (ใช้เตือน ไม่ได้ห้าม)', () => {
@@ -150,7 +140,7 @@ describe('todayIso', () => {
 })
 
 describe('validateAvailability', () => {
-    const ok = { slots: [{ date: '2026-10-21', period: '09:00-10:00' }], allowEntry: false, urgency: 'normal' }
+    const ok = { slots: [{ date: '2026-10-21', period: '09:00-10:00' }], allowEntry: false }
 
     it('ข้อมูลถูกต้อง = ไม่มี error', () => {
         expect(validateAvailability(ok)).toBe('')
@@ -183,10 +173,9 @@ describe('validateAvailability', () => {
         expect(validateAvailability({ ...ok, slots: [three[0], three[0]] })).toContain('ซ้อนกัน')
     })
 
-    it('ไม่เลือกช่วงเวลาเลย: ต้องอนุญาตให้ช่างเข้าได้ หรือเป็นเรื่องฉุกเฉิน', () => {
-        expect(validateAvailability({ slots: [], allowEntry: false, urgency: 'normal' })).toContain('อย่างน้อย 1 ช่วง')
-        expect(validateAvailability({ slots: [], allowEntry: true, urgency: 'normal' })).toBe('')
-        expect(validateAvailability({ slots: [], allowEntry: false, urgency: 'emergency' })).toBe('')
+    it('ไม่เลือกช่วงเวลาเลย: ต้องอนุญาตให้ช่างเข้าได้', () => {
+        expect(validateAvailability({ slots: [], allowEntry: false })).toContain('อย่างน้อย 1 ช่วง')
+        expect(validateAvailability({ slots: [], allowEntry: true })).toBe('')
     })
 })
 
@@ -214,37 +203,3 @@ describe('ข้อมูลช่างและการเรียงรา�
     })
 })
 
-describe('ค่าปรับชำระค่าซ่อมล่าช้า', () => {
-    // ครบกำหนด 26 ต.ค. ปรับวันละ 50
-    const repair = { cost: 800, pay_due_date: '2026-10-26', late_fee_rate: 50, late_fee_grace: 0, late_fee_cap: null }
-    // เที่ยงวันเวลาไทยของวันที่ d
-    const at = (d) => new Date(`${d}T12:00:00+07:00`)
-
-    it('ยังไม่เกินกำหนด = ไม่มีค่าปรับ ยอดเท่าค่าซ่อม', async () => {
-        const { repairLateFee, repairAmountDue, repairDaysLate } = await import('./repairPayments')
-        expect(repairLateFee(repair, at('2026-10-26'))).toBe(0)
-        expect(repairAmountDue(repair, at('2026-10-26'))).toBe(800)
-        expect(repairDaysLate(repair, at('2026-10-25'))).toBe(-1)
-        expect(repairDaysLate(repair, at('2026-10-26'))).toBe(0)
-    })
-
-    it('เกินกำหนด 3 วัน = ปรับ 150 ยอดรวม 950', async () => {
-        const { repairLateFee, repairAmountDue, repairDaysLate } = await import('./repairPayments')
-        expect(repairDaysLate(repair, at('2026-10-29'))).toBe(3)
-        expect(repairLateFee(repair, at('2026-10-29'))).toBe(150)
-        expect(repairAmountDue(repair, at('2026-10-29'))).toBe(950)
-    })
-
-    it('ใช้วันผ่อนผันและเพดานเหมือนใบแจ้งหนี้', async () => {
-        const { repairLateFee } = await import('./repairPayments')
-        expect(repairLateFee({ ...repair, late_fee_grace: 2 }, at('2026-10-29'))).toBe(50)
-        expect(repairLateFee({ ...repair, late_fee_cap: 100 }, at('2026-11-10'))).toBe(100)
-    })
-
-    it('เรื่องเก่าที่ไม่มีค่าปรับ (อัตรา 0 หรือไม่มีวันครบกำหนด) = 0', async () => {
-        const { repairLateFee, repairDaysLate } = await import('./repairPayments')
-        expect(repairLateFee({ ...repair, late_fee_rate: 0 }, at('2026-11-10'))).toBe(0)
-        expect(repairLateFee({ cost: 800 }, at('2026-11-10'))).toBe(0)
-        expect(repairDaysLate({ cost: 800 }, at('2026-11-10'))).toBe(null)
-    })
-})

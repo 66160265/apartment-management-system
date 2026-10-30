@@ -44,6 +44,7 @@ export const settingLabels = {
     bank_account: 'เลขที่บัญชี',
     bank_holder: 'ชื่อบัญชี',
     promptpay_id: 'พร้อมเพย์',
+    billing_day: 'วันออกบิล',
     due_day: 'วันครบกำหนดชำระ',
     rate_water: 'ค่าน้ำต่อหน่วย',
     rate_electric: 'ค่าไฟต่อหน่วย',

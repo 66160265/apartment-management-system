@@ -1,217 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
-import DatePicker from '../components/DatePicker'
+import AddTenantModal from '../components/AddTenantModal'
 import Icon from '../components/Icon'
-import { CopyButton } from '../components/InvoiceParts'
 import TenantDetail from '../components/TenantDetail'
-import { Avatar, ContractBadge } from '../components/TenantParts'
+import { TenantCards, TenantRows } from '../components/TenantTable'
 import { useRealtimeReload } from '../lib/realtime'
 import { supabase } from '../lib/supabaseClient'
-import { createTenantAccount, makeDefaultPassword, makeUsername } from '../lib/tenantAccount'
-import { REQUIRED_DOCS, contractStatus, formatDate } from '../lib/tenants'
+import { createTenantAccount } from '../lib/tenantAccount'
+import { byRoom, countRequiredDocs, fetchTenantsData, filterTenants, fromRow, tabCounts, tenantTabs } from '../lib/tenantList'
 import { SkeletonTable } from '../components/Skeleton.jsx'
 
-// เรียงผู้เช่าตามเลขห้องแบบตัวเลข
-const byRoom = (a, b) => a.room.localeCompare(b.room, undefined, { numeric: true })
-
-// แปลงแถวจากตาราง tenants เป็นออบเจ็กต์ที่หน้าเว็บใช้ (ชื่อ field แบบ camelCase)
-const fromRow = (r) => ({
-    room: r.room,
-    name: r.name,
-    phone: r.phone,
-    username: r.username,
-    startDate: r.start_date,
-    endDate: r.end_date,
-    userId: r.user_id,
-    // เงินประกัน (คอลัมน์มีเมื่อรัน supabase/migrations/20261022000000_initial_schema.sql (ส่วน move-out) แล้ว ยังไม่มี = 0)
-    deposit: Number(r.deposit ?? 0),
-})
-
-// คลาส Tailwind ของช่องกรอกในฟอร์ม
-const inputClass = 'w-full border border-line bg-sand/50 rounded-xl px-3 py-2 mt-1 outline-none focus:border-secondary focus:bg-white'
-
-// วันที่ในเครื่อง -> YYYY-MM-DD
-const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
-// ค่าเริ่มต้นของสัญญา: เริ่มวันนี้ สิ้นสุดอีก 1 ปี
-function newForm() {
-    const start = new Date()
-    const end = new Date(start)
-    end.setFullYear(end.getFullYear() + 1)
-    end.setDate(end.getDate() - 1)
-    return { name: '', phone: '', room: '', startDate: isoDate(start), endDate: isoDate(end), deposit: '' }
-}
-
-// แท็บกรองรายชื่อ: ทั้งหมด / ใกล้หมดสัญญา / หมดสัญญา / เอกสารไม่ครบ
-const tabs = [
-    { value: 'all', label: 'ทั้งหมด' },
-    { value: 'expiring', label: 'ใกล้หมดสัญญา', short: 'ใกล้หมด' },
-    { value: 'expired', label: 'หมดสัญญา', short: 'หมดแล้ว' },
-    { value: 'docs', label: 'เอกสารไม่ครบ', short: 'ขาดเอกสาร' },
-]
-
-// หน้าต่างเพิ่มผู้เช่าใหม่ (สร้างบัญชีให้อัตโนมัติ) แล้วแสดงชื่อผู้ใช้/รหัสผ่านเริ่มต้น
-function AddTenantModal({ rooms, onSave, onClose }) {
-    // ค่าในฟอร์ม, error, กำลังบันทึก และข้อมูลบัญชีที่สร้างสำเร็จ (ใช้สลับไปหน้าสรุป)
-    const [form, setForm] = useState(newForm)
-    const [error, setError] = useState('')
-    const [saving, setSaving] = useState(false)
-    const [created, setCreated] = useState(null)
-
-    // สร้างฟังก์ชันจัดการ onChange ของช่องในฟอร์มตาม key และล้างข้อความ error
-    const set = (key) => (e) => {
-        setForm({ ...form, [key]: e.target.value })
-        setError('')
-    }
-
-    // ตัวอย่างชื่อผู้ใช้/รหัสผ่านเริ่มต้น แสดงได้เมื่อเลือกห้องและกรอกเบอร์อย่างน้อย 4 หลัก
-    const digits = form.phone.replace(/\D/g, '')
-    const canPreview = form.room && digits.length >= 4
-    const username = makeUsername(form.room)
-    const password = canPreview ? makeDefaultPassword(form.room, form.phone) : ''
-
-    // ตรวจว่ากรอกข้อมูลครบ แล้วสร้างผู้เช่าและบัญชีผู้ใช้
-    const handleSubmit = async (e) => {
-        e.preventDefault()
-        // ตรวจ: กรอกครบ, เบอร์มีตัวเลขพอสร้างรหัสผ่าน, วันสิ้นสุดไม่ก่อนวันเริ่ม
-        if (!form.name.trim() || !form.phone.trim() || !form.room || !form.startDate || !form.endDate) {
-            setError('กรุณากรอกข้อมูลให้ครบ')
-            return
-        }
-        if (digits.length < 4) {
-            setError('เบอร์โทรต้องมีตัวเลขอย่างน้อย 4 หลัก (ใช้สร้างรหัสผ่านเริ่มต้น)')
-            return
-        }
-        if (form.endDate < form.startDate) {
-            setError('วันสิ้นสุดสัญญาต้องไม่ก่อนวันเริ่มสัญญา')
-            return
-        }
-        if (form.deposit !== '' && (Number.isNaN(Number(form.deposit)) || Number(form.deposit) < 0)) {
-            setError('เงินประกันต้องเป็นตัวเลขที่ไม่ติดลบ')
-            return
-        }
-        // สร้างผู้เช่า สำเร็จแล้วเก็บข้อมูลบัญชีไว้แสดงให้แอดมินแจ้งผู้เช่า
-        setSaving(true)
-        const err = await onSave({
-            name: form.name.trim(),
-            phone: form.phone.trim(),
-            room: form.room,
-            startDate: form.startDate,
-            endDate: form.endDate,
-            deposit: form.deposit === '' ? 0 : Number(form.deposit),
-        })
-        setSaving(false)
-        if (err) setError(err)
-        else setCreated({ name: form.name.trim(), room: form.room, username, password })
-    }
-
-    return (
-        <div className="fixed inset-0 bg-primary-deep/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl w-[480px] max-w-full max-h-[95vh] overflow-y-auto">
-                {/* สร้างสำเร็จ: แสดงชื่อผู้ใช้/รหัสผ่านพร้อมปุ่มคัดลอก / ยังไม่สร้าง: ฟอร์มเพิ่มผู้เช่า */}
-                {created ? (
-                    <div className="p-4 sm:p-6 flex flex-col gap-4 items-stretch">
-                        <div className="flex flex-col items-center text-center gap-2">
-                            <span className="grid place-items-center w-14 h-14 rounded-full bg-emerald-50 text-emerald-600">
-                                <Icon name="checkCircle" className="w-8 h-8" />
-                            </span>
-                            <h2 className="text-lg font-semibold text-primary-dark">เพิ่มผู้เช่าเรียบร้อย</h2>
-                            <p className="text-sm text-muted">{created.name} · ห้อง {created.room}<br />แจ้งข้อมูลเข้าสู่ระบบนี้ให้ผู้เช่า และแนะนำให้เปลี่ยนรหัสผ่านหลังเข้าใช้งาน</p>
-                        </div>
-                        <div className="rounded-xl bg-sand/70 border border-line divide-y divide-line text-sm">
-                            <div className="flex items-center justify-between gap-3 px-4 py-3">
-                                <div><div className="text-xs text-muted">ชื่อผู้ใช้</div><div className="font-medium text-ink">{created.username}</div></div>
-                                <CopyButton text={created.username} />
-                            </div>
-                            <div className="flex items-center justify-between gap-3 px-4 py-3">
-                                <div><div className="text-xs text-muted">รหัสผ่านเริ่มต้น</div><div className="font-medium text-ink">{created.password}</div></div>
-                                <CopyButton text={created.password} />
-                            </div>
-                        </div>
-                        <button onClick={onClose} className="bg-primary hover:bg-primary-dark text-white py-2.5 rounded-xl font-medium shadow-card">เสร็จสิ้น</button>
-                    </div>
-                ) : (
-                    <form onSubmit={handleSubmit} className="p-4 sm:p-6 flex flex-col gap-4">
-                        <div>
-                            <h2 className="text-lg font-semibold text-primary-dark">เพิ่มผู้เช่าใหม่</h2>
-                            <p className="text-sm text-muted mt-0.5">ระบบจะสร้างบัญชีเข้าสู่ระบบให้ผู้เช่าอัตโนมัติ</p>
-                        </div>
-                        {/* ชื่อ-นามสกุล */}
-                        <label className="text-sm text-muted">
-                            ชื่อ-นามสกุล
-                            <input className={inputClass} value={form.name} onChange={set('name')} autoFocus />
-                        </label>
-                        {/* เบอร์โทร และเลือกห้อง (เฉพาะห้องว่าง) */}
-                        <div className="grid sm:grid-cols-2 gap-4">
-                            <label className="text-sm text-muted">
-                                เบอร์โทร
-                                <input className={inputClass} value={form.phone} onChange={set('phone')} inputMode="tel" />
-                            </label>
-                            <label className="text-sm text-muted">
-                                ห้องพัก
-                                <select className={inputClass} value={form.room} onChange={set('room')}>
-                                    <option value="">{rooms.length ? 'เลือกห้อง...' : 'ไม่มีห้องว่าง'}</option>
-                                    {rooms.map((r) => (
-                                        <option key={r.number} value={r.number}>{r.number} (ชั้น {r.floor})</option>
-                                    ))}
-                                </select>
-                            </label>
-                        </div>
-                        {/* วันเริ่ม/สิ้นสุดสัญญา */}
-                        <div className="grid sm:grid-cols-2 gap-4">
-                            <div className="text-sm text-muted">
-                                เริ่มสัญญา
-                                <DatePicker value={form.startDate} onChange={(v) => set('startDate')({ target: { value: v } })} />
-                            </div>
-                            <div className="text-sm text-muted">
-                                สิ้นสุดสัญญา
-                                <DatePicker value={form.endDate} onChange={(v) => set('endDate')({ target: { value: v } })} min={form.startDate} align="right" />
-                            </div>
-                        </div>
-
-                        {/* เงินประกัน (ไม่บังคับ แก้ภายหลังได้ในหน้ารายละเอียดผู้เช่า) */}
-                        <label className="text-sm text-muted">
-                            เงินประกัน (บาท) <span className="text-xs">ไม่บังคับ</span>
-                            <input className={inputClass} type="number" min="0" step="0.01" value={form.deposit} onChange={set('deposit')} placeholder="0" />
-                        </label>
-
-                        {/* ตัวอย่างบัญชีเข้าสู่ระบบที่จะถูกสร้าง */}
-                        <div className="rounded-xl bg-mist/40 border border-mist px-4 py-3 text-sm flex items-start gap-3">
-                            <Icon name="key" className="w-5 h-5 mt-0.5 text-primary" />
-                            <div>
-                                <div className="font-medium text-primary-dark">บัญชีเข้าสู่ระบบของผู้เช่า</div>
-                                {canPreview ? (
-                                    <div className="text-muted mt-0.5">ชื่อผู้ใช้ <b className="text-ink">{username}</b> · รหัสผ่านเริ่มต้น <b className="text-ink">{password}</b></div>
-                                ) : (
-                                    <div className="text-muted mt-0.5">เลือกห้องและกรอกเบอร์โทร ระบบจะแสดงชื่อผู้ใช้และรหัสผ่านที่นี่</div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* ข้อความ error และปุ่มยกเลิก/เพิ่มผู้เช่า */}
-                        {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-2">{error}</p>}
-                        <div className="flex justify-end gap-2">
-                            <button type="button" onClick={onClose} className="border border-line text-muted hover:bg-sand px-5 py-2 rounded-xl">ยกเลิก</button>
-                            <button type="submit" disabled={saving} className="bg-primary hover:bg-primary-dark disabled:opacity-60 text-white px-6 py-2 rounded-xl shadow-card">
-                                {saving ? 'กำลังเพิ่ม...' : 'เพิ่มผู้เช่า'}
-                            </button>
-                        </div>
-                    </form>
-                )}
-            </div>
-        </div>
-    )
-}
-
-// ดึงข้อมูลผู้เช่า ห้อง และเอกสารผู้เช่าพร้อมกัน
-const fetchTenantsData = () =>
-    Promise.all([
-        supabase.from('tenants').select('*'),
-        supabase.from('rooms').select('number, status, floor'),
-        supabase.from('tenant_documents').select('room, type'),
-    ])
-
 // หน้าจัดการผู้เช่าของแอดมิน: สรุปจำนวน กรองตามสถานะสัญญา ค้นหา เพิ่มผู้เช่า และดูรายละเอียด
+// หน้านี้ถือข้อมูลและตัวกรอง ส่วนที่แสดงผลแยกอยู่ใน AddTenantModal และ TenantTable ตรรกะกรองอยู่ใน lib/tenantList.js
 function TenantsPage() {
     // รายชื่อผู้เช่า และรายการห้องทั้งหมด
     const [tenants, setTenants] = useState([])
@@ -237,12 +37,7 @@ function TenantsPage() {
             setTenants(tenantsRes.data.map(fromRow).sort(byRoom))
             setRooms(roomsRes.data)
             // ถ้ายังไม่ได้สร้างตารางเอกสาร (docsRes.error) ถือว่าไม่มีเอกสาร ไม่ทำให้หน้าพัง
-            const counts = {}
-            const required = REQUIRED_DOCS.map((d) => d.type)
-            for (const d of docsRes.data ?? []) {
-                if (required.includes(d.type)) counts[d.room] = (counts[d.room] ?? 0) + 1
-            }
-            setDocCounts(counts)
+            setDocCounts(countRequiredDocs(docsRes.data))
             setLoadError('')
         }
         setLoading(false)
@@ -270,7 +65,7 @@ function TenantsPage() {
         const err = await createTenantAccount(data)
         if (err) return err
         // เงินประกัน: Edge Function create-tenant ไม่รู้จักช่องนี้ จึงตั้งค่าตามหลังด้วยการอัปเดตแถวผู้เช่า (ไม่ต้อง deploy ฟังก์ชันใหม่)
-        // ถ้าตั้งไม่สำเร็จ (เช่น ยังไม่ได้รัน ส่วน move-out ของไฟล์ migration) ผู้เช่าถูกสร้างแล้ว จึงแจ้งเตือนให้ไปแก้ในหน้ารายละเอียดแทนการแจ้งว่าล้มเหลว
+        // ถ้าตั้งไม่สำเร็จ ผู้เช่าถูกสร้างแล้ว จึงแจ้งเตือนให้ไปแก้ในหน้ารายละเอียดแทนการแจ้งว่าล้มเหลว
         if (deposit > 0) {
             const { error } = await supabase.from('tenants').update({ deposit }).eq('room', data.room)
             if (error) setNotice(`เพิ่มผู้เช่าห้อง ${data.room} แล้ว แต่ตั้งเงินประกันไม่สำเร็จ (${error.message}) กรุณาแก้ในหน้ารายละเอียดผู้เช่า`)
@@ -291,27 +86,9 @@ function TenantsPage() {
         return <TenantDetail key={detail.room} tenant={detail} floor={floors[detail.room]} onBack={() => setModal(null)} onChanged={load} />
     }
 
-    // ตรวจว่าผู้เช่ามีเอกสารหลักครบทุกประเภทหรือยัง
-    const docsComplete = (t) => (docCounts[t.room] ?? 0) >= REQUIRED_DOCS.length
-    // เงื่อนไขของแต่ละแท็บ และจำนวนผู้เช่าในแต่ละแท็บ
-    const matchesTab = {
-        all: () => true,
-        expiring: (t) => contractStatus(t.endDate).key === 'expiring',
-        expired: (t) => contractStatus(t.endDate).key === 'expired',
-        docs: (t) => !docsComplete(t),
-    }
-    const counts = Object.fromEntries(tabs.map((x) => [x.value, tenants.filter(matchesTab[x.value]).length]))
-
-    // กรองตามแท็บ แล้วค้นหาจากชื่อ เลขห้อง หรือเบอร์โทร (เทียบเฉพาะตัวเลข)
-    const keyword = search.trim().toLowerCase()
-    const keywordDigits = keyword.replace(/\D/g, '')
-    const visible = tenants
-        .filter(matchesTab[tab])
-        .filter((t) =>
-            !keyword ||
-            t.name.toLowerCase().includes(keyword) ||
-            t.room.includes(keyword) ||
-            (keywordDigits && t.phone.replace(/\D/g, '').includes(keywordDigits)))
+    // จำนวนผู้เช่าในแต่ละแท็บ และรายการที่ผ่านตัวกรอง
+    const counts = tabCounts(tenants, docCounts)
+    const visible = filterTenants(tenants, { tab, search, docCounts })
 
     // การ์ดสรุปด้านบน (การ์ดที่มี tab กดเพื่อกรองได้)
     const summary = [
@@ -320,10 +97,6 @@ function TenantsPage() {
         { label: 'หมดสัญญาแล้ว', short: 'หมดแล้ว', value: counts.expired, unit: 'ราย', icon: 'calendar', tone: 'bg-red-50 text-red-700', tab: 'expired' },
         { label: 'ห้องว่างพร้อมเข้าอยู่', short: 'ห้องว่าง', value: freeRooms.length, unit: 'ห้อง', icon: 'door', tone: 'bg-sky-50 text-sky-700' },
     ]
-
-    // คลาสของช่องในตารางและหัวตาราง
-    const cell = 'px-3 py-3 border-x border-line/60'
-    const head = 'px-3 py-3 font-semibold text-xs tracking-wide border-x border-white/10'
 
     return (
         <>
@@ -398,7 +171,7 @@ function TenantsPage() {
 
                     {/* แท็บกรองพร้อมจำนวน */}
                     <div role="tablist" aria-label="หมวดหมู่ผู้เช่า" className="flex sm:gap-1 overflow-x-auto overflow-y-hidden mb-4 border-b border-line">
-                        {tabs.map((x) => {
+                        {tenantTabs.map((x) => {
                             const active = tab === x.value
                             return (
                                 <button
@@ -422,103 +195,8 @@ function TenantsPage() {
                     </div>
 
                     <div className="xl:overflow-auto xl:max-h-[34rem] xl:rounded-xl xl:border xl:border-line xl:shadow-sm">
-                        {/* จอใหญ่: ตารางผู้เช่า (ชื่อ ห้อง เบอร์ ระยะสัญญา สถานะสัญญา เอกสาร) กดแถวเพื่อดูรายละเอียด */}
-                        <table className="hidden xl:table w-full min-w-[56rem] border-collapse text-sm">
-                            <thead className="sticky top-0 z-10">
-                                <tr className="bg-primary-dark text-white">
-                                    <th className={`${head} text-center w-12`}>#</th>
-                                    <th className={`${head} text-left`}>ผู้เช่า</th>
-                                    <th className={`${head} text-center`}>ห้อง</th>
-                                    <th className={`${head} text-left`}>เบอร์โทร</th>
-                                    <th className={`${head} text-center`}>ระยะสัญญา</th>
-                                    <th className={`${head} text-center`}>สถานะสัญญา</th>
-                                    <th className={`${head} text-center`}>เอกสาร</th>
-                                    <th className={`${head} text-center`}>จัดการ</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {visible.map((t, index) => {
-                                    const docs = docCounts[t.room] ?? 0
-                                    const complete = docs >= REQUIRED_DOCS.length
-                                    return (
-                                        <tr
-                                            key={t.room}
-                                            onClick={() => setModal(t)}
-                                            className={`cursor-pointer border-b border-line transition-colors hover:bg-mist/30 ${index % 2 ? 'bg-sand/40' : 'bg-white'}`}
-                                        >
-                                            <td className={`${cell} text-center text-xs text-muted tabular-nums`}>{index + 1}</td>
-                                            <td className={cell}>
-                                                <div className="flex items-center gap-3">
-                                                    <Avatar name={t.name} />
-                                                    <div>
-                                                        <div className="font-medium text-ink">{t.name}</div>
-                                                        {t.username && <div className="text-xs text-muted">@{t.username.toLowerCase()}</div>}
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className={`${cell} text-center`}>
-                                                <span className="inline-block min-w-12 px-2.5 py-1 rounded-lg bg-mist/60 text-primary-dark font-semibold">{t.room}</span>
-                                            </td>
-                                            <td className={`${cell} tabular-nums`}>{t.phone}</td>
-                                            <td className={`${cell} text-center text-muted whitespace-nowrap`}>{formatDate(t.startDate)} – {formatDate(t.endDate)}</td>
-                                            <td className={`${cell} text-center`}><ContractBadge endDate={t.endDate} showHint /></td>
-                                            <td className={`${cell} text-center`}>
-                                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-                                                    complete ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200' : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
-                                                }`}>
-                                                    {complete ? 'ครบ' : `${docs}/${REQUIRED_DOCS.length}`}
-                                                </span>
-                                            </td>
-                                            <td className="border-x border-line/60 px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                                                <button onClick={() => setModal(t)} className="px-4 py-1 rounded-lg text-sm bg-mist/60 text-primary-dark hover:bg-mist">รายละเอียด</button>
-                                            </td>
-                                        </tr>
-                                    )
-                                })}
-                            </tbody>
-                        </table>
-                        {/* จอเล็ก/กลาง: แสดงเป็นการ์ด */}
-                        <div className="xl:hidden grid gap-3 md:grid-cols-2">
-                            {visible.map((t) => {
-                                const docs = docCounts[t.room] ?? 0
-                                const complete = docs >= REQUIRED_DOCS.length
-                                return (
-                                    <button
-                                        key={t.room}
-                                        type="button"
-                                        onClick={() => setModal(t)}
-                                        className="text-left rounded-2xl border border-line bg-white p-4 flex flex-col gap-3 hover:border-secondary transition-colors"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <Avatar name={t.name} />
-                                            <div className="min-w-0 flex-1">
-                                                <div className="font-medium text-ink truncate">{t.name}</div>
-                                                {t.username && <div className="text-xs text-muted">@{t.username.toLowerCase()}</div>}
-                                            </div>
-                                            <span className="inline-block min-w-12 px-2.5 py-1 rounded-lg bg-mist/60 text-primary-dark font-semibold text-center">{t.room}</span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3 text-sm">
-                                            <div>
-                                                <div className="text-xs text-muted">เบอร์โทร</div>
-                                                <div className="tabular-nums">{t.phone}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-xs text-muted">ระยะสัญญา</div>
-                                                <div>{formatDate(t.startDate)} – {formatDate(t.endDate)}</div>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center justify-between gap-2">
-                                            <ContractBadge endDate={t.endDate} showHint />
-                                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-                                                complete ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200' : 'bg-amber-50 text-amber-800 ring-1 ring-amber-200'
-                                            }`}>
-                                                เอกสาร {complete ? 'ครบ' : `${docs}/${REQUIRED_DOCS.length}`}
-                                            </span>
-                                        </div>
-                                    </button>
-                                )
-                            })}
-                        </div>
+                        <TenantRows rows={visible} docCounts={docCounts} onOpen={setModal} />
+                        <TenantCards rows={visible} docCounts={docCounts} onOpen={setModal} />
                         {/* ข้อความกำลังโหลด / error / ไม่พบผู้เช่า */}
                         {(loading || loadError || visible.length === 0) && (
                             <div className={`py-12 text-center ${loadError ? 'text-red-600' : 'text-muted'}`}>

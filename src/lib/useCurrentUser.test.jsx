@@ -5,10 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
-// ผลที่ฐานข้อมูลตอบ (เปลี่ยนต่อเทสต์) profiles: ค่าเมื่ออ่านพร้อมคอลัมน์ must_change_password, profilesBasic: ค่าเมื่ออ่านแค่ role
+// ผลที่ฐานข้อมูลตอบตอนอ่าน profiles (เปลี่ยนต่อเทสต์)
 let session
-let profilesFull
-let profilesBasic
+let profiles
 let tenantRow
 const selects = []
 // ตัวฟังเหตุการณ์ real-time ของตาราง tenants
@@ -30,7 +29,7 @@ vi.mock('./supabaseClient', () => ({
                 selects.push(`${table}:${cols}`)
                 const result = table === 'tenants'
                     ? { data: tenantRow, error: null }
-                    : cols.includes('must_change_password') ? profilesFull : profilesBasic
+                    : profiles
                 const b = { eq: () => b, single: () => Promise.resolve(result), maybeSingle: () => Promise.resolve(result) }
                 return b
             },
@@ -59,8 +58,7 @@ describe('useCurrentUser', () => {
         selects.length = 0
         tenantEvents.length = 0
         session = { user: { id: 'u1', email: 't101@apartment.app' } }
-        profilesFull = { data: { role: 'user', must_change_password: true }, error: null }
-        profilesBasic = { data: { role: 'user' }, error: null }
+        profiles = { data: { role: 'user', must_change_password: true }, error: null }
         tenantRow = { name: 'สมชาย', room: '101', phone: '0800001234', start_date: '2026-01-01', end_date: '2026-12-31' }
         container = document.createElement('div')
         document.body.appendChild(container)
@@ -78,16 +76,9 @@ describe('useCurrentUser', () => {
     })
 
     it('เปลี่ยนรหัสแล้ว (เครื่องหมายเป็น false) ไม่บังคับ', async () => {
-        profilesFull = { data: { role: 'admin', must_change_password: false }, error: null }
+        profiles = { data: { role: 'admin', must_change_password: false }, error: null }
         const { get } = await render()
         expect(get()).toMatchObject({ role: 'admin', mustChangePassword: false })
-    })
-
-    it('ยังไม่ได้รัน ส่วน hardening ของไฟล์ migration (ไม่มีคอลัมน์): อ่านแค่สิทธิ์ ไม่บังคับ และระบบยังใช้ได้', async () => {
-        profilesFull = { data: null, error: { message: 'column profiles.must_change_password does not exist' } }
-        const { get } = await render()
-        expect(get()).toMatchObject({ role: 'user', mustChangePassword: false })
-        expect(selects).toContain('profiles:role')
     })
 
     it('ยังไม่ login: ไม่มีข้อมูลผู้ใช้', async () => {

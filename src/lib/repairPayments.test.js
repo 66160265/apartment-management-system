@@ -10,7 +10,7 @@ describe('owesRepairCost', () => {
     })
 
     it('ยังซ่อมไม่เสร็จ = ยังไม่ต้องชำระ', () => {
-        for (const status of ['pending', 'scheduled', 'in_progress', 'cancelled']) {
+        for (const status of ['pending', 'in_progress']) {
             expect(owesRepairCost({ ...base, status })).toBe(false)
         }
     })

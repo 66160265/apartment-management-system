@@ -28,7 +28,7 @@ function Section({ icon, title, hint, children }) {
 }
 
 // ช่องกรอกพร้อมหัวข้อและคำแนะนำใต้ช่อง
-// จำนวนครั้งที่ตรวจสลิปในเดือนนี้ เทียบกับโควตาที่กรอก (ไม่แสดงถ้ายังไม่มีตาราง slip_verify_log)
+// จำนวนครั้งที่ตรวจสลิปในเดือนนี้ เทียบกับโควตาที่กรอก (ไม่แสดงถ้าโหลดไม่สำเร็จ)
 function SlipUsage({ quota }) {
     const [used, setUsed] = useState(null)
     useEffect(() => {
@@ -38,7 +38,7 @@ function SlipUsage({ quota }) {
             active = false
         }
     }, [])
-    if (used === null) return <p className="text-xs text-muted self-end pb-2">ยังไม่มีข้อมูลจำนวนการตรวจเดือนนี้ (ต้องรัน migration slip_quota ก่อน)</p>
+    if (used === null) return <p className="text-xs text-muted self-end pb-2">โหลดจำนวนครั้งที่ตรวจในเดือนนี้ไม่สำเร็จ</p>
     const { level, remaining } = quotaStatus(used, quota)
     const tone = level === 'out' ? 'text-red-700' : level === 'low' ? 'text-amber-700' : 'text-primary-dark'
     return (
@@ -46,7 +46,7 @@ function SlipUsage({ quota }) {
             <p className={`text-sm font-medium ${tone}`}>
                 เดือนนี้ตรวจไปแล้ว {used.toLocaleString('th-TH')} ครั้ง{level !== 'none' && ` (เหลือ ${remaining.toLocaleString('th-TH')})`}
             </p>
-            <p className="text-xs text-muted">นับตอนระบบจองสิทธิ์ตรวจ อาจมากกว่าที่ EasySlip นับเล็กน้อย</p>
+            <p className="text-xs text-muted">ตัวเลขนี้นับจากฝั่งหอพัก อาจมากกว่าที่ EasySlip คิดเงินจริงเล็กน้อย</p>
         </div>
     )
 }
@@ -126,6 +126,8 @@ function SettingsPage() {
             return setError('รหัสพร้อมเพย์ไม่ถูกต้อง ต้องเป็นเบอร์มือถือ 10 หลัก (ขึ้นต้นด้วย 0) หรือเลขบัตรประชาชน/เลขผู้เสียภาษี 13 หลัก')
         }
         // วันครบกำหนดต้องอยู่ระหว่าง 1–28 (ทุกเดือนมีวันนั้น) และอัตราค่าบริการต้องเป็นตัวเลขไม่ติดลบ
+        const billingDay = Number(form.billingDay)
+        if (!Number.isInteger(billingDay) || billingDay < 1 || billingDay > 28) return setError('วันออกบิลต้องเป็นวันที่ 1 – 28')
         const dueDay = Number(form.dueDay)
         if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 28) return setError('วันครบกำหนดชำระต้องเป็นวันที่ 1 – 28')
         for (const [key, label] of [['rateWater', 'ค่าน้ำ'], ['rateElectric', 'ค่าไฟ'], ['commonFee', 'ค่าส่วนกลาง'], ['lateFeePerDay', 'ค่าปรับต่อวัน']]) {
@@ -142,6 +144,7 @@ function SettingsPage() {
         const err = await saveSettings({
             ...form,
             promptpayId: formatPromptPayId(form.promptpayId),
+            billingDay,
             dueDay,
         })
         setSaving(false)
@@ -214,11 +217,17 @@ function SettingsPage() {
                     </Section>
 
                     {/* ส่วนที่ 3: วันครบกำหนดและอัตราค่าบริการเริ่มต้น */}
-                    <Section icon="receipt" title="ใบแจ้งหนี้" hint="ค่าเริ่มต้นตอนสร้างใบแจ้งหนี้ใหม่ (แก้เฉพาะใบได้ตอนสร้าง) ใบเดิมไม่เปลี่ยนตาม">
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                            <Field label="ครบกำหนดชำระ (วันที่ของเดือนถัดไป)">
+                    <Section icon="receipt" title="ใบแจ้งหนี้" hint="ค่าที่ใส่ให้อัตโนมัติตอนสร้างใบแจ้งหนี้ใหม่ (แก้เป็นรายใบตอนสร้างได้) ใบที่ออกไปแล้วจะไม่ถูกเปลี่ยน">
+                        {/* วันออกบิล (ได้แจ้งเตือน) และวันครบกำหนด: แถวแรกมีคำอธิบายใต้ช่อง จึงแยกจากแถวอัตราค่าบริการเพื่อให้ช่องตรงกัน */}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <Field label="วันออกบิลของทุกเดือน (วันที่ 1 – 28)" hint="ถึงวันนี้ระบบแจ้งเตือนเจ้าของและพนักงานให้ออกบิลของเดือนที่แล้ว (เฉพาะถ้ายังมีห้องที่ยังไม่ได้ออก)">
+                                <input type="number" min="1" max="28" className={inputClass} value={form.billingDay} onChange={set('billingDay')} />
+                            </Field>
+                            <Field label="ครบกำหนดชำระ (วันที่ของเดือนถัดไป)" hint="ใช้เป็นค่าเริ่มต้นของใบแจ้งหนี้ใหม่">
                                 <input type="number" min="1" max="28" className={inputClass} value={form.dueDay} onChange={set('dueDay')} />
                             </Field>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-3 mt-4">
                             <Field label="ค่าน้ำ (บาท/หน่วย)">
                                 <input type="number" min="0" step="any" className={inputClass} value={form.rateWater} onChange={set('rateWater')} />
                             </Field>
@@ -237,10 +246,10 @@ function SettingsPage() {
                             <Field label="ค่าปรับ (บาท/วัน)" hint="0 = ไม่คิดค่าปรับ">
                                 <input type="number" min="0" step="any" className={inputClass} value={form.lateFeePerDay} onChange={set('lateFeePerDay')} />
                             </Field>
-                            <Field label="วันผ่อนผัน" hint="เกินกำหนดกี่วันแรกที่ยังไม่ปรับ">
+                            <Field label="วันผ่อนผัน" hint="ไม่คิดค่าปรับในกี่วันแรกหลังเกินกำหนด (0 = คิดตั้งแต่วันแรก)">
                                 <input type="number" min="0" max="60" step="1" className={inputClass} value={form.lateFeeGraceDays} onChange={set('lateFeeGraceDays')} />
                             </Field>
-                            <Field label="เพดานค่าปรับสูงสุด (บาท)" hint="เว้นว่าง = ไม่จำกัด">
+                            <Field label="เพดานค่าปรับสูงสุด (บาท)" hint="ค่าปรับรวมสูงสุดต่อใบ เว้นว่าง = ไม่จำกัด">
                                 <input type="number" min="0" step="any" className={inputClass} value={form.lateFeeCap} onChange={set('lateFeeCap')} placeholder="ไม่จำกัด" />
                             </Field>
                         </div>
@@ -254,34 +263,34 @@ function SettingsPage() {
                                     const capped = form.lateFeeCap !== '' ? Math.min(fee, Number(form.lateFeeCap)) : fee
                                     return `฿${capped.toLocaleString('th-TH')}`
                                 })()}
-                                . ค่าปรับรวมอยู่ในยอดที่ผู้เช่าต้องโอน (และใน QR) และเพิ่มขึ้นทุกวันจนกว่าจะชำระ คิดถึงวันที่ผู้เช่าโอน ไม่ใช่วันที่แอดมินตรวจสลิป กรุณาตรวจว่าตรงกับสัญญาเช่าของหอพัก
+                                . ค่าปรับจะรวมอยู่ในยอดที่ผู้เช่าต้องโอน (และใน QR) เพิ่มขึ้นทุกวันจนกว่าจะจ่าย และคิดถึงวันที่ผู้เช่าโอนเงิน ไม่ใช่วันที่แอดมินตรวจสลิป โปรดตรวจว่าตรงกับสัญญาเช่าของหอพัก
                             </p>
                         )}
                     </Section>
 
                     {/* ส่วนที่ 4: ตรวจสลิปอัตโนมัติ (EasySlip) */}
-                    <Section icon="review" title="ตรวจสลิปอัตโนมัติ" hint="ช่วยอ่านยอดและเตือนข้อสังเกตจากสลิปที่ผู้เช่าแนบ แอดมินยังเป็นผู้กดยืนยันรับเงินเอง">
+                    <Section icon="review" title="ตรวจสลิปอัตโนมัติ" hint="ให้ระบบช่วยอ่านสลิปที่ผู้เช่าส่งมา (ยอดเงิน ผู้รับ สลิปซ้ำ) ผ่านบริการ EasySlip เลือกได้ว่าจะให้แค่ช่วยดู หรือยืนยันรับเงินให้เลย">
                         <Field label="โหมด">
                             <select className={inputClass} value={form.slipVerifyMode} onChange={set('slipVerifyMode')}>
                                 <option value="off">ปิด (แอดมินตรวจสลิปด้วยตา)</option>
-                                <option value="suggest">แนะนำ (ตรวจกับ EasySlip แล้วแสดงผลให้แอดมินดู)</option>
+                                <option value="suggest">ช่วยดู (ตรวจกับ EasySlip แล้วแสดงผลให้แอดมินดู แอดมินกดยืนยันรับเงินเอง)</option>
                                 <option value="auto">อัตโนมัติ (ผ่านครบทุกเงื่อนไขแล้วยืนยันรับเงินให้เลย)</option>
                             </select>
                         </Field>
                         {form.slipVerifyMode === 'auto' && (
                             <p className="text-sm text-amber-900 bg-amber-50 ring-1 ring-amber-200 rounded-xl px-4 py-2.5 mt-3">
-                                ระบบจะยืนยันรับเงินให้เองเฉพาะสลิปที่ผ่านครบทุกข้อ: ยอดเท่ากับยอดคงเหลือพอดี, EasySlip ยืนยันว่าผู้รับคือบัญชีของหอพัก, มีเลขอ้างอิงและไม่เคยถูกใช้ ส่วนโอนไม่ครบ โอนเกิน หรือมีข้อสงสัย จะรอแอดมินตรวจเหมือนเดิม
-                                <strong className="block mt-1">ต้องลงทะเบียนบัญชีรับเงินของหอพักในแดชบอร์ด EasySlip ก่อน ไม่งั้นจะไม่มีสลิปไหนอนุมัติอัตโนมัติได้</strong>
+                                ระบบจะยืนยันรับเงินให้เองเฉพาะสลิปที่ถูกต้องครบทุกข้อ คือ ยอดโอนตรงกับยอดที่ต้องจ่ายพอดี, ผู้รับเป็นบัญชีของหอพัก และเป็นสลิปที่ไม่เคยถูกใช้มาก่อน ถ้าโอนไม่ครบ โอนเกิน หรือมีจุดน่าสงสัย จะรอให้แอดมินตรวจเองเหมือนเดิม
+                                <strong className="block mt-1">ก่อนใช้โหมดนี้ ต้องลงทะเบียนบัญชีรับเงินของหอพักไว้ในเว็บของ EasySlip ก่อน ไม่เช่นนั้นจะไม่มีสลิปไหนถูกยืนยันอัตโนมัติ</strong>
                             </p>
                         )}
                         <div className="grid gap-4 sm:grid-cols-2 mt-3">
-                            <Field label="โควตาตรวจสลิปต่อเดือน (ครั้ง)" hint="จำนวนที่ซื้อไว้กับ EasySlip ใช้เตือนเมื่อใกล้หมด เว้นว่าง = ไม่ตั้ง">
+                            <Field label="โควตาตรวจสลิปต่อเดือน (ครั้ง)" hint="จำนวนครั้งที่ซื้อไว้กับ EasySlip ใช้เตือนเมื่อใกล้หมด เว้นว่าง = ไม่ตั้ง">
                                 <input type="number" min="0" step="1" className={inputClass} value={form.slipQuota} onChange={set('slipQuota')} placeholder="ไม่ตั้ง" />
                             </Field>
                             <SlipUsage quota={form.slipQuota} />
                         </div>
                         <p className="text-xs text-muted mt-3">
-                            โหมด &quot;แนะนำ&quot; ใช้โควตาของบริการ EasySlip ทุกครั้งที่ผู้เช่าส่งสลิป (สูงสุด 3 ครั้งต่อใบแจ้งหนี้) ต้องตั้งค่า API key เป็น secret ของ Edge Function verify-slip ก่อน ถ้ายังไม่ได้ตั้ง ระบบจะแสดงว่า &quot;ตรวจอัตโนมัติไม่สำเร็จ&quot; และให้ตรวจด้วยตา
+                            โหมด &quot;ช่วยดู&quot; และ &quot;อัตโนมัติ&quot; ใช้โควตาของ EasySlip ทุกครั้งที่ผู้เช่าส่งสลิป (สูงสุด 3 ครั้งต่อใบแจ้งหนี้) ผู้พัฒนาระบบต้องตั้งรหัสเชื่อมต่อ EasySlip (API key) ไว้ในระบบหลังบ้านก่อน ถ้ายังไม่ได้ตั้ง ระบบจะขึ้นว่า &quot;ตรวจอัตโนมัติไม่สำเร็จ&quot; แล้วให้แอดมินตรวจสลิปเอง
                         </p>
                     </Section>
 

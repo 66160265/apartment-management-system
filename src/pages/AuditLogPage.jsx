@@ -28,7 +28,7 @@ function AuditLogPage() {
         const { data, error: err } = await query
         setLoading(false)
         if (err) {
-            setError(/audit_log/.test(err.message) ? 'ยังไม่ได้รัน supabase/migrations/20261022000000_initial_schema.sql (ส่วน audit) ใน SQL Editor จึงยังไม่มีประวัติการแก้ไข' : `โหลดไม่สำเร็จ: ${err.message}`)
+            setError(`โหลดไม่สำเร็จ: ${err.message}`)
             return
         }
         setError('')

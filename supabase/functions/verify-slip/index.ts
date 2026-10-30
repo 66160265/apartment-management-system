@@ -131,10 +131,11 @@ Deno.serve(async (req) => {
       // ค่าซ่อม: ยอดค่าซ่อมเต็ม (claim คืน paid_amount = 0)
       let balance = Math.max(0, Number(claim.total) - Number(claim.paid_amount ?? 0))
       // ใบแจ้งหนี้: ยอดที่ต้องชำระรวมค่าปรับล่าช้า ณ วันที่โอน (ให้ฐานข้อมูลคำนวณ ใช้สูตรเดียวกับตอนยืนยันรับเงิน)
-      // เรียกไม่ได้ (เช่น ยังไม่ได้รันส่วน payments ของไฟล์ migration รุ่นใหม่) ใช้ยอดคงเหลือแบบไม่มีค่าปรับแทน
+      // คำนวณไม่ได้ = ตรวจครั้งนี้ไม่สำเร็จ (ไม่ใช้ยอดที่ไม่รวมค่าปรับแทน เพราะจะเทียบยอดผิด)
       if (kind === 'invoice') {
         const { data: due, error: dueError } = await admin.rpc('invoice_balance_at', { p_invoice: id, p_transfer: slip.date })
-        if (!dueError && due !== null && due !== undefined && Number.isFinite(Number(due))) balance = Number(due)
+        if (dueError || due === null || !Number.isFinite(Number(due))) throw new Error(`คำนวณยอดที่ต้องชำระไม่สำเร็จ: ${dueError?.message ?? 'ไม่พบใบแจ้งหนี้'}`)
+        balance = Number(due)
       }
       verdict = evaluateSlip(slip, {
         balance,
